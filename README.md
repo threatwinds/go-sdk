@@ -1,1 +1,1 @@
-# quantfall-ThreatWindsGoSDK
+# ThreatWindsGoSDK
