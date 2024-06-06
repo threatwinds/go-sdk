@@ -72,8 +72,9 @@ type Tenant struct {
 
 var cfg *Config
 var cfgOnce sync.Once
+var cfgMutex sync.RWMutex
 
-func (cfg *Config) loadCfg() {
+func (c *Config) loadCfg() {
 	cFiles := ListFiles(path.Join(getEnv().Workdir, "pipeline"), ".yaml")
 	for _, cFile := range cFiles {
 		nCfg, e := ReadYAML[Config](cFile)
@@ -81,35 +82,47 @@ func (cfg *Config) loadCfg() {
 			continue
 		}
 
-		cfg.Groks = append(cfg.Groks, nCfg.Groks...)
-		cfg.Trims = append(cfg.Trims, nCfg.Trims...)
-		cfg.Renames = append(cfg.Renames, nCfg.Renames...)
-		cfg.Casts = append(cfg.Casts, nCfg.Casts...)
-		cfg.Deletes = append(cfg.Deletes, nCfg.Deletes...)
-		cfg.Tenants = append(cfg.Tenants, nCfg.Tenants...)
-		cfg.DisabledRules = append(cfg.DisabledRules, nCfg.DisabledRules...)
+		c.Groks = append(c.Groks, nCfg.Groks...)
+		c.Trims = append(c.Trims, nCfg.Trims...)
+		c.Renames = append(c.Renames, nCfg.Renames...)
+		c.Casts = append(c.Casts, nCfg.Casts...)
+		c.Deletes = append(c.Deletes, nCfg.Deletes...)
+		c.Tenants = append(c.Tenants, nCfg.Tenants...)
+		c.DisabledRules = append(c.DisabledRules, nCfg.DisabledRules...)
 
 		for name, plugin := range nCfg.Plugins {
-			cfg.Plugins[name] = plugin
+			c.Plugins[name] = plugin
 		}
 	}
-	
-	cfg.Env = getEnv()
+
+	c.Env = getEnv()
 }
 
 func GetCfg() *Config {
 	cfgOnce.Do(func() {
 		cfg = new(Config)
-		cfg.Plugins = make(map[string]map[string]interface{})
-		cfg.loadCfg()
 
 		go func() {
 			for {
+				cfgMutex.Lock()
+
+				tmpCfg := new(Config)
+				tmpCfg.Plugins = make(map[string]map[string]interface{})
+				tmpCfg.loadCfg()
+
+				*cfg = *tmpCfg
+
+				cfgMutex.Unlock()
+
 				time.Sleep(60 * time.Second)
-				cfg.loadCfg()
 			}
 		}()
+
+		time.Sleep(5 * time.Second)
 	})
+
+	cfgMutex.RLock()
+	defer cfgMutex.RUnlock()
 
 	return cfg
 }
