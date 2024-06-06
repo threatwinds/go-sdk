@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package input;
+
+option go_package = "github.com/threatwinds/go-sdk/input";
+
+message Log {
+    string id = 1;
+    string dataType = 2;
+    string dataSource = 3;
+    string timestamp = 4;
+    string tenantId = 5;
+    string raw = 6;
+}
+
+message Ack{
+    string lastId = 1;
+}
+
+service Integration{
+    rpc ProcessLog(stream Log) returns (Ack);
+}
