@@ -21,8 +21,8 @@ func ListFiles(route string, filter string) []string {
 	})
 	if err != nil {
 		Logger().ErrorF("error listing files: %s", err.Error())
-		if !logger.Is(err, "no such file or directory"){
-			os.Exit(1)
+		if !logger.Is(err, "no such file or directory") {
+			panic(err)
 		}
 	}
 

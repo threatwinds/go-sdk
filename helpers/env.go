@@ -4,7 +4,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/threatwinds/logger"
 )
@@ -18,9 +17,6 @@ type Env struct {
 	SearchNodes     []string
 	LogLevel        int
 }
-
-var env = new(Env)
-var envOnce sync.Once
 
 func getEnvStr(name, def string, required bool) (string, *logger.Error) {
 	val := os.Getenv(name)
@@ -64,45 +60,44 @@ func getEnvStrSlice(name, def string, required bool) ([]string, *logger.Error) {
 	return items, nil
 }
 
-func GetEnv() *Env {
-	envOnce.Do(func() {
-		var e *logger.Error
+func getEnv() Env {
+	var env Env
+	var e *logger.Error
+	
+	env.ClusterPort, e = getEnvInt("CLUSTER_PORT", "8082", false)
+	if e != nil {
+		panic(e.Message)
+	}
 
-		env.ClusterPort, e = getEnvInt("CLUSTER_PORT", "8082", false)
-		if e != nil {
-			os.Exit(1)
-		}
+	env.RestPort, e = getEnvInt("REST_PORT", "8080", false)
+	if e != nil {
+		panic(e.Message)
+	}
 
-		env.RestPort, e = getEnvInt("REST_PORT", "8080", false)
-		if e != nil {
-			os.Exit(1)
-		}
+	env.GrpcPort, e = getEnvInt("GRPC_PORT", "8081", false)
+	if e != nil {
+		panic(e.Message)
+	}
 
-		env.GrpcPort, e = getEnvInt("GRPC_PORT", "8081", false)
-		if e != nil {
-			os.Exit(1)
-		}
+	env.Workdir, e = getEnvStr("WORK_DIR", "", true)
+	if e != nil {
+		panic(e.Message)
+	}
 
-		env.Workdir, e = getEnvStr("WORK_DIR", "", true)
-		if e != nil {
-			os.Exit(1)
-		}
+	env.SearchNodes, e = getEnvStrSlice("SEARCH_NODES", "", true)
+	if e != nil {
+		panic(e.Message)
+	}
 
-		env.SearchNodes, e = getEnvStrSlice("SEARCH_NODES", "", true)
-		if e != nil {
-			os.Exit(1)
-		}
+	env.RulesRepository, e = getEnvStr("RULES_REPOSITORY", "", true)
+	if e != nil {
+		panic(e.Message)
+	}
 
-		env.RulesRepository, e = getEnvStr("RULES_REPOSITORY", "", true)
-		if e != nil {
-			os.Exit(1)
-		}
-
-		env.LogLevel, e = getEnvInt("LOG_LEVEL", "200", false)
-		if e != nil {
-			os.Exit(1)
-		}
-	})
+	env.LogLevel, e = getEnvInt("LOG_LEVEL", "200", false)
+	if e != nil {
+		panic(e.Message)
+	}
 
 	return env
 }

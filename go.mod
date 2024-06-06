@@ -4,6 +4,7 @@ go 1.22.3
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/threatwinds/logger v1.1.9
 	github.com/tidwall/gjson v1.17.1
 	gopkg.in/yaml.v3 v3.0.1
