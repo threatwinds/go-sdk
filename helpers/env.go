@@ -16,6 +16,7 @@ type Env struct {
 	Workdir         string
 	RulesRepository string
 	SearchNodes     []string
+	LogLevel        int
 }
 
 var env = new(Env)
@@ -66,7 +67,7 @@ func getEnvStrSlice(name, def string, required bool) ([]string, *logger.Error) {
 func GetEnv() *Env {
 	envOnce.Do(func() {
 		var e *logger.Error
-		
+
 		env.ClusterPort, e = getEnvInt("CLUSTER_PORT", "8082", false)
 		if e != nil {
 			os.Exit(1)
@@ -93,6 +94,11 @@ func GetEnv() *Env {
 		}
 
 		env.RulesRepository, e = getEnvStr("RULES_REPOSITORY", "", true)
+		if e != nil {
+			os.Exit(1)
+		}
+
+		env.LogLevel, e = getEnvInt("LOG_LEVEL", "200", false)
 		if e != nil {
 			os.Exit(1)
 		}
