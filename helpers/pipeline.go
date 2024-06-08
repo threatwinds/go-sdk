@@ -4,8 +4,6 @@ import (
 	"path"
 	"sync"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type Config struct {
@@ -69,10 +67,10 @@ type Cast struct {
 }
 
 type Tenant struct {
-	Name          string    `yaml:"name"`
-	Id            uuid.UUID `yaml:"id"`
-	Assets        []Asset   `yaml:"assets"`
-	DisabledRules []int64   `yaml:"disabled_rules"`
+	Name          string  `yaml:"name"`
+	Id            string  `yaml:"id"`
+	Assets        []Asset `yaml:"assets"`
+	DisabledRules []int64 `yaml:"disabled_rules"`
 }
 
 var cfg *Config
