@@ -1,22 +1,24 @@
 package twsdk
 
 type Alert struct {
-	Timestamp   string  `json:"@timestamp"`
-	LastUpdate  string  `json:"lastUpdate"`
-	Id          *string `json:"id,omitempty"`
-	TenantId    string  `json:"tenantId"`
-	TenantName  *string `json:"tenantName,omitempty"`
-	DataSource  string  `json:"dataSource"`
-	DataType    string  `json:"dataType"`
-	Name        string  `json:"name"`
-	Tactic      string  `json:"tactic"`
-	Technique   string  `json:"technique"`
-	Adversary   *Side   `json:"adversary,omitempty"`
-	Target      *Side   `json:"target,omitempty"`
-	Impact      Impact  `json:"impact"`
-	ImpactScore int     `json:"impactScore"`
-	Severity    string  `json:"severity"`
-	Events      []Event `json:"events"`
+	Id          *string  `json:"id,omitempty"`
+	Timestamp   string   `json:"@timestamp"`
+	LastUpdate  string   `json:"lastUpdate"`
+	Name        string   `json:"name"`
+	TenantId    string   `json:"tenantId"`
+	TenantName  *string  `json:"tenantName,omitempty"`
+	DataSource  string   `json:"dataSource"`
+	DataType    string   `json:"dataType"`
+	Tactic      string   `json:"tactic"`
+	Technique   string   `json:"technique"`
+	Description string   `yaml:"description"`
+	References  []string `yaml:"references"`
+	Impact      Impact   `json:"impact"`
+	ImpactScore int      `json:"impactScore"`
+	Severity    string   `json:"severity"`
+	Adversary   *Side    `json:"adversary,omitempty"`
+	Target      *Side    `json:"target,omitempty"`
+	Events      []Event  `json:"events"`
 }
 
 type Impact struct {
