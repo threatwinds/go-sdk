@@ -1,13 +1,20 @@
 package opensearch
 
 type Alert struct {
+	Timestamp   string  `json:"@timestamp"`
+	LastUpdate  string  `json:"lastUpdate"`
 	Id          *string `json:"id,omitempty"`
+	TenantId    string  `json:"tenantId"`
+	TenantName  *string `json:"tenantName,omitempty"`
 	Name        string  `json:"name"`
 	Tactic      string  `json:"tactic"`
 	Technique   string  `json:"technique"`
+	Adversary   *Side   `json:"adversary,omitempty"`
+	Target      *Side   `json:"target,omitempty"`
 	Impact      Impact  `json:"impact"`
 	ImpactScore int     `json:"impactScore"`
 	Severity    string  `json:"severity"`
+	Events      []Event `json:"events"`
 }
 
 type Impact struct {
@@ -23,8 +30,8 @@ type Event struct {
 	DataType         string                 `json:"dataType" example:"linux"`
 	DataSource       string                 `json:"dataSource" example:"192.168.1.245"`
 	TenantId         string                 `json:"tenantId"`
-	TenantName       string                 `json:"tenantName"`
-	Raw              string                 `json:"raw"`
+	TenantName       *string                `json:"tenantName,omitempty"`
+	Raw              *string                `json:"raw,omitempty"`
 	Log              map[string]interface{} `json:"log,omitempty"`
 	Remote           *Side                  `json:"remote,omitempty"`
 	Local            *Side                  `json:"local,omitempty"`
@@ -33,14 +40,6 @@ type Event struct {
 	Protocol         *string                `json:"protocol,omitempty"`
 	ConnectionStatus *string                `json:"connectionStatus,omitempty"`
 	StatusCode       *int64                 `json:"statusCode,omitempty"`
-}
-
-type Relation struct {
-	Id        *string `json:"id,omitempty"`
-	Timestamp string  `json:"@timestamp"`
-	LastSeen  string  `json:"lastSeen"`
-	EventId   string  `json:"eventId"`
-	AlertId   string  `json:"alertId"`
 }
 
 type Geolocation struct {
