@@ -15,12 +15,7 @@ type Config struct {
 	Tenants       []Tenant                          `yaml:"tenants,omitempty"`
 	DisabledRules []int64                           `yaml:"disabled_rules,omitempty"`
 	Plugins       map[string]map[string]interface{} `yaml:"plugins,omitempty"`
-	Correlation   Correlation                       `yaml:"correlation,omitempty"`
 	Env           Env                               `yaml:"-"`
-}
-
-type Correlation struct {
-	AlertsSchema string `yaml:"alerts_schema"`
 }
 
 type Asset struct {
@@ -92,7 +87,6 @@ func (c *Config) loadCfg() {
 		c.Deletes = append(c.Deletes, nCfg.Deletes...)
 		c.Tenants = append(c.Tenants, nCfg.Tenants...)
 		c.DisabledRules = append(c.DisabledRules, nCfg.DisabledRules...)
-		c.Correlation = nCfg.Correlation
 
 		for name, plugin := range nCfg.Plugins {
 			c.Plugins[name] = plugin

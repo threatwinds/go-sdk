@@ -15,7 +15,6 @@ type Env struct {
 	GrpcPort        int
 	Workdir         string
 	RulesRepository string
-	SearchNodes     []string
 	LogLevel        int
 }
 
@@ -86,11 +85,6 @@ func getEnv() Env {
 	}
 
 	env.Workdir, e = getEnvStr("WORK_DIR", "", true)
-	if e != nil {
-		panic(e.Message)
-	}
-
-	env.SearchNodes, e = getEnvStrSlice("SEARCH_NODES", "", true)
 	if e != nil {
 		panic(e.Message)
 	}
