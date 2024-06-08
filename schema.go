@@ -1,4 +1,4 @@
-package main
+package twsdk
 
 type Alert struct {
 	Timestamp   string  `json:"@timestamp"`
