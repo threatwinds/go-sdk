@@ -17,7 +17,12 @@ type Config struct {
 	Tenants       []Tenant                          `yaml:"tenants,omitempty"`
 	DisabledRules []int64                           `yaml:"disabled_rules,omitempty"`
 	Plugins       map[string]map[string]interface{} `yaml:"plugins,omitempty"`
+	Correlation   Correlation                       `yaml:"correlation,omitempty"`
 	Env           Env                               `yaml:"-"`
+}
+
+type Correlation struct {
+	AlertsScheme string `yaml:"alerts_scheme"`
 }
 
 type Asset struct {

@@ -9,7 +9,8 @@ import (
 )
 
 type Env struct {
-	ClusterPort     int
+	NodeName        string
+	NodeGroups      []string
 	RestPort        int
 	GrpcPort        int
 	Workdir         string
@@ -63,8 +64,13 @@ func getEnvStrSlice(name, def string, required bool) ([]string, *logger.Error) {
 func getEnv() Env {
 	var env Env
 	var e *logger.Error
-	
-	env.ClusterPort, e = getEnvInt("CLUSTER_PORT", "8082", false)
+
+	env.NodeName, e = getEnvStr("NODE_NAME", "", false)
+	if e != nil {
+		panic(e.Message)
+	}
+
+	env.NodeGroups, e = getEnvStrSlice("NODE_GROUPS", "", false)
 	if e != nil {
 		panic(e.Message)
 	}
