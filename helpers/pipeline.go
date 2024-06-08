@@ -92,6 +92,7 @@ func (c *Config) loadCfg() {
 		c.Deletes = append(c.Deletes, nCfg.Deletes...)
 		c.Tenants = append(c.Tenants, nCfg.Tenants...)
 		c.DisabledRules = append(c.DisabledRules, nCfg.DisabledRules...)
+		c.Correlation = nCfg.Correlation
 
 		for name, plugin := range nCfg.Plugins {
 			c.Plugins[name] = plugin
