@@ -18,5 +18,5 @@ message Ack{
 }
 
 service Integration{
-    rpc ProcessLog(stream Log) returns (Ack);
+    rpc ProcessLog(stream Log) returns (stream Ack);
 }

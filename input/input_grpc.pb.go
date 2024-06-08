@@ -48,7 +48,7 @@ func (c *integrationClient) ProcessLog(ctx context.Context, opts ...grpc.CallOpt
 
 type Integration_ProcessLogClient interface {
 	Send(*Log) error
-	CloseAndRecv() (*Ack, error)
+	Recv() (*Ack, error)
 	grpc.ClientStream
 }
 
@@ -60,10 +60,7 @@ func (x *integrationProcessLogClient) Send(m *Log) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *integrationProcessLogClient) CloseAndRecv() (*Ack, error) {
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
+func (x *integrationProcessLogClient) Recv() (*Ack, error) {
 	m := new(Ack)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -104,7 +101,7 @@ func _Integration_ProcessLog_Handler(srv interface{}, stream grpc.ServerStream) 
 }
 
 type Integration_ProcessLogServer interface {
-	SendAndClose(*Ack) error
+	Send(*Ack) error
 	Recv() (*Log, error)
 	grpc.ServerStream
 }
@@ -113,7 +110,7 @@ type integrationProcessLogServer struct {
 	grpc.ServerStream
 }
 
-func (x *integrationProcessLogServer) SendAndClose(m *Ack) error {
+func (x *integrationProcessLogServer) Send(m *Ack) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -136,6 +133,7 @@ var Integration_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ProcessLog",
 			Handler:       _Integration_ProcessLog_Handler,
+			ServerStreams: true,
 			ClientStreams: true,
 		},
 	},
