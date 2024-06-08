@@ -6,6 +6,8 @@ type Alert struct {
 	Id          *string `json:"id,omitempty"`
 	TenantId    string  `json:"tenantId"`
 	TenantName  *string `json:"tenantName,omitempty"`
+	DataSource  string  `json:"dataSource"`
+	DataType    string  `json:"dataType"`
 	Name        string  `json:"name"`
 	Tactic      string  `json:"tactic"`
 	Technique   string  `json:"technique"`
