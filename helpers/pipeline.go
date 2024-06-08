@@ -20,7 +20,7 @@ type Config struct {
 }
 
 type Correlation struct {
-	AlertsScheme string `yaml:"alerts_scheme"`
+	AlertsSchema string `yaml:"alerts_schema"`
 }
 
 type Asset struct {
