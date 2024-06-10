@@ -7,12 +7,12 @@ import (
 )
 
 type Config struct {
-	Grok          []Grok                            `yaml:"groks,omitempty"`
-	Trim          []Trim                            `yaml:"trims,omitempty"`
-	Rename        []Rename                          `yaml:"renames,omitempty"`
-	Cast          []Cast                            `yaml:"casts,omitempty"`
-	Reformat      []Reformat                        `yaml:"reformats,omitempty"`
-	Delete        []Delete                          `yaml:"deletes,omitempty"`
+	Grok          []Grok                            `yaml:"grok,omitempty"`
+	Trim          []Trim                            `yaml:"trim,omitempty"`
+	Rename        []Rename                          `yaml:"rename,omitempty"`
+	Cast          []Cast                            `yaml:"cast,omitempty"`
+	Reformat      []Reformat                        `yaml:"reformat,omitempty"`
+	Delete        []Delete                          `yaml:"delete,omitempty"`
 	Tenants       []Tenant                          `yaml:"tenants,omitempty"`
 	Patterns      map[string]string                 `yaml:"patterns,omitempty"`
 	DisabledRules []int64                           `yaml:"disabled_rules,omitempty"`
