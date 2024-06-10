@@ -9,7 +9,7 @@ type Alert struct {
 	TenantName  *string  `json:"tenantName,omitempty"`
 	DataSource  string   `json:"dataSource"`
 	DataType    string   `json:"dataType"`
-	Tactic      string   `json:"tactic"`
+	Category    string   `json:"category"`
 	Technique   string   `json:"technique"`
 	Description string   `yaml:"description"`
 	References  []string `yaml:"references"`
