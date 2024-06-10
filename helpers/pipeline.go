@@ -11,12 +11,21 @@ type Config struct {
 	Trims         []Trim                            `yaml:"trims,omitempty"`
 	Renames       []Rename                          `yaml:"renames,omitempty"`
 	Casts         []Cast                            `yaml:"casts,omitempty"`
+	Reformats     []Reformat                        `yaml:"reformats,omitempty"`
 	Deletes       []Delete                          `yaml:"deletes,omitempty"`
 	Tenants       []Tenant                          `yaml:"tenants,omitempty"`
 	Patterns      map[string]string                 `yaml:"patterns,omitempty"`
 	DisabledRules []int64                           `yaml:"disabled_rules,omitempty"`
 	Plugins       map[string]map[string]interface{} `yaml:"plugins,omitempty"`
 	Env           Env                               `yaml:"-"`
+}
+
+type Reformat struct {
+	DataTypes []string `yaml:"data_types"`
+	Fields    []string `yaml:"fields"`
+	Function  string   `yaml:"function"`
+	Format    string   `yaml:"format"`
+	ToFormat  string   `yaml:"to_format"`
 }
 
 type Asset struct {
@@ -85,6 +94,7 @@ func (c *Config) loadCfg() {
 		c.Trims = append(c.Trims, nCfg.Trims...)
 		c.Renames = append(c.Renames, nCfg.Renames...)
 		c.Casts = append(c.Casts, nCfg.Casts...)
+		c.Reformats = append(c.Reformats, nCfg.Reformats...)
 		c.Deletes = append(c.Deletes, nCfg.Deletes...)
 		c.Tenants = append(c.Tenants, nCfg.Tenants...)
 		c.DisabledRules = append(c.DisabledRules, nCfg.DisabledRules...)
