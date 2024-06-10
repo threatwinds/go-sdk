@@ -121,6 +121,7 @@ func GetCfg() *Config {
 
 				tmpCfg := new(Config)
 				tmpCfg.Plugins = make(map[string]map[string]interface{})
+				tmpCfg.Patterns = make(map[string]string)
 				tmpCfg.loadCfg()
 
 				*cfg = *tmpCfg
