@@ -13,6 +13,7 @@ type Config struct {
 	Casts         []Cast                            `yaml:"casts,omitempty"`
 	Deletes       []Delete                          `yaml:"deletes,omitempty"`
 	Tenants       []Tenant                          `yaml:"tenants,omitempty"`
+	Patterns      map[string]string                 `yaml:"patterns,omitempty"`
 	DisabledRules []int64                           `yaml:"disabled_rules,omitempty"`
 	Plugins       map[string]map[string]interface{} `yaml:"plugins,omitempty"`
 	Env           Env                               `yaml:"-"`
@@ -87,6 +88,10 @@ func (c *Config) loadCfg() {
 		c.Deletes = append(c.Deletes, nCfg.Deletes...)
 		c.Tenants = append(c.Tenants, nCfg.Tenants...)
 		c.DisabledRules = append(c.DisabledRules, nCfg.DisabledRules...)
+
+		for name, pattern := range nCfg.Patterns {
+			c.Patterns[name] = pattern
+		}
 
 		for name, plugin := range nCfg.Plugins {
 			c.Plugins[name] = plugin
