@@ -7,12 +7,12 @@ import (
 )
 
 type Config struct {
-	Groks         []Grok                            `yaml:"groks,omitempty"`
-	Trims         []Trim                            `yaml:"trims,omitempty"`
-	Renames       []Rename                          `yaml:"renames,omitempty"`
-	Casts         []Cast                            `yaml:"casts,omitempty"`
-	Reformats     []Reformat                        `yaml:"reformats,omitempty"`
-	Deletes       []Delete                          `yaml:"deletes,omitempty"`
+	Grok          []Grok                            `yaml:"groks,omitempty"`
+	Trim          []Trim                            `yaml:"trims,omitempty"`
+	Rename        []Rename                          `yaml:"renames,omitempty"`
+	Cast          []Cast                            `yaml:"casts,omitempty"`
+	Reformat      []Reformat                        `yaml:"reformats,omitempty"`
+	Delete        []Delete                          `yaml:"deletes,omitempty"`
 	Tenants       []Tenant                          `yaml:"tenants,omitempty"`
 	Patterns      map[string]string                 `yaml:"patterns,omitempty"`
 	DisabledRules []int64                           `yaml:"disabled_rules,omitempty"`
@@ -90,12 +90,12 @@ func (c *Config) loadCfg() {
 			continue
 		}
 
-		c.Groks = append(c.Groks, nCfg.Groks...)
-		c.Trims = append(c.Trims, nCfg.Trims...)
-		c.Renames = append(c.Renames, nCfg.Renames...)
-		c.Casts = append(c.Casts, nCfg.Casts...)
-		c.Reformats = append(c.Reformats, nCfg.Reformats...)
-		c.Deletes = append(c.Deletes, nCfg.Deletes...)
+		c.Grok = append(c.Grok, nCfg.Grok...)
+		c.Trim = append(c.Trim, nCfg.Trim...)
+		c.Rename = append(c.Rename, nCfg.Rename...)
+		c.Cast = append(c.Cast, nCfg.Cast...)
+		c.Reformat = append(c.Reformat, nCfg.Reformat...)
+		c.Delete = append(c.Delete, nCfg.Delete...)
 		c.Tenants = append(c.Tenants, nCfg.Tenants...)
 		c.DisabledRules = append(c.DisabledRules, nCfg.DisabledRules...)
 
