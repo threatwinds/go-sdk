@@ -21,6 +21,13 @@ type Alert struct {
 	Events      []Event  `json:"events"`
 }
 
+type Notification struct {
+	Id        *string `json:"id,omitempty"`
+	Timestamp string  `json:"@timestamp"`
+	Topic     string  `json:"topic"`
+	Message   string  `json:"message"`
+}
+
 type Impact struct {
 	Confidentiality int `json:"confidentiality"`
 	Integrity       int `json:"integrity"`
