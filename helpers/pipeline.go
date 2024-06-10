@@ -24,8 +24,8 @@ type Reformat struct {
 	DataTypes []string `yaml:"data_types"`
 	Fields    []string `yaml:"fields"`
 	Function  string   `yaml:"function"`
-	Format    string   `yaml:"format"`
-	ToFormat  string   `yaml:"to_format"`
+	From      string   `yaml:"from"`
+	To        string   `yaml:"to"`
 }
 
 type Asset struct {
@@ -44,7 +44,7 @@ type Grok struct {
 
 type Trim struct {
 	DataTypes []string `yaml:"data_types"`
-	Type      string   `yaml:"type"`
+	Function  string   `yaml:"function"`
 	Substring string   `yaml:"substring"`
 	Fields    []string `yaml:"fields"`
 }
