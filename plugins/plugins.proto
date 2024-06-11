@@ -140,5 +140,5 @@ service Plugins{
     rpc Analysis(stream Alert) returns (stream Event);
     rpc Notification(stream Message) returns (stream Ack);
     rpc Anomalies(stream Alert) returns (stream Ack);
-    rpc Correlate(google.protobuf.Empty) returns (stream Alert);
+    rpc Correlate(stream Ack) returns (stream Alert);
 }

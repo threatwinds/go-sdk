@@ -11,7 +11,6 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -37,7 +36,7 @@ type PluginsClient interface {
 	Analysis(ctx context.Context, opts ...grpc.CallOption) (Plugins_AnalysisClient, error)
 	Notification(ctx context.Context, opts ...grpc.CallOption) (Plugins_NotificationClient, error)
 	Anomalies(ctx context.Context, opts ...grpc.CallOption) (Plugins_AnomaliesClient, error)
-	Correlate(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (Plugins_CorrelateClient, error)
+	Correlate(ctx context.Context, opts ...grpc.CallOption) (Plugins_CorrelateClient, error)
 }
 
 type pluginsClient struct {
@@ -203,28 +202,27 @@ func (x *pluginsAnomaliesClient) Recv() (*Ack, error) {
 	return m, nil
 }
 
-func (c *pluginsClient) Correlate(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (Plugins_CorrelateClient, error) {
+func (c *pluginsClient) Correlate(ctx context.Context, opts ...grpc.CallOption) (Plugins_CorrelateClient, error) {
 	stream, err := c.cc.NewStream(ctx, &Plugins_ServiceDesc.Streams[5], Plugins_Correlate_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
 	x := &pluginsCorrelateClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
 	return x, nil
 }
 
 type Plugins_CorrelateClient interface {
+	Send(*Ack) error
 	Recv() (*Alert, error)
 	grpc.ClientStream
 }
 
 type pluginsCorrelateClient struct {
 	grpc.ClientStream
+}
+
+func (x *pluginsCorrelateClient) Send(m *Ack) error {
+	return x.ClientStream.SendMsg(m)
 }
 
 func (x *pluginsCorrelateClient) Recv() (*Alert, error) {
@@ -244,7 +242,7 @@ type PluginsServer interface {
 	Analysis(Plugins_AnalysisServer) error
 	Notification(Plugins_NotificationServer) error
 	Anomalies(Plugins_AnomaliesServer) error
-	Correlate(*emptypb.Empty, Plugins_CorrelateServer) error
+	Correlate(Plugins_CorrelateServer) error
 	mustEmbedUnimplementedPluginsServer()
 }
 
@@ -267,7 +265,7 @@ func (UnimplementedPluginsServer) Notification(Plugins_NotificationServer) error
 func (UnimplementedPluginsServer) Anomalies(Plugins_AnomaliesServer) error {
 	return status.Errorf(codes.Unimplemented, "method Anomalies not implemented")
 }
-func (UnimplementedPluginsServer) Correlate(*emptypb.Empty, Plugins_CorrelateServer) error {
+func (UnimplementedPluginsServer) Correlate(Plugins_CorrelateServer) error {
 	return status.Errorf(codes.Unimplemented, "method Correlate not implemented")
 }
 func (UnimplementedPluginsServer) mustEmbedUnimplementedPluginsServer() {}
@@ -414,15 +412,12 @@ func (x *pluginsAnomaliesServer) Recv() (*Alert, error) {
 }
 
 func _Plugins_Correlate_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(emptypb.Empty)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(PluginsServer).Correlate(m, &pluginsCorrelateServer{stream})
+	return srv.(PluginsServer).Correlate(&pluginsCorrelateServer{stream})
 }
 
 type Plugins_CorrelateServer interface {
 	Send(*Alert) error
+	Recv() (*Ack, error)
 	grpc.ServerStream
 }
 
@@ -432,6 +427,14 @@ type pluginsCorrelateServer struct {
 
 func (x *pluginsCorrelateServer) Send(m *Alert) error {
 	return x.ServerStream.SendMsg(m)
+}
+
+func (x *pluginsCorrelateServer) Recv() (*Ack, error) {
+	m := new(Ack)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // Plugins_ServiceDesc is the grpc.ServiceDesc for Plugins service.
@@ -476,6 +479,7 @@ var Plugins_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "Correlate",
 			Handler:       _Plugins_Correlate_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "plugins.proto",
