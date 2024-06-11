@@ -11,10 +11,8 @@ import (
 type Env struct {
 	NodeName        string
 	NodeGroups      []string
-	RestPort        int
 	GrpcPort        int
 	Workdir         string
-	RulesRepository string
 	LogLevel        int
 }
 
@@ -73,23 +71,13 @@ func getEnv() Env {
 	if e != nil {
 		panic(e.Message)
 	}
-
-	env.RestPort, e = getEnvInt("REST_PORT", "8080", false)
-	if e != nil {
-		panic(e.Message)
-	}
-
+	
 	env.GrpcPort, e = getEnvInt("GRPC_PORT", "8081", false)
 	if e != nil {
 		panic(e.Message)
 	}
 
 	env.Workdir, e = getEnvStr("WORK_DIR", "", true)
-	if e != nil {
-		panic(e.Message)
-	}
-
-	env.RulesRepository, e = getEnvStr("RULES_REPOSITORY", "", true)
 	if e != nil {
 		panic(e.Message)
 	}
