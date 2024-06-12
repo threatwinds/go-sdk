@@ -88,8 +88,8 @@ func (c *pluginsClient) Parsing(ctx context.Context, opts ...grpc.CallOption) (P
 }
 
 type Plugins_ParsingClient interface {
-	Send(*Log) error
-	Recv() (*Log, error)
+	Send(*JLog) error
+	Recv() (*JLog, error)
 	grpc.ClientStream
 }
 
@@ -97,12 +97,12 @@ type pluginsParsingClient struct {
 	grpc.ClientStream
 }
 
-func (x *pluginsParsingClient) Send(m *Log) error {
+func (x *pluginsParsingClient) Send(m *JLog) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *pluginsParsingClient) Recv() (*Log, error) {
-	m := new(Log)
+func (x *pluginsParsingClient) Recv() (*JLog, error) {
+	m := new(JLog)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -312,8 +312,8 @@ func _Plugins_Parsing_Handler(srv interface{}, stream grpc.ServerStream) error {
 }
 
 type Plugins_ParsingServer interface {
-	Send(*Log) error
-	Recv() (*Log, error)
+	Send(*JLog) error
+	Recv() (*JLog, error)
 	grpc.ServerStream
 }
 
@@ -321,12 +321,12 @@ type pluginsParsingServer struct {
 	grpc.ServerStream
 }
 
-func (x *pluginsParsingServer) Send(m *Log) error {
+func (x *pluginsParsingServer) Send(m *JLog) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *pluginsParsingServer) Recv() (*Log, error) {
-	m := new(Log)
+func (x *pluginsParsingServer) Recv() (*JLog, error) {
+	m := new(JLog)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -478,6 +478,128 @@ var Plugins_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Correlate",
 			Handler:       _Plugins_Correlate_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "plugins.proto",
+}
+
+const (
+	Integration_ProcessLog_FullMethodName = "/plugins.Integration/ProcessLog"
+)
+
+// IntegrationClient is the client API for Integration service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type IntegrationClient interface {
+	ProcessLog(ctx context.Context, opts ...grpc.CallOption) (Integration_ProcessLogClient, error)
+}
+
+type integrationClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewIntegrationClient(cc grpc.ClientConnInterface) IntegrationClient {
+	return &integrationClient{cc}
+}
+
+func (c *integrationClient) ProcessLog(ctx context.Context, opts ...grpc.CallOption) (Integration_ProcessLogClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Integration_ServiceDesc.Streams[0], Integration_ProcessLog_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &integrationProcessLogClient{stream}
+	return x, nil
+}
+
+type Integration_ProcessLogClient interface {
+	Send(*Log) error
+	Recv() (*Ack, error)
+	grpc.ClientStream
+}
+
+type integrationProcessLogClient struct {
+	grpc.ClientStream
+}
+
+func (x *integrationProcessLogClient) Send(m *Log) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *integrationProcessLogClient) Recv() (*Ack, error) {
+	m := new(Ack)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// IntegrationServer is the server API for Integration service.
+// All implementations must embed UnimplementedIntegrationServer
+// for forward compatibility
+type IntegrationServer interface {
+	ProcessLog(Integration_ProcessLogServer) error
+	mustEmbedUnimplementedIntegrationServer()
+}
+
+// UnimplementedIntegrationServer must be embedded to have forward compatible implementations.
+type UnimplementedIntegrationServer struct {
+}
+
+func (UnimplementedIntegrationServer) ProcessLog(Integration_ProcessLogServer) error {
+	return status.Errorf(codes.Unimplemented, "method ProcessLog not implemented")
+}
+func (UnimplementedIntegrationServer) mustEmbedUnimplementedIntegrationServer() {}
+
+// UnsafeIntegrationServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to IntegrationServer will
+// result in compilation errors.
+type UnsafeIntegrationServer interface {
+	mustEmbedUnimplementedIntegrationServer()
+}
+
+func RegisterIntegrationServer(s grpc.ServiceRegistrar, srv IntegrationServer) {
+	s.RegisterService(&Integration_ServiceDesc, srv)
+}
+
+func _Integration_ProcessLog_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(IntegrationServer).ProcessLog(&integrationProcessLogServer{stream})
+}
+
+type Integration_ProcessLogServer interface {
+	Send(*Ack) error
+	Recv() (*Log, error)
+	grpc.ServerStream
+}
+
+type integrationProcessLogServer struct {
+	grpc.ServerStream
+}
+
+func (x *integrationProcessLogServer) Send(m *Ack) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *integrationProcessLogServer) Recv() (*Log, error) {
+	m := new(Log)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// Integration_ServiceDesc is the grpc.ServiceDesc for Integration service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Integration_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "plugins.Integration",
+	HandlerType: (*IntegrationServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ProcessLog",
+			Handler:       _Integration_ProcessLog_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

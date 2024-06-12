@@ -7,16 +7,6 @@ option go_package = "github.com/threatwinds/go-sdk/plugins";
 import public "google/protobuf/empty.proto";
 import public "google/protobuf/struct.proto";
 
-message Log {
-    string id = 1;
-    string dataType = 2;
-    string dataSource = 3;
-    string timestamp = 4;
-    string tenantId = 5;
-    string raw = 6;
-    string log = 7;
-}
-
 message Message {
 	string id = 1;
 	string timestamp = 2;
@@ -83,6 +73,15 @@ message Geolocation {
 	string aso = 6;
 }
 
+message Log {
+    string id = 1;
+    string dataType = 2;
+    string dataSource = 3;
+    string timestamp = 4;
+    string tenantId = 5;
+    string raw = 6;
+}
+
 message Side {
 	string ip = 1;
 	repeated string ips = 2;
@@ -134,11 +133,20 @@ message Side {
 	repeated string commands = 48;
 }
 
+message JLog {
+	string Log = 1;
+}
+
 service Plugins{
     rpc Input(stream Log) returns (stream Ack);
-    rpc Parsing(stream Log) returns (stream Log);
+    rpc Parsing(stream JLog) returns (stream JLog);
     rpc Analysis(stream Alert) returns (stream Event);
     rpc Notification(stream Message) returns (stream Ack);
     rpc Anomalies(stream Alert) returns (stream Ack);
     rpc Correlate(stream Ack) returns (stream Alert);
 }
+
+service Integration{
+    rpc ProcessLog(stream Log) returns (stream Ack);
+}
+
