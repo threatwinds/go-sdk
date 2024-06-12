@@ -32,9 +32,9 @@ type Asset struct {
 	Name            string   `yaml:"name"`
 	Hostnames       []string `yaml:"hostnames"`
 	IPs             []string `yaml:"ips"`
-	Confidentiality int      `yaml:"confidentiality"`
-	Availability    int      `yaml:"availability"`
-	Integrity       int      `yaml:"integrity"`
+	Confidentiality int32    `yaml:"confidentiality"`
+	Availability    int32    `yaml:"availability"`
+	Integrity       int32    `yaml:"integrity"`
 }
 
 type Grok struct {
