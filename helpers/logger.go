@@ -18,7 +18,7 @@ func NewLogger(level int) *logger.Logger {
 			Wait:      5,
 			StatusMap: map[int][]string{
 				400: {"missing", "invalid"},
-				100: {"no such file or directory"},
+				100: {"no such file or directory", "signal: interrupt", "context canceled"},
 			},
 		})
 	})
