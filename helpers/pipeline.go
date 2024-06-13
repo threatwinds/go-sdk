@@ -4,6 +4,9 @@ import (
 	"path"
 	"sync"
 	"time"
+
+	"github.com/threatwinds/logger"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -139,4 +142,25 @@ func GetCfg() *Config {
 	defer cfgMutex.RUnlock()
 
 	return cfg
+}
+
+func PluginCfg[t any](name string) (*t, *logger.Error) {
+	cfg := GetCfg()
+	if cfg.Plugins[name] == nil {
+		return nil, Logger().ErrorF("plugin %s not found", name)
+	}
+
+	tmpYaml, err := yaml.Marshal(cfg.Plugins[name])
+	if err != nil {
+		return nil, Logger().ErrorF("error reading plugin config: %s", err.Error())
+	}
+
+	finalCfg := new(t)
+
+	err = yaml.Unmarshal(tmpYaml, finalCfg)
+	if err != nil {
+		return nil, Logger().ErrorF("error writing plugin config: %s", err.Error())
+	}
+
+	return finalCfg, nil
 }
