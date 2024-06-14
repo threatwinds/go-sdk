@@ -151,11 +151,11 @@ service Analysis{
 }
 
 service Correlation{
-	rpc Correlate(Alert) returns (Ack);
+	rpc Correlate(Alert) returns (google.protobuf.Empty);
 }
 
 service Notification{
-	rpc Notify(Message) returns (Ack);
+	rpc Notify(Message) returns (google.protobuf.Empty);
 }
 
 service Integration{

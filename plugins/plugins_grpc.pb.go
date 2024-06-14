@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -397,7 +398,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CorrelationClient interface {
-	Correlate(ctx context.Context, in *Alert, opts ...grpc.CallOption) (*Ack, error)
+	Correlate(ctx context.Context, in *Alert, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type correlationClient struct {
@@ -408,8 +409,8 @@ func NewCorrelationClient(cc grpc.ClientConnInterface) CorrelationClient {
 	return &correlationClient{cc}
 }
 
-func (c *correlationClient) Correlate(ctx context.Context, in *Alert, opts ...grpc.CallOption) (*Ack, error) {
-	out := new(Ack)
+func (c *correlationClient) Correlate(ctx context.Context, in *Alert, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, Correlation_Correlate_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -421,7 +422,7 @@ func (c *correlationClient) Correlate(ctx context.Context, in *Alert, opts ...gr
 // All implementations must embed UnimplementedCorrelationServer
 // for forward compatibility
 type CorrelationServer interface {
-	Correlate(context.Context, *Alert) (*Ack, error)
+	Correlate(context.Context, *Alert) (*emptypb.Empty, error)
 	mustEmbedUnimplementedCorrelationServer()
 }
 
@@ -429,7 +430,7 @@ type CorrelationServer interface {
 type UnimplementedCorrelationServer struct {
 }
 
-func (UnimplementedCorrelationServer) Correlate(context.Context, *Alert) (*Ack, error) {
+func (UnimplementedCorrelationServer) Correlate(context.Context, *Alert) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Correlate not implemented")
 }
 func (UnimplementedCorrelationServer) mustEmbedUnimplementedCorrelationServer() {}
@@ -487,7 +488,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type NotificationClient interface {
-	Notify(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Ack, error)
+	Notify(ctx context.Context, in *Message, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type notificationClient struct {
@@ -498,8 +499,8 @@ func NewNotificationClient(cc grpc.ClientConnInterface) NotificationClient {
 	return &notificationClient{cc}
 }
 
-func (c *notificationClient) Notify(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Ack, error) {
-	out := new(Ack)
+func (c *notificationClient) Notify(ctx context.Context, in *Message, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, Notification_Notify_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -511,7 +512,7 @@ func (c *notificationClient) Notify(ctx context.Context, in *Message, opts ...gr
 // All implementations must embed UnimplementedNotificationServer
 // for forward compatibility
 type NotificationServer interface {
-	Notify(context.Context, *Message) (*Ack, error)
+	Notify(context.Context, *Message) (*emptypb.Empty, error)
 	mustEmbedUnimplementedNotificationServer()
 }
 
@@ -519,7 +520,7 @@ type NotificationServer interface {
 type UnimplementedNotificationServer struct {
 }
 
-func (UnimplementedNotificationServer) Notify(context.Context, *Message) (*Ack, error) {
+func (UnimplementedNotificationServer) Notify(context.Context, *Message) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Notify not implemented")
 }
 func (UnimplementedNotificationServer) mustEmbedUnimplementedNotificationServer() {}
