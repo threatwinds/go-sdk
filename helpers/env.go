@@ -11,7 +11,6 @@ import (
 type Env struct {
 	NodeName        string
 	NodeGroups      []string
-	GrpcPort        int
 	Workdir         string
 	LogLevel        int
 }
@@ -68,11 +67,6 @@ func getEnv() Env {
 	}
 
 	env.NodeGroups, e = getEnvStrSlice("NODE_GROUPS", "", false)
-	if e != nil {
-		panic(e.Message)
-	}
-	
-	env.GrpcPort, e = getEnvInt("GRPC_PORT", "8081", false)
 	if e != nil {
 		panic(e.Message)
 	}
