@@ -69,8 +69,10 @@ message Geolocation {
 	string city = 2;
 	double latitude = 3;
 	double longitude = 4;
-	int64 asn = 5;
+	int64  asn = 5;
 	string aso = 6;
+	string countryCode = 7;
+	string accuracy = 8;
 }
 
 message Log {
