@@ -45,13 +45,14 @@ func DoReq[response any](url string,
 			Logger().ErrorF("error reading response: %s", err.Error())
 	}
 
-	if resp.StatusCode != http.StatusAccepted &&
-		resp.StatusCode != http.StatusOK &&
-		resp.StatusCode != http.StatusNoContent {
-
+	if resp.StatusCode >= 400 {
 		return result,
 			resp.StatusCode,
 			Logger().ErrorF("received status code %d", resp.StatusCode)
+	}
+
+	if resp.StatusCode == http.StatusNoContent{
+		return result, resp.StatusCode, nil
 	}
 
 	err = json.Unmarshal(body, &result)
