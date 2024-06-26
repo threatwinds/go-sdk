@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	Kv            []Kv                              `yaml:"kv,omitempty"`
 	Grok          []Grok                            `yaml:"grok,omitempty"`
 	Trim          []Trim                            `yaml:"trim,omitempty"`
 	Rename        []Rename                          `yaml:"rename,omitempty"`
@@ -45,11 +46,25 @@ type Grok struct {
 	Patterns  []Pattern `yaml:"patterns"`
 }
 
+type Kv struct {
+	DataTypes  []string   `yaml:"data_types"`
+	Properties []Property `yaml:"properties"`
+}
+
+type Property struct {
+	FieldSplit string `yaml:"field_split"`
+	ValueSplit string `yaml:"value_split"`
+	TrimBefore []Trim `yaml:"trim_before"`
+	TrimKey    []Trim `yaml:"trim_key"`
+	TrimValue  []Trim `yaml:"trim_value"`
+}
+
 type Trim struct {
 	DataTypes []string `yaml:"data_types"`
 	Function  string   `yaml:"function"`
 	Substring string   `yaml:"substring"`
 	Fields    []string `yaml:"fields"`
+	TrimField bool     `yaml:"trim_field"`
 }
 
 type Delete struct {
@@ -93,6 +108,7 @@ func (c *Config) loadCfg() {
 			continue
 		}
 
+		c.Kv = append(c.Kv, nCfg.Kv...)
 		c.Grok = append(c.Grok, nCfg.Grok...)
 		c.Trim = append(c.Trim, nCfg.Trim...)
 		c.Rename = append(c.Rename, nCfg.Rename...)
