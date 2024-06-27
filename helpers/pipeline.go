@@ -55,7 +55,6 @@ type Property struct {
 	FieldSplit string `yaml:"field_split"`
 	ValueSplit string `yaml:"value_split"`
 	TrimBefore []Trim `yaml:"trim_before"`
-	TrimKey    []Trim `yaml:"trim_key"`
 	TrimValue  []Trim `yaml:"trim_value"`
 }
 
@@ -64,7 +63,6 @@ type Trim struct {
 	Function  string   `yaml:"function"`
 	Substring string   `yaml:"substring"`
 	Fields    []string `yaml:"fields"`
-	TrimField bool     `yaml:"trim_field"`
 }
 
 type Delete struct {
