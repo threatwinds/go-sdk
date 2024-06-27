@@ -54,7 +54,6 @@ type Kv struct {
 type Property struct {
 	FieldSplit string `yaml:"field_split"`
 	ValueSplit string `yaml:"value_split"`
-	TrimBefore []Trim `yaml:"trim_before"`
 	TrimValue  []Trim `yaml:"trim_value"`
 }
 
