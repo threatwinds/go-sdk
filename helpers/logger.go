@@ -9,10 +9,10 @@ import (
 var loggerInstance *logger.Logger
 var loggerOnce sync.Once
 
-func NewLogger(level int) *logger.Logger {
+func Logger() *logger.Logger {
 	loggerOnce.Do(func() {
 		loggerInstance = logger.NewLogger(&logger.Config{
-			Level:   level,
+			Level:   getEnv().LogLevel,
 			Format:  "text",
 			Retries: 3,
 			Wait:    5,
@@ -29,14 +29,6 @@ func NewLogger(level int) *logger.Logger {
 			},
 		})
 	})
-
-	return loggerInstance
-}
-
-func Logger() *logger.Logger {
-	if loggerInstance == nil {
-		return NewLogger(200)
-	}
 
 	return loggerInstance
 }
