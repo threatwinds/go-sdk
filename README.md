@@ -1,1 +1,1 @@
-# ThreatWindsGoSDK
+# ThreatWinds Go SDK
