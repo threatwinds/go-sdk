@@ -25,11 +25,11 @@ type Config struct {
 }
 
 type Reformat struct {
-	DataTypes []string `yaml:"data_types"`
-	Fields    []string `yaml:"fields"`
-	Function  string   `yaml:"function"`
-	From      string   `yaml:"from"`
-	To        string   `yaml:"to"`
+	DataTypes  []string `yaml:"data_types"`
+	Fields     []string `yaml:"fields"`
+	Function   string   `yaml:"function"`
+	FromFormat string   `yaml:"from_format"`
+	ToFormat   string   `yaml:"to_format"`
 }
 
 type Asset struct {
@@ -44,6 +44,11 @@ type Asset struct {
 type Grok struct {
 	DataTypes []string  `yaml:"data_types"`
 	Patterns  []Pattern `yaml:"patterns"`
+}
+
+type Pattern struct {
+	FieldName string `yaml:"field_name"`
+	Pattern   string `yaml:"pattern"`
 }
 
 type Kv struct {
@@ -68,11 +73,6 @@ type Delete struct {
 	Fields    []string `yaml:"fields"`
 }
 
-type Pattern struct {
-	FieldName string `yaml:"field_name"`
-	Pattern   string `yaml:"pattern"`
-}
-
 type Rename struct {
 	DataTypes []string `yaml:"data_types"`
 	To        string   `yaml:"to"`
@@ -83,6 +83,29 @@ type Cast struct {
 	DataTypes []string `yaml:"data_types"`
 	To        string   `yaml:"to"`
 	Fields    []string `yaml:"fields"`
+}
+
+type Drop struct {
+	DataTypes []string `yaml:"data_types"`
+	Where     Where    `yaml:"where"`
+}
+
+type Add struct {
+	DataTypes []string               `yaml:"data_types"`
+	Function  string                 `yaml:"function"`
+	Params    map[string]interface{} `yaml:"params"`
+	Where     Where                  `yaml:"where"`
+}
+
+type Where struct {
+	Variables  []Variable `yaml:"variables"`
+	Expression string     `yaml:"expression"`
+}
+
+type Variable struct {
+	Get    string `yaml:"get"`
+	As     string `yaml:"as"`
+	OfType string `yaml:"of_type"`
 }
 
 type Tenant struct {
