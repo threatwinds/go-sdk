@@ -18,6 +18,8 @@ type Config struct {
 	Reformat      []Reformat                        `yaml:"reformat,omitempty"`
 	Delete        []Delete                          `yaml:"delete,omitempty"`
 	Tenants       []Tenant                          `yaml:"tenants,omitempty"`
+	Drop          []Drop                            `yaml:"drop,omitempty"`
+	Add           []Add                             `yaml:"add,omitempty"`
 	Patterns      map[string]string                 `yaml:"patterns,omitempty"`
 	DisabledRules []int64                           `yaml:"disabled_rules,omitempty"`
 	Plugins       map[string]map[string]interface{} `yaml:"plugins,omitempty"`
@@ -135,6 +137,8 @@ func (c *Config) loadCfg() {
 		c.Reformat = append(c.Reformat, nCfg.Reformat...)
 		c.Delete = append(c.Delete, nCfg.Delete...)
 		c.Tenants = append(c.Tenants, nCfg.Tenants...)
+		c.Drop = append(c.Drop, nCfg.Drop...)
+		c.Add = append(c.Add, nCfg.Add...)
 		c.DisabledRules = append(c.DisabledRules, nCfg.DisabledRules...)
 
 		for name, pattern := range nCfg.Patterns {
