@@ -9,7 +9,7 @@ import public "google/protobuf/struct.proto";
 
 message Message {
 	string id = 1;
-	string timestamp = 2;
+	string timestamp = 2 [json_name="@timestamp"];
 	string topic = 3;
 	string message = 4;
 }
