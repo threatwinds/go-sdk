@@ -20,7 +20,7 @@ message Ack{
 
 message Alert {
 	string id = 1;
-	string timestamp = 2;
+	string timestamp = 2 [json_name="@timestamp"];
 	string lastUpdate = 3;
 	string name = 4;
 	string tenantId = 5;
@@ -47,7 +47,7 @@ message Impact {
 
 message Event {
 	string id = 1;
-	string timestamp = 2;
+	string timestamp = 2 [json_name="@timestamp"];
 	string deviceTime = 3;
 	string dataType = 4;
 	string dataSource = 5;
@@ -80,7 +80,7 @@ message Log {
     string id = 1;
     string dataType = 2;
     string dataSource = 3;
-    string timestamp = 4;
+    string timestamp = 4 [json_name="@timestamp"];
     string tenantId = 5;
     string raw = 6;
 }
