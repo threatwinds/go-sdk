@@ -17,6 +17,13 @@ func Logger() *logger.Logger {
 			Retries: 3,
 			Wait:    5,
 			StatusMap: map[int][]string{
+				403: {
+					"permission denied",
+				},
+				407: {
+					"connection key",
+					"unauthorized",
+				},
 				400: {
 					"missing",
 					"invalid",
