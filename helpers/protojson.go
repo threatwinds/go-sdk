@@ -6,7 +6,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-func toString(object protoreflect.ProtoMessage) (*string, *logger.Error) {
+func ToString(object protoreflect.ProtoMessage) (*string, *logger.Error) {
 	objectBytes, err := protojson.Marshal(object)
 	if err != nil {
 		return nil, Logger().ErrorF(err.Error())
@@ -17,7 +17,7 @@ func toString(object protoreflect.ProtoMessage) (*string, *logger.Error) {
 	return &objectString, nil
 }
 
-func toObject(str *string, object protoreflect.ProtoMessage) *logger.Error {
+func ToObject(str *string, object protoreflect.ProtoMessage) *logger.Error {
 	err := protojson.Unmarshal([]byte(*str), object)
 	if err != nil {
 		return Logger().ErrorF(err.Error())
