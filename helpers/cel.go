@@ -1,6 +1,9 @@
 package helpers
 
-import "github.com/google/cel-go/cel"
+import (
+	"github.com/google/cel-go/cel"
+	"github.com/tidwall/gjson"
+)
 
 func GetCelType(t string) *cel.Type {
 	switch t {
@@ -73,4 +76,43 @@ func GetCelType(t string) *cel.Type {
 	default:
 		return cel.AnyType
 	}
+}
+
+func (def *Where) Evaluate(event *string) bool {
+	vars := make([]cel.EnvOption, 0, 3)
+	values := make(map[string]interface{})
+	for _, variable := range def.Variables {
+		vars = append(vars, cel.Variable(variable.As, GetCelType(variable.OfType)))
+		values[variable.As] = gjson.Get(*event, variable.Get).Value()
+	}
+
+	celEnv, err := cel.NewEnv(vars...)
+	if err != nil {
+		Logger().ErrorF(err.Error())
+		return false
+	}
+
+	ast, issues := celEnv.Compile(def.Expression)
+	if issues != nil && issues.Err() != nil {
+		Logger().ErrorF(issues.Err().Error())
+		return false
+	}
+
+	prg, err := celEnv.Program(ast)
+	if err != nil {
+		Logger().ErrorF(err.Error())
+		return false
+	}
+
+	out, _, err := prg.Eval(values)
+	if err != nil {
+		Logger().ErrorF(err.Error())
+		return false
+	}
+
+	if out.Type() == cel.BoolType {
+		return out.Value().(bool)
+	}
+
+	return false
 }
