@@ -17,7 +17,7 @@ func ReadYAML[t any](f string) (*t, *logger.Error) {
 
 	err = yaml.Unmarshal(content, value)
 	if err != nil {
-		return nil, Logger().ErrorF("error reading rule file: %s", err.Error())
+		return nil, Logger().ErrorF("error reading YAML file: %s", err.Error())
 	}
 
 	return value, nil
