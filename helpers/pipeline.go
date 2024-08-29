@@ -70,7 +70,7 @@ type Csv struct {
 	DataTypes []string `yaml:"data_types"`
 	Source    string   `yaml:"source"`
 	Separator string   `yaml:"separator"`
-	Columns   []string `yaml:"columns"`
+	Headers   []string `yaml:"headers"`
 }
 
 type Trim struct {
