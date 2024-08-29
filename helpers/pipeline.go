@@ -13,6 +13,8 @@ type Config struct {
 	Kv            []Kv                              `yaml:"kv,omitempty"`
 	Grok          []Grok                            `yaml:"grok,omitempty"`
 	Trim          []Trim                            `yaml:"trim,omitempty"`
+	Json          []Json                            `yaml:"json,omitempty"`
+	Csv           []Csv                             `yaml:"csv,omitempty"`
 	Rename        []Rename                          `yaml:"rename,omitempty"`
 	Cast          []Cast                            `yaml:"cast,omitempty"`
 	Reformat      []Reformat                        `yaml:"reformat,omitempty"`
@@ -54,13 +56,20 @@ type Pattern struct {
 }
 
 type Kv struct {
-	DataTypes  []string   `yaml:"data_types"`
-	Properties []Property `yaml:"properties"`
+	DataTypes  []string `yaml:"data_types"`
+	FieldSplit string   `yaml:"field_split"`
+	ValueSplit string   `yaml:"value_split"`
 }
 
-type Property struct {
-	FieldSplit string `yaml:"field_split"`
-	ValueSplit string `yaml:"value_split"`
+type Json struct {
+	DataTypes []string `yaml:"data_types"`
+	Source    string   `yaml:"source"`
+}
+
+type Csv struct {
+	DataTypes []string `yaml:"data_types"`
+	Source    string   `yaml:"source"`
+	Columns   []string `yaml:"columns"`
 }
 
 type Trim struct {
@@ -132,6 +141,8 @@ func (c *Config) loadCfg() {
 		c.Kv = append(c.Kv, nCfg.Kv...)
 		c.Grok = append(c.Grok, nCfg.Grok...)
 		c.Trim = append(c.Trim, nCfg.Trim...)
+		c.Json = append(c.Json, nCfg.Json...)
+		c.Csv = append(c.Csv, nCfg.Csv...)
 		c.Rename = append(c.Rename, nCfg.Rename...)
 		c.Cast = append(c.Cast, nCfg.Cast...)
 		c.Reformat = append(c.Reformat, nCfg.Reformat...)
