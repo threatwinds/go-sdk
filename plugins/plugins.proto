@@ -63,6 +63,7 @@ message Event {
 	string connectionStatus = 15;
 	int64 statusCode = 16;
 	string actionResult = 17;
+	string action = 18;
 }
 
 message Geolocation {
