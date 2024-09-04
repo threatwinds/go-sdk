@@ -1,10 +1,11 @@
 package go_sdk
 
 import (
+	"encoding/json"
 	"os"
 
 	"github.com/threatwinds/logger"
-	"gopkg.in/yaml.v3"
+	"sigs.k8s.io/yaml"
 )
 
 func ReadYAML[t any](f string) (*t, *logger.Error) {
@@ -15,7 +16,12 @@ func ReadYAML[t any](f string) (*t, *logger.Error) {
 
 	var value = new(t)
 
-	err = yaml.Unmarshal(content, value)
+	jsonData, err := yaml.YAMLToJSON(content)
+	if err != nil {
+		return nil, Logger().ErrorF("error converting YAML to JSON: %s", err.Error())
+	}
+
+	err = json.Unmarshal(jsonData, value)
 	if err != nil {
 		return nil, Logger().ErrorF("error reading YAML file: %s", err.Error())
 	}
