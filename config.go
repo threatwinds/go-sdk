@@ -63,19 +63,17 @@ func GetCfg() *Config {
 	cfgOnce.Do(func() {
 		cfg = new(Config)
 
-		cfgFirst = true
-
 		go func() {
 			for {
 				updateCfg()
 				time.Sleep(60 * time.Second)
 			}
 		}()
-
-		for cfgFirst {
-			time.Sleep(1 * time.Second)
-		}
 	})
+
+	for cfgFirst {
+		time.Sleep(1 * time.Second)
+	}
 
 	cfgMutex.RLock()
 	defer cfgMutex.RUnlock()
@@ -107,7 +105,7 @@ func PluginCfg[t any](name string) (*t, *logger.Error) {
 var cfg *Config
 var cfgOnce sync.Once
 var cfgMutex sync.RWMutex
-var cfgFirst bool
+var cfgFirst bool = true
 
 type Tenant struct {
 	Name          string  `yaml:"name"`
