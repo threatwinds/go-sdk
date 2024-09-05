@@ -44,28 +44,37 @@ func (c *Config) loadCfg() {
 	c.Env = getEnv()
 }
 
+func updateCfg() {
+	cfgMutex.Lock()
+
+	tmpCfg := new(Config)
+	tmpCfg.Plugins = make(map[string]map[string]interface{})
+	tmpCfg.Patterns = make(map[string]string)
+	tmpCfg.loadCfg()
+
+	*cfg = *tmpCfg
+
+	cfgMutex.Unlock()
+
+	cfgFirst = false
+}
+
 func GetCfg() *Config {
 	cfgOnce.Do(func() {
 		cfg = new(Config)
 
+		cfgFirst = true
+
 		go func() {
 			for {
-				cfgMutex.Lock()
-
-				tmpCfg := new(Config)
-				tmpCfg.Plugins = make(map[string]map[string]interface{})
-				tmpCfg.Patterns = make(map[string]string)
-				tmpCfg.loadCfg()
-
-				*cfg = *tmpCfg
-
-				cfgMutex.Unlock()
-
+				updateCfg()
 				time.Sleep(60 * time.Second)
 			}
 		}()
 
-		time.Sleep(5 * time.Second)
+		for cfgFirst {
+			time.Sleep(1 * time.Second)
+		}
 	})
 
 	cfgMutex.RLock()
@@ -98,6 +107,7 @@ func PluginCfg[t any](name string) (*t, *logger.Error) {
 var cfg *Config
 var cfgOnce sync.Once
 var cfgMutex sync.RWMutex
+var cfgFirst bool
 
 type Tenant struct {
 	Name          string  `yaml:"name"`
