@@ -11,19 +11,19 @@ import (
 func ReadYAML[t any](f string) (*t, *logger.Error) {
 	content, err := os.ReadFile(f)
 	if err != nil {
-		return nil, Logger().ErrorF("error opening file: %s", err.Error())
+		return nil, Logger().ErrorF("error opening file '%s': %s", f, err.Error())
 	}
 
 	var value = new(t)
 
 	jsonData, err := yaml.YAMLToJSON(content)
 	if err != nil {
-		return nil, Logger().ErrorF("error converting YAML to JSON: %s", err.Error())
+		return nil, Logger().ErrorF("error converting YAML file '%s' to JSON: %s", f, err.Error())
 	}
 
 	err = json.Unmarshal(jsonData, value)
 	if err != nil {
-		return nil, Logger().ErrorF("error reading YAML file: %s", err.Error())
+		return nil, Logger().ErrorF("error decoding JSON from YAML file '%s': %s", f, err.Error())
 	}
 
 	return value, nil
