@@ -200,6 +200,7 @@ message Reformat {
 
 message Grok {
 	repeated Pattern patterns = 1;
+	string source = 2;
 }
 
 message Pattern {
@@ -210,6 +211,7 @@ message Pattern {
 message Kv {
 	string fieldSplit = 1;
 	string valueSplit = 2;
+	string source = 3;
 }
 
 message Json {
