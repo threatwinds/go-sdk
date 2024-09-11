@@ -10,7 +10,7 @@ import (
 )
 
 type Config struct {
-	Pipeline      []Pipeline                        `yaml:"pipeline"`
+	Pipeline      []Pipeline                        `yaml:"pipeline,omitempty"`
 	DisabledRules []int64                           `yaml:"disabledRules,omitempty"`
 	Tenants       []Tenant                          `yaml:"tenants,omitempty"`
 	Patterns      map[string]string                 `yaml:"patterns,omitempty"`
@@ -110,14 +110,14 @@ var cfgFirst bool = true
 type Tenant struct {
 	Name          string  `yaml:"name"`
 	Id            string  `yaml:"id"`
-	Assets        []Asset `yaml:"assets"`
-	DisabledRules []int64 `yaml:"disabledRules"`
+	Assets        []Asset `yaml:"assets,omitempty"`
+	DisabledRules []int64 `yaml:"disabledRules,omitempty"`
 }
 
 type Asset struct {
 	Name            string   `yaml:"name"`
-	Hostnames       []string `yaml:"hostnames"`
-	IPs             []string `yaml:"ips"`
+	Hostnames       []string `yaml:"hostnames,omitempty"`
+	IPs             []string `yaml:"ips,omitempty"`
 	Confidentiality int32    `yaml:"confidentiality"`
 	Availability    int32    `yaml:"availability"`
 	Integrity       int32    `yaml:"integrity"`
