@@ -18,6 +18,27 @@ type Config struct {
 	Env           Env                               `yaml:"-"`
 }
 
+type Tenant struct {
+	Name          string  `yaml:"name"`
+	Id            string  `yaml:"id"`
+	Assets        []Asset `yaml:"assets,omitempty"`
+	DisabledRules []int64 `yaml:"disabledRules,omitempty"`
+}
+
+type Asset struct {
+	Name            string   `yaml:"name"`
+	Hostnames       []string `yaml:"hostnames,omitempty"`
+	IPs             []string `yaml:"ips,omitempty"`
+	Confidentiality int32    `yaml:"confidentiality"`
+	Availability    int32    `yaml:"availability"`
+	Integrity       int32    `yaml:"integrity"`
+}
+
+var cfg *Config
+var cfgOnce sync.Once
+var cfgMutex sync.RWMutex
+var cfgFirst bool = true
+
 func (c *Config) loadCfg() {
 	cFiles := ListFiles(path.Join(getEnv().Workdir, "pipeline"), ".yaml")
 	for _, cFile := range cFiles {
@@ -56,6 +77,8 @@ func updateCfg() {
 
 	cfgMutex.Unlock()
 
+	Logger().LogF(100, "config updated: %v", cfg)
+
 	cfgFirst = false
 }
 
@@ -72,7 +95,7 @@ func GetCfg() *Config {
 	})
 
 	for cfgFirst {
-		time.Sleep(1 * time.Second)
+		time.Sleep(10 * time.Second)
 	}
 
 	cfgMutex.RLock()
@@ -100,25 +123,4 @@ func PluginCfg[t any](name string) (*t, *logger.Error) {
 	}
 
 	return finalCfg, nil
-}
-
-var cfg *Config
-var cfgOnce sync.Once
-var cfgMutex sync.RWMutex
-var cfgFirst bool = true
-
-type Tenant struct {
-	Name          string  `yaml:"name"`
-	Id            string  `yaml:"id"`
-	Assets        []Asset `yaml:"assets,omitempty"`
-	DisabledRules []int64 `yaml:"disabledRules,omitempty"`
-}
-
-type Asset struct {
-	Name            string   `yaml:"name"`
-	Hostnames       []string `yaml:"hostnames,omitempty"`
-	IPs             []string `yaml:"ips,omitempty"`
-	Confidentiality int32    `yaml:"confidentiality"`
-	Availability    int32    `yaml:"availability"`
-	Integrity       int32    `yaml:"integrity"`
 }
