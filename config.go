@@ -1,6 +1,7 @@
 package go_sdk
 
 import (
+	"encoding/json"
 	"path"
 	"sync"
 	"time"
@@ -77,7 +78,12 @@ func updateCfg() {
 
 	cfgMutex.Unlock()
 
-	Logger().LogF(100, "config updated: %v", cfg)
+	cfgStr, err := json.Marshal(cfg)
+	if err != nil {
+		Logger().ErrorF("error marshalling config: %s", err.Error())
+	}
+
+	Logger().LogF(100, "config updated: %s", cfgStr)
 
 	cfgFirst = false
 }
