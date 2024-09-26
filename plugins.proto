@@ -151,7 +151,7 @@ service Parsing{
 }
 
 service Analysis{
-	rpc Analyze(Event) returns (Alert);
+	rpc Analyze(Event) returns (stream Alert);
 }
 
 service Correlation{

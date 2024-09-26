@@ -257,7 +257,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AnalysisClient interface {
-	Analyze(ctx context.Context, in *Event, opts ...grpc.CallOption) (*Alert, error)
+	Analyze(ctx context.Context, in *Event, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Alert], error)
 }
 
 type analysisClient struct {
@@ -268,21 +268,30 @@ func NewAnalysisClient(cc grpc.ClientConnInterface) AnalysisClient {
 	return &analysisClient{cc}
 }
 
-func (c *analysisClient) Analyze(ctx context.Context, in *Event, opts ...grpc.CallOption) (*Alert, error) {
+func (c *analysisClient) Analyze(ctx context.Context, in *Event, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Alert], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Alert)
-	err := c.cc.Invoke(ctx, Analysis_Analyze_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Analysis_ServiceDesc.Streams[0], Analysis_Analyze_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[Event, Alert]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Analysis_AnalyzeClient = grpc.ServerStreamingClient[Alert]
 
 // AnalysisServer is the server API for Analysis service.
 // All implementations must embed UnimplementedAnalysisServer
 // for forward compatibility.
 type AnalysisServer interface {
-	Analyze(context.Context, *Event) (*Alert, error)
+	Analyze(*Event, grpc.ServerStreamingServer[Alert]) error
 	mustEmbedUnimplementedAnalysisServer()
 }
 
@@ -293,8 +302,8 @@ type AnalysisServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAnalysisServer struct{}
 
-func (UnimplementedAnalysisServer) Analyze(context.Context, *Event) (*Alert, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Analyze not implemented")
+func (UnimplementedAnalysisServer) Analyze(*Event, grpc.ServerStreamingServer[Alert]) error {
+	return status.Errorf(codes.Unimplemented, "method Analyze not implemented")
 }
 func (UnimplementedAnalysisServer) mustEmbedUnimplementedAnalysisServer() {}
 func (UnimplementedAnalysisServer) testEmbeddedByValue()                  {}
@@ -317,23 +326,16 @@ func RegisterAnalysisServer(s grpc.ServiceRegistrar, srv AnalysisServer) {
 	s.RegisterService(&Analysis_ServiceDesc, srv)
 }
 
-func _Analysis_Analyze_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Event)
-	if err := dec(in); err != nil {
-		return nil, err
+func _Analysis_Analyze_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Event)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(AnalysisServer).Analyze(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Analysis_Analyze_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AnalysisServer).Analyze(ctx, req.(*Event))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(AnalysisServer).Analyze(m, &grpc.GenericServerStream[Event, Alert]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Analysis_AnalyzeServer = grpc.ServerStreamingServer[Alert]
 
 // Analysis_ServiceDesc is the grpc.ServiceDesc for Analysis service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -341,13 +343,14 @@ func _Analysis_Analyze_Handler(srv interface{}, ctx context.Context, dec func(in
 var Analysis_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "gosdk.Analysis",
 	HandlerType: (*AnalysisServer)(nil),
-	Methods: []grpc.MethodDesc{
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "Analyze",
-			Handler:    _Analysis_Analyze_Handler,
+			StreamName:    "Analyze",
+			Handler:       _Analysis_Analyze_Handler,
+			ServerStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "plugins.proto",
 }
 
