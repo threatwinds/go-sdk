@@ -6,7 +6,6 @@ option go_package = "github.com/threatwinds/go-sdk";
 
 import public "google/protobuf/empty.proto";
 import public "google/protobuf/struct.proto";
-import public "google/protobuf/any.proto";
 
 message Message {
 	string id = 1;
@@ -188,7 +187,7 @@ message Step {
 
 message Dynamic {
 	string plugin = 1;
-	map<string, google.protobuf.Any> params = 2;
+	map<string, google.protobuf.Value> params = 2;
 	Where where = 3;
 }
 
@@ -260,7 +259,7 @@ message Drop {
 
 message Add {
 	string function = 1;
-	map<string, google.protobuf.Any> params = 2;
+	map<string, google.protobuf.Value> params = 2;
 	Where where = 3;
 }
 
@@ -273,4 +272,41 @@ message Variable {
 	string get = 1;
 	string as = 2;
 	string ofType = 3;
+}
+
+message Config {
+	repeated Pipeline pipeline = 1;
+	repeated int64 disabledRules = 2;
+	repeated Tenant tenants = 3;
+	map<string, string> patterns = 4;
+	map<string, google.protobuf.Value> plugins = 5;
+	Env env = 6;
+}
+
+message Tenant {
+	string name = 1;
+	string id = 2;
+	repeated Asset assets = 3;
+	repeated int64 disabledRules = 4;
+}
+
+message Asset {
+	string name = 1;
+	repeated string hostnames = 2;
+	repeated string ips = 3;
+	int32 confidentiality = 4;
+	int32 availability = 5;
+	int32 integrity = 6;
+}
+
+message Pipeline {
+	repeated string dataTypes = 1;
+	repeated Step steps = 2;
+}
+
+message Env {
+	string nodeName = 1;
+	repeated string nodeGroups = 2;
+	string workdir = 3;
+	int64 logLevel = 4;
 }

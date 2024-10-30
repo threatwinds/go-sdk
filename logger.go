@@ -12,7 +12,7 @@ var loggerOnce sync.Once
 func Logger() *logger.Logger {
 	loggerOnce.Do(func() {
 		loggerInstance = logger.NewLogger(&logger.Config{
-			Level:   getEnv().LogLevel,
+			Level:   int(getEnv().LogLevel),
 			Format:  "text",
 			Retries: 3,
 			Wait:    5,

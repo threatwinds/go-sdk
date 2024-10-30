@@ -1,0 +1,181 @@
+tenants:
+    - name: Default
+      id: ce66672c-e36d-4761-a8c8-90058fee1a24
+      assets:
+        - name: test
+          hostnames:
+            - fr
+          ips:
+            - 10.2.0.3
+          confidentiality: 1
+          availability: 1
+          integrity: 1
+
+plugins:
+  http-input:
+    port: 8082
+  grpc-input:
+    port: 8083
+
+pipeline:
+  - dataTypes:
+      - mongodb
+    steps:
+      - json:
+          source: raw
+      - rename:
+          from:
+            - log.url
+          to: local.url
+      - rename:
+          from:
+            - log.log.file.path
+          to: local.file
+      - rename:
+          from:
+            - log.host.ip
+          to: local.ips
+      - rename:
+          from:
+            - log.host.mac
+          to: local.macs
+      - rename:
+          from:
+            - log.host.hostname
+          to: local.host
+      - rename:
+          from:
+            - log.event.dataset
+          to: action
+      - rename:
+          from:
+            - log.agent.version
+          to: log.agentVersion
+      - rename:
+          from:
+            - log.host.os.kernel
+          to: log.osVersion
+      - rename:
+          from:
+            - log.host.os.type
+          to: log.osType
+      - rename:
+          from:
+            - log.host.architecture
+          to: log.cpuArchitecture
+      - cast:
+          to: '[]string'
+          fields:
+            - local.ips
+      - cast:
+          to: '[]string'
+          fields:
+            - local.macs
+      # Parsing json log
+      - json:
+          source: log.message
+      # Renaming fields of mongodb log
+      - rename:
+          from:
+            - log.t.$date
+          to: log.time
+      - rename:
+          from:
+            - log.c
+          to: log.component
+      - rename:
+          from:
+            - log.attr.host
+          to: local.host
+      - rename:
+          from:
+            - log.attr.port
+          to: local.port
+      - reformat:
+          fields:
+            - log.time
+          function: time
+          fromFormat: '2020-05-18T20:18:12.814+00:00'
+          toFormat: '2024-09-23T15:57:40.338364445Z'
+      - add:
+          function: 'string'
+          params:
+            key: log.fieldAdd
+            value: 'test'
+      # Removing unused fields
+      - delete:
+          fields:
+            - log.service
+            - log.metadata
+            - log.agent
+            - log.host
+            - log.event
+            - log.ecs
+            - log.log
+            - log.fileset
+            - log.t
+
+            - log.event.dataset
+          to: action
+      - rename:
+          from:
+            - log.agent.version
+          to: log.agentVersion
+      - rename:
+          from:
+            - log.host.os.kernel
+          to: log.osVersion
+      - rename:
+          from:
+            - log.host.os.type
+          to: log.osType
+      - rename:
+          from:
+            - log.host.architecture
+          to: log.cpuArchitecture
+      - cast:
+          to: '[]string'
+          fields:
+            - local.ips
+      - cast:
+          to: '[]string'
+          fields:
+            - local.macs
+      # Parsing json log
+      - json:
+          source: log.message
+      # Renaming fields of mongodb log
+      - rename:
+          from:
+            - log.t.$date
+          to: log.time
+      - rename:
+          from:
+            - log.c
+          to: log.component
+      - rename:
+          from:
+            - log.attr.host
+          to: local.host
+      - rename:
+          from:
+            - log.attr.port
+          to: local.port
+      - reformat:
+          fields:
+            - log.time
+          function: time
+          fromFormat: '2020-05-18T20:18:12.814+00:00'
+          toFormat: '2024-09-23T15:57:40.338364445Z'
+      # Removing unused fields
+      - delete:
+          fields:
+            - log.service
+            - log.metadata
+            - log.agent
+            - log.host
+            - log.event
+            - log.ecs
+            - log.log
+            - log.fileset
+            - log.t

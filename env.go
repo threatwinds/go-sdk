@@ -8,13 +8,6 @@ import (
 	"github.com/threatwinds/logger"
 )
 
-type Env struct {
-	NodeName        string
-	NodeGroups      []string
-	Workdir         string
-	LogLevel        int
-}
-
 func getEnvStr(name, def string, required bool) (string, *logger.Error) {
 	val := os.Getenv(name)
 
@@ -29,13 +22,13 @@ func getEnvStr(name, def string, required bool) (string, *logger.Error) {
 	return val, nil
 }
 
-func getEnvInt(name string, def string, required bool) (int, *logger.Error) {
+func getEnvInt(name string, def string, required bool) (int64, *logger.Error) {
 	str, e := getEnvStr(name, def, required)
 	if e != nil {
 		return 0, e
 	}
 
-	val, err := strconv.Atoi(str)
+	val, err := strconv.ParseInt(str, 10, 64)
 	if err != nil {
 		return 0, Logger().ErrorF(err.Error())
 	}
@@ -57,8 +50,8 @@ func getEnvStrSlice(name, def string, required bool) ([]string, *logger.Error) {
 	return items, nil
 }
 
-func getEnv() Env {
-	var env Env
+func getEnv() *Env {
+	var env = new(Env)
 	var e *logger.Error
 
 	env.NodeName, e = getEnvStr("NODE_NAME", "", false)

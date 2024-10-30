@@ -7,33 +7,8 @@ import (
 	"time"
 
 	"github.com/threatwinds/logger"
-	"gopkg.in/yaml.v3"
+	"google.golang.org/protobuf/encoding/protojson"
 )
-
-type Config struct {
-	Pipeline      []Pipeline                        `yaml:"pipeline,omitempty"`
-	DisabledRules []int64                           `yaml:"disabledRules,omitempty"`
-	Tenants       []Tenant                          `yaml:"tenants,omitempty"`
-	Patterns      map[string]string                 `yaml:"patterns,omitempty"`
-	Plugins       map[string]map[string]interface{} `yaml:"plugins,omitempty"`
-	Env           Env                               `yaml:"-"`
-}
-
-type Tenant struct {
-	Name          string  `yaml:"name"`
-	Id            string  `yaml:"id"`
-	Assets        []Asset `yaml:"assets,omitempty"`
-	DisabledRules []int64 `yaml:"disabledRules,omitempty"`
-}
-
-type Asset struct {
-	Name            string   `yaml:"name"`
-	Hostnames       []string `yaml:"hostnames,omitempty"`
-	IPs             []string `yaml:"ips,omitempty"`
-	Confidentiality int32    `yaml:"confidentiality"`
-	Availability    int32    `yaml:"availability"`
-	Integrity       int32    `yaml:"integrity"`
-}
 
 var cfg *Config
 var cfgOnce sync.Once
@@ -43,8 +18,15 @@ var cfgFirst bool = true
 func (c *Config) loadCfg() {
 	cFiles := ListFiles(path.Join(getEnv().Workdir, "pipeline"), ".yaml")
 	for _, cFile := range cFiles {
-		nCfg, e := ReadYAML[Config](cFile)
+		var nCfg = new(Config)
+		b, e := ReadPbYaml(cFile)
 		if e != nil {
+			continue
+		}
+
+		err := protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, nCfg)
+		if err != nil {
+			Logger().ErrorF("error decoding JSON from YAML file '%s': %s", cFile, err.Error())
 			continue
 		}
 
@@ -70,7 +52,7 @@ func updateCfg() {
 	cfgMutex.Lock()
 
 	tmpCfg := new(Config)
-	tmpCfg.Plugins = make(map[string]map[string]interface{})
+	tmpCfg.Plugins = make(map[string]*Value)
 	tmpCfg.Patterns = make(map[string]string)
 	tmpCfg.loadCfg()
 
@@ -78,7 +60,7 @@ func updateCfg() {
 
 	cfgMutex.Unlock()
 
-	cfgStr, err := json.Marshal(cfg)
+	cfgStr, err := protojson.Marshal(cfg)
 	if err != nil {
 		Logger().ErrorF("error marshalling config: %s", err.Error())
 	}
@@ -116,14 +98,14 @@ func PluginCfg[t any](name string) (*t, *logger.Error) {
 		return nil, Logger().ErrorF("plugin %s not found", name)
 	}
 
-	tmpYaml, err := yaml.Marshal(cfg.Plugins[name])
+	tmpJson, err := protojson.Marshal(cfg.Plugins[name])
 	if err != nil {
 		return nil, Logger().ErrorF("error reading plugin config: %s", err.Error())
 	}
 
 	finalCfg := new(t)
 
-	err = yaml.Unmarshal(tmpYaml, finalCfg)
+	err = json.Unmarshal(tmpJson, finalCfg)
 	if err != nil {
 		return nil, Logger().ErrorF("error writing plugin config: %s", err.Error())
 	}
