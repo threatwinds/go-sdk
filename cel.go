@@ -5,6 +5,42 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// GetCelType returns a pointer to a cel.Type based on the provided string type identifier.
+// Supported type identifiers include:
+// - "string": returns cel.StringType
+// - "int": returns cel.IntType
+// - "double": returns cel.DoubleType
+// - "bool": returns cel.BoolType
+// - "bytes": returns cel.BytesType
+// - "uint": returns cel.UintType
+// - "timestamp": returns cel.TimestampType
+// - "duration": returns cel.DurationType
+// - "type": returns cel.TypeType
+// - "null": returns cel.NullType
+// - "any": returns cel.AnyType
+// - "[]string": returns cel.ListType(cel.StringType)
+// - "[]int": returns cel.ListType(cel.IntType)
+// - "[]double": returns cel.ListType(cel.DoubleType)
+// - "[]bool": returns cel.ListType(cel.BoolType)
+// - "[]bytes": returns cel.ListType(cel.BytesType)
+// - "[]uint": returns cel.ListType(cel.UintType)
+// - "[]timestamp": returns cel.ListType(cel.TimestampType)
+// - "[]duration": returns cel.ListType(cel.DurationType)
+// - "[]type": returns cel.ListType(cel.TypeType)
+// - "[]null": returns cel.ListType(cel.NullType)
+// - "[]any": returns cel.ListType(cel.AnyType)
+// - "map[string]string": returns cel.MapType(cel.StringType, cel.StringType)
+// - "map[string]int": returns cel.MapType(cel.StringType, cel.IntType)
+// - "map[string]double": returns cel.MapType(cel.StringType, cel.DoubleType)
+// - "map[string]bool": returns cel.MapType(cel.StringType, cel.BoolType)
+// - "map[string]bytes": returns cel.MapType(cel.StringType, cel.BytesType)
+// - "map[string]uint": returns cel.MapType(cel.StringType, cel.UintType)
+// - "map[string]timestamp": returns cel.MapType(cel.StringType, cel.TimestampType)
+// - "map[string]duration": returns cel.MapType(cel.StringType, cel.DurationType)
+// - "map[string]type": returns cel.MapType(cel.StringType, cel.TypeType)
+// - "map[string]null": returns cel.MapType(cel.StringType, cel.NullType)
+// - "map[string]any": returns cel.MapType(cel.StringType, cel.AnyType)
+// If the provided type identifier does not match any of the supported types, cel.AnyType is returned.
 func GetCelType(t string) *cel.Type {
 	switch t {
 	case "string":
@@ -78,6 +114,26 @@ func GetCelType(t string) *cel.Type {
 	}
 }
 
+// Evaluate evaluates a given event against the defined expression in the Where struct.
+// It uses the CEL (Common Expression Language) library to compile and evaluate the expression.
+//
+// Parameters:
+//   - event: A pointer to a string representing the event to be evaluated.
+//
+// Returns:
+//   - bool: Returns true if the event satisfies the expression, otherwise false.
+//
+// The function performs the following steps:
+//   1. Initializes CEL environment options and a map to hold variable values.
+//   2. Iterates over the Variables in the Where struct, setting up CEL variables and extracting values from the event.
+//   3. Creates a new CEL environment with the defined variables.
+//   4. Compiles the expression in the Where struct.
+//   5. If there are any compilation issues, logs the error and returns false.
+//   6. Creates a CEL program from the compiled AST.
+//   7. If there are any errors creating the program, logs the error and returns false.
+//   8. Evaluates the program with the extracted values.
+//   9. If there are any evaluation errors, logs the error and returns false.
+//   10. Checks if the output type is a boolean and returns its value. Otherwise, returns false.
 func (def *Where) Evaluate(event *string) bool {
 	vars := make([]cel.EnvOption, 0, 3)
 	values := make(map[string]interface{})

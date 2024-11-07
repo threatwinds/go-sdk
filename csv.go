@@ -7,6 +7,15 @@ import (
 	"github.com/threatwinds/logger"
 )
 
+// ReadCSV reads a CSV file from the given URL and returns its contents as a slice of string slices.
+// If an error occurs while opening or reading the file, it logs the error and returns nil.
+//
+// Parameters:
+//   - url: The path to the CSV file.
+//
+// Returns:
+//   - [][]string: The contents of the CSV file.
+//   - *logger.Error: An error object if an error occurs, otherwise nil.
 func ReadCSV(url string) ([][]string, *logger.Error) {
 	f, err := os.Open(url)
 	if err != nil {

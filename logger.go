@@ -9,6 +9,7 @@ import (
 var loggerInstance *logger.Logger
 var loggerOnce sync.Once
 
+// Logger initializes a logger instance and returns it.
 func Logger() *logger.Logger {
 	loggerOnce.Do(func() {
 		loggerInstance = logger.NewLogger(&logger.Config{
