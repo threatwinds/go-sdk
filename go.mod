@@ -3,7 +3,7 @@ module github.com/threatwinds/go-sdk
 go 1.22.4
 
 require (
-	github.com/google/cel-go v0.21.0
+	github.com/google/cel-go v0.22.0
 	github.com/google/uuid v1.6.0
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/threatwinds/logger v1.1.12
@@ -15,6 +15,7 @@ require (
 )
 
 require (
+	cel.dev/expr v0.18.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bytedance/sonic v1.12.4 // indirect
 	github.com/bytedance/sonic/loader v0.2.1 // indirect
