@@ -106,6 +106,18 @@ func GetCfg() *Config {
 	return cfg
 }
 
+// PluginCfg retrieves the configuration for a specified plugin by name and unmarshals it into the provided type.
+// The function returns a pointer to the configuration of the specified type and a pointer to a logger.Error if any error occurs.
+//
+// Type Parameters:
+//   t: The type into which the plugin configuration should be unmarshaled.
+//
+// Parameters:
+//   name: The name of the plugin whose configuration is to be retrieved.
+//
+// Returns:
+//   *t: A pointer to the configuration of the specified type.
+//   *logger.Error: A pointer to a logger.Error if any error occurs during the process, otherwise nil.
 func PluginCfg[t any](name string) (*t, *logger.Error) {
 	cfg := GetCfg()
 	if cfg.Plugins[name] == nil {
