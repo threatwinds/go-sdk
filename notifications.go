@@ -16,15 +16,23 @@ import (
 var notificationsChannel chan *Message
 
 // Represent the details of a success or failure during the processing of a log. Used as a message body for notifications.
-type NotificationMessage struct {
+type DataProcessingMessage struct {
 	Cause      *string `json:"cause,omitempty"`
 	DataType   string  `json:"dataType"`
 	DataSource string  `json:"dataSource"`
 }
 
+// Represents a notification message to be sent to the backend in the event of a failure in an integration.
+type IntegrationFailureMessage struct {
+	Cause           string  `json:"cause"`
+	IntegrationName string  `json:"integrationName"`
+	Tenant          *string `json:"tenant,omitempty"`
+}
+
 const (
-	TOPIC_ENQUEUE_FAILURE = "enqueue_failure" // TOPIC_ENQUEUE_FAILURE represents the topic name for enqueue failure notifications.
-	TOPIC_ENQUEUE_SUCCESS = "enqueue_success" // TOPIC_ENQUEUE_SUCCESS represents the topic name for enqueue success notifications.
+	TOPIC_ENQUEUE_FAILURE     = "enqueue_failure"     // TOPIC_ENQUEUE_FAILURE represents the topic name for enqueue failure notifications.
+	TOPIC_ENQUEUE_SUCCESS     = "enqueue_success"     // TOPIC_ENQUEUE_SUCCESS represents the topic name for enqueue success notifications.
+	TOPIC_INTEGRATION_FAILURE = "integration_failure" // TOPIC_INTEGRATION_FAILURE represents the topic name for integration failure notifications.
 )
 
 // SendNotificationsFromChannel listens to the notificationsChannel and sends notifications
@@ -67,18 +75,17 @@ func SendNotificationsFromChannel() *logger.Error {
 	}
 }
 
-
 // EnqueueNotification sends a notification message to a specified topic.
 // It marshals the NotificationMessage into JSON format and sends it to the notifications channel.
 //
 // Parameters:
 //   - topic: The topic to which the notification message will be sent.
-//   - body: The NotificationMessage to be sent.
+//   - message: The notification message to be sent. Must be a JSON serializable object.
 //
 // Returns:
 //   - *logger.Error: Returns an error if the message marshalling fails, otherwise returns nil.
-func EnqueueNotification(topic string, body NotificationMessage) *logger.Error {
-	mByte, err := json.Marshal(body)
+func EnqueueNotification[T any](topic string, message T) *logger.Error {
+	mBytes, err := json.Marshal(message)
 	if err != nil {
 		return Logger().ErrorF("failed to marshal notification body: %v", err)
 	}
@@ -87,7 +94,7 @@ func EnqueueNotification(topic string, body NotificationMessage) *logger.Error {
 		Id:        uuid.NewString(),
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Topic:     topic,
-		Message:   string(mByte),
+		Message:   string(mBytes),
 	}
 
 	notificationsChannel <- msg
