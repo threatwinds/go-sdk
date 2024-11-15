@@ -114,6 +114,31 @@ func GetCelType(t string) *cel.Type {
 	}
 }
 
+// GetZero returns a zero value for the given gjson.Type.
+// The zero value is determined based on the type:
+// - gjson.String: returns an empty string ""
+// - gjson.Number: returns 0
+// - gjson.True: returns true
+// - gjson.False: returns false
+// - gjson.Null: returns nil
+// For any other type, it returns an empty string "".
+func GetZero(t gjson.Type) any {
+	switch t {
+	case gjson.String:
+		return ""
+	case gjson.Number:
+		return 0
+	case gjson.True:
+		return true
+	case gjson.False:
+		return false
+	case gjson.Null:
+		return nil
+	default:
+		return ""
+	}
+}
+
 // Evaluate evaluates a given event against the defined expression in the Where struct.
 // It uses the CEL (Common Expression Language) library to compile and evaluate the expression.
 //
@@ -124,22 +149,27 @@ func GetCelType(t string) *cel.Type {
 //   - bool: Returns true if the event satisfies the expression, otherwise false.
 //
 // The function performs the following steps:
-//   1. Initializes CEL environment options and a map to hold variable values.
-//   2. Iterates over the Variables in the Where struct, setting up CEL variables and extracting values from the event.
-//   3. Creates a new CEL environment with the defined variables.
-//   4. Compiles the expression in the Where struct.
-//   5. If there are any compilation issues, logs the error and returns false.
-//   6. Creates a CEL program from the compiled AST.
-//   7. If there are any errors creating the program, logs the error and returns false.
-//   8. Evaluates the program with the extracted values.
-//   9. If there are any evaluation errors, logs the error and returns false.
-//   10. Checks if the output type is a boolean and returns its value. Otherwise, returns false.
+//  1. Initializes CEL environment options and a map to hold variable values.
+//  2. Iterates over the Variables in the Where struct, setting up CEL variables and extracting values from the event.
+//  3. Creates a new CEL environment with the defined variables.
+//  4. Compiles the expression in the Where struct.
+//  5. If there are any compilation issues, logs the error and returns false.
+//  6. Creates a CEL program from the compiled AST.
+//  7. If there are any errors creating the program, logs the error and returns false.
+//  8. Evaluates the program with the extracted values.
+//  9. If there are any evaluation errors, logs the error and returns false.
+//  10. Checks if the output type is a boolean and returns its value. Otherwise, returns false.
 func (def *Where) Evaluate(event *string) bool {
 	vars := make([]cel.EnvOption, 0, 3)
 	values := make(map[string]interface{})
 	for _, variable := range def.Variables {
 		vars = append(vars, cel.Variable(variable.As, GetCelType(variable.OfType)))
-		values[variable.As] = gjson.Get(*event, variable.Get).Value()
+		value := gjson.Get(*event, variable.Get)
+		if value.Exists() {
+			values[variable.As] = value.Value()
+		} else {
+			values[variable.As] = GetZero(value.Type)
+		}
 	}
 
 	celEnv, err := cel.NewEnv(vars...)
