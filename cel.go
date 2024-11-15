@@ -114,31 +114,6 @@ func GetCelType(t string) *cel.Type {
 	}
 }
 
-// GetZero returns a zero value for the given gjson.Type.
-// The zero value is determined based on the type:
-// - gjson.String: returns an empty string ""
-// - gjson.Number: returns 0
-// - gjson.True: returns true
-// - gjson.False: returns false
-// - gjson.Null: returns nil
-// For any other type, it returns an empty string "".
-func GetZero(t gjson.Type) any {
-	switch t {
-	case gjson.String:
-		return ""
-	case gjson.Number:
-		return 0
-	case gjson.True:
-		return true
-	case gjson.False:
-		return false
-	case gjson.Null:
-		return nil
-	default:
-		return ""
-	}
-}
-
 // Evaluate evaluates a given event against the defined expression in the Where struct.
 // It uses the CEL (Common Expression Language) library to compile and evaluate the expression.
 //
@@ -163,12 +138,14 @@ func (def *Where) Evaluate(event *string) bool {
 	vars := make([]cel.EnvOption, 0, 3)
 	values := make(map[string]interface{})
 	for _, variable := range def.Variables {
-		vars = append(vars, cel.Variable(variable.As, GetCelType(variable.OfType)))
 		value := gjson.Get(*event, variable.Get)
+
 		if value.Exists() {
 			values[variable.As] = value.Value()
+			vars = append(vars, cel.Variable(variable.As, GetCelType(variable.OfType)))
 		} else {
-			values[variable.As] = GetZero(value.Type)
+			values[variable.As] = nil
+			vars = append(vars, cel.Variable(variable.As, GetCelType("null")))
 		}
 	}
 
@@ -180,7 +157,7 @@ func (def *Where) Evaluate(event *string) bool {
 
 	ast, issues := celEnv.Compile(def.Expression)
 	if issues != nil && issues.Err() != nil {
-		Logger().ErrorF(issues.Err().Error())
+		Logger().ErrorF("error processing expression (%s): %s", def.Expression, issues.Err())
 		return false
 	}
 
