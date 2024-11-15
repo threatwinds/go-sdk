@@ -136,7 +136,7 @@ func GetCelType(t string) *cel.Type {
 //  8. Evaluates the program with the extracted values.
 //  9. If there are any evaluation errors, logs the error and returns false.
 //  10. Checks if the output type is a boolean and returns its value. Otherwise, returns false.
-func (def *Where) Evaluate(event *string) bool {
+func (def *Where) Evaluate(event *string) (bool, error) {
 	vars := make([]cel.EnvOption, 0, 3)
 	values := make(map[string]interface{})
 	for _, variable := range def.Variables {
@@ -153,40 +153,27 @@ func (def *Where) Evaluate(event *string) bool {
 
 	celEnv, err := cel.NewEnv(vars...)
 	if err != nil {
-		Logger().ErrorF(err.Error())
-		return false
+		return false, err
 	}
 
 	ast, issues := celEnv.Compile(def.Expression)
 	if issues != nil && issues.Err() != nil {
-		eMsg := fmt.Sprintf("error processing expression (%s): %s", def.Expression, issues.Err())
-
-		EnqueueNotification(TOPIC_CEL_EVALATUAION_FAILURE, DataProcessingMessage{
-			Cause:      PointerOf(eMsg),
-			DataType:   gjson.Get(*event, "dataType").String(),
-			DataSource: gjson.Get(*event, "dataSource").String(),
-		})
-
-		Logger().ErrorF(eMsg)
-
-		return false
+		return false, fmt.Errorf("error processing expression (%s): %s", def.Expression, issues.Err())
 	}
 
 	prg, err := celEnv.Program(ast)
 	if err != nil {
-		Logger().ErrorF(err.Error())
-		return false
+		return false, err
 	}
 
 	out, _, err := prg.Eval(values)
 	if err != nil {
-		Logger().ErrorF(err.Error())
-		return false
+		return false, err
 	}
 
 	if out.Type() == cel.BoolType {
-		return out.Value().(bool)
+		return out.Value().(bool), nil
 	}
 
-	return false
+	return false, fmt.Errorf("expression does not evaluate to a boolean")
 }

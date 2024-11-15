@@ -20,7 +20,7 @@ func TestEvaluate(t *testing.T) {
 			Expression: "field1 == field2",
 		}
 
-		equal := w.Evaluate(PointerOf(`{"field1": "value1", "field2": "value1"}`))
+		equal, _ := w.Evaluate(PointerOf(`{"field1": "value1", "field2": "value1"}`))
 
 		if !equal {
 			t.Errorf("Expected true, got false")
@@ -44,7 +44,7 @@ func TestEvaluate(t *testing.T) {
 			Expression: "field1 == field2",
 		}
 
-		equal := w.Evaluate(PointerOf(`{"field1": "value0", "field2": "value1"}`))
+		equal, _ := w.Evaluate(PointerOf(`{"field1": "value0", "field2": "value1"}`))
 
 		if equal {
 			t.Errorf("Expected false, got true")
@@ -63,7 +63,7 @@ func TestEvaluate(t *testing.T) {
 			Expression: "field.startsWith('8.1.0')",
 		}
 
-		startsWith := w.Evaluate(PointerOf(`{"log": {"field": "8.1.0-20241029"}}`))
+		startsWith, _ := w.Evaluate(PointerOf(`{"log": {"field": "8.1.0-20241029"}}`))
 
 		if !startsWith {
 			t.Errorf("Expected true, got false")
@@ -82,7 +82,7 @@ func TestEvaluate(t *testing.T) {
 			Expression: "field==null",
 		}
 
-		exists := w.Evaluate(PointerOf(`{"field1": "value"}`))
+		exists, _ := w.Evaluate(PointerOf(`{"field1": "value"}`))
 
 		if !exists {
 			t.Errorf("Expected true, got false")
