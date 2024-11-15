@@ -1,6 +1,8 @@
 package go_sdk
 
 import (
+	"fmt"
+
 	"github.com/google/cel-go/cel"
 	"github.com/tidwall/gjson"
 )
@@ -157,7 +159,16 @@ func (def *Where) Evaluate(event *string) bool {
 
 	ast, issues := celEnv.Compile(def.Expression)
 	if issues != nil && issues.Err() != nil {
-		Logger().ErrorF("error processing expression (%s): %s", def.Expression, issues.Err())
+		eMsg := fmt.Sprintf("error processing expression (%s): %s", def.Expression, issues.Err())
+
+		EnqueueNotification(TOPIC_CEL_EVALATUAION_FAILURE, DataProcessingMessage{
+			Cause:      PointerOf(eMsg),
+			DataType:   gjson.Get(*event, "dataType").String(),
+			DataSource: gjson.Get(*event, "dataSource").String(),
+		})
+
+		Logger().ErrorF(eMsg)
+
 		return false
 	}
 

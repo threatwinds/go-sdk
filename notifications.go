@@ -39,6 +39,7 @@ const (
 	TOPIC_ANALYSIS_FAILURE         Topic = "analysis_failure"         // TOPIC_ANALYSIS_FAILURE represents the topic name for analysis failure notifications.
 	TOPIC_CORRELATION_FAILURE      Topic = "correlation_failure"      // TOPIC_CORRELATION_FAILURE represents the topic name for correlation failure notifications.
 	TOPIC_OUTGOING_REQUEST_FAILURE Topic = "outgoing_request_failure" // TOPIC_OUTGOING_REQUEST_FAILURE represents the topic name for outgoing request failure notifications.
+	TOPIC_CEL_EVALATUAION_FAILURE  Topic = "cel_evaluation_failure"   // TOPIC_CEL_EVALUATION_FAILURE represents the topic name for CEL evaluation failure notifications.
 )
 
 // SendNotificationsFromChannel listens to the notificationsChannel and sends notifications
