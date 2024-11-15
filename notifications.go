@@ -29,13 +29,16 @@ type IntegrationFailureMessage struct {
 	Tenant          *string `json:"tenant,omitempty"`
 }
 
+type Topic string
+
 const (
-	TOPIC_ENQUEUE_FAILURE     = "enqueue_failure"     // TOPIC_ENQUEUE_FAILURE represents the topic name for enqueue failure notifications.
-	TOPIC_ENQUEUE_SUCCESS     = "enqueue_success"     // TOPIC_ENQUEUE_SUCCESS represents the topic name for enqueue success notifications.
-	TOPIC_INTEGRATION_FAILURE = "integration_failure" // TOPIC_INTEGRATION_FAILURE represents the topic name for integration failure notifications.
-	TOPIC_PARSING_FAILURE     = "parsing_failure"     // TOPIC_PARSING_FAILURE represents the topic name for parsing failure notifications.
-	TOPIC_ANALYSIS_FAILURE    = "analysis_failure"    // TOPIC_ANALYSIS_FAILURE represents the topic name for analysis failure notifications.
-	TOPIC_CORRELATION_FAILURE = "correlation_failure" // TOPIC_CORRELATION_FAILURE represents the topic name for correlation failure notifications.
+	TOPIC_ENQUEUE_FAILURE          Topic = "enqueue_failure"          // TOPIC_ENQUEUE_FAILURE represents the topic name for enqueue failure notifications.
+	TOPIC_ENQUEUE_SUCCESS          Topic = "enqueue_success"          // TOPIC_ENQUEUE_SUCCESS represents the topic name for enqueue success notifications.
+	TOPIC_INTEGRATION_FAILURE      Topic = "integration_failure"      // TOPIC_INTEGRATION_FAILURE represents the topic name for integration failure notifications.
+	TOPIC_PARSING_FAILURE          Topic = "parsing_failure"          // TOPIC_PARSING_FAILURE represents the topic name for parsing failure notifications.
+	TOPIC_ANALYSIS_FAILURE         Topic = "analysis_failure"         // TOPIC_ANALYSIS_FAILURE represents the topic name for analysis failure notifications.
+	TOPIC_CORRELATION_FAILURE      Topic = "correlation_failure"      // TOPIC_CORRELATION_FAILURE represents the topic name for correlation failure notifications.
+	TOPIC_OUTGOING_REQUEST_FAILURE Topic = "outgoing_request_failure" // TOPIC_OUTGOING_REQUEST_FAILURE represents the topic name for outgoing request failure notifications.
 )
 
 // SendNotificationsFromChannel listens to the notificationsChannel and sends notifications
@@ -87,7 +90,7 @@ func SendNotificationsFromChannel() *logger.Error {
 //
 // Returns:
 //   - *logger.Error: Returns an error if the message marshalling fails, otherwise returns nil.
-func EnqueueNotification[T any](topic string, message T) *logger.Error {
+func EnqueueNotification[T any](topic Topic, message T) *logger.Error {
 	mBytes, err := json.Marshal(message)
 	if err != nil {
 		return Logger().ErrorF("failed to marshal notification body: %v", err)
@@ -96,7 +99,7 @@ func EnqueueNotification[T any](topic string, message T) *logger.Error {
 	msg := &Message{
 		Id:        uuid.NewString(),
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
-		Topic:     topic,
+		Topic:     string(topic),
 		Message:   string(mBytes),
 	}
 
