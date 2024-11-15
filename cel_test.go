@@ -79,7 +79,7 @@ func TestEvaluate(t *testing.T) {
 					OfType: "string",
 				},
 			},
-			Expression: "field=='hello'",
+			Expression: "field==null",
 		}
 
 		exists := w.Evaluate(PointerOf(`{"field1": "value"}`))
