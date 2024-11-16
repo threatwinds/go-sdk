@@ -140,14 +140,16 @@ func (def *Where) Evaluate(event *string) (bool, error) {
 	vars := make([]cel.EnvOption, 0, 3)
 	values := make(map[string]interface{})
 	for _, variable := range def.Variables {
+		vars = append(vars, cel.Variable(variable.As, GetCelType(variable.OfType)))
+		vars = append(vars, cel.Variable(fmt.Sprintf("%s_ok", variable.As), GetCelType("bool")))
+		
 		value := gjson.Get(*event, variable.Get)
+		values[variable.As] = value.Value()
 
 		if value.Exists() {
-			values[variable.As] = value.Value()
-			vars = append(vars, cel.Variable(variable.As, GetCelType(variable.OfType)))
+			values[fmt.Sprintf("%s_ok", variable.As)] = true
 		} else {
-			values[variable.As] = nil
-			vars = append(vars, cel.Variable(variable.As, GetCelType("null")))
+			values[fmt.Sprintf("%s_ok", variable.As)] = false
 		}
 	}
 
