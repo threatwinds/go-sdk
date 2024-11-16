@@ -79,13 +79,13 @@ func TestEvaluate(t *testing.T) {
 					OfType: "string",
 				},
 			},
-			Expression: "field==null",
+			Expression: "field_ok==true",
 		}
 
 		exists, _ := w.Evaluate(PointerOf(`{"field1": "value"}`))
 
-		if !exists {
-			t.Errorf("Expected true, got false")
+		if exists {
+			t.Errorf("Expected false, got true")
 		}
 	})
 }
