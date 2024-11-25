@@ -63,6 +63,7 @@ message Event {
 	string actionResult = 15;
 	string action = 16;
 	string command = 17;
+	string severity = 18;
 }
 
 message Geolocation {
