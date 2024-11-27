@@ -155,7 +155,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ParsingClient interface {
-	ParseLog(ctx context.Context, in *Transform, opts ...grpc.CallOption) (*JLog, error)
+	ParseLog(ctx context.Context, in *Transform, opts ...grpc.CallOption) (*Draft, error)
 }
 
 type parsingClient struct {
@@ -166,9 +166,9 @@ func NewParsingClient(cc grpc.ClientConnInterface) ParsingClient {
 	return &parsingClient{cc}
 }
 
-func (c *parsingClient) ParseLog(ctx context.Context, in *Transform, opts ...grpc.CallOption) (*JLog, error) {
+func (c *parsingClient) ParseLog(ctx context.Context, in *Transform, opts ...grpc.CallOption) (*Draft, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(JLog)
+	out := new(Draft)
 	err := c.cc.Invoke(ctx, Parsing_ParseLog_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -180,7 +180,7 @@ func (c *parsingClient) ParseLog(ctx context.Context, in *Transform, opts ...grp
 // All implementations must embed UnimplementedParsingServer
 // for forward compatibility.
 type ParsingServer interface {
-	ParseLog(context.Context, *Transform) (*JLog, error)
+	ParseLog(context.Context, *Transform) (*Draft, error)
 	mustEmbedUnimplementedParsingServer()
 }
 
@@ -191,7 +191,7 @@ type ParsingServer interface {
 // pointer dereference when methods are called.
 type UnimplementedParsingServer struct{}
 
-func (UnimplementedParsingServer) ParseLog(context.Context, *Transform) (*JLog, error) {
+func (UnimplementedParsingServer) ParseLog(context.Context, *Transform) (*Draft, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ParseLog not implemented")
 }
 func (UnimplementedParsingServer) mustEmbedUnimplementedParsingServer() {}
@@ -648,6 +648,132 @@ var Integration_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "ProcessLog",
 			Handler:       _Integration_ProcessLog_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "plugins.proto",
+}
+
+const (
+	Output_EventOutput_FullMethodName = "/gosdk.Output/EventOutput"
+	Output_AlertOutput_FullMethodName = "/gosdk.Output/AlertOutput"
+)
+
+// OutputClient is the client API for Output service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type OutputClient interface {
+	EventOutput(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[Event, emptypb.Empty], error)
+	AlertOutput(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[Alert, emptypb.Empty], error)
+}
+
+type outputClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewOutputClient(cc grpc.ClientConnInterface) OutputClient {
+	return &outputClient{cc}
+}
+
+func (c *outputClient) EventOutput(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[Event, emptypb.Empty], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Output_ServiceDesc.Streams[0], Output_EventOutput_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[Event, emptypb.Empty]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Output_EventOutputClient = grpc.ClientStreamingClient[Event, emptypb.Empty]
+
+func (c *outputClient) AlertOutput(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[Alert, emptypb.Empty], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Output_ServiceDesc.Streams[1], Output_AlertOutput_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[Alert, emptypb.Empty]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Output_AlertOutputClient = grpc.ClientStreamingClient[Alert, emptypb.Empty]
+
+// OutputServer is the server API for Output service.
+// All implementations must embed UnimplementedOutputServer
+// for forward compatibility.
+type OutputServer interface {
+	EventOutput(grpc.ClientStreamingServer[Event, emptypb.Empty]) error
+	AlertOutput(grpc.ClientStreamingServer[Alert, emptypb.Empty]) error
+	mustEmbedUnimplementedOutputServer()
+}
+
+// UnimplementedOutputServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedOutputServer struct{}
+
+func (UnimplementedOutputServer) EventOutput(grpc.ClientStreamingServer[Event, emptypb.Empty]) error {
+	return status.Errorf(codes.Unimplemented, "method EventOutput not implemented")
+}
+func (UnimplementedOutputServer) AlertOutput(grpc.ClientStreamingServer[Alert, emptypb.Empty]) error {
+	return status.Errorf(codes.Unimplemented, "method AlertOutput not implemented")
+}
+func (UnimplementedOutputServer) mustEmbedUnimplementedOutputServer() {}
+func (UnimplementedOutputServer) testEmbeddedByValue()                {}
+
+// UnsafeOutputServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to OutputServer will
+// result in compilation errors.
+type UnsafeOutputServer interface {
+	mustEmbedUnimplementedOutputServer()
+}
+
+func RegisterOutputServer(s grpc.ServiceRegistrar, srv OutputServer) {
+	// If the following call pancis, it indicates UnimplementedOutputServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Output_ServiceDesc, srv)
+}
+
+func _Output_EventOutput_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(OutputServer).EventOutput(&grpc.GenericServerStream[Event, emptypb.Empty]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Output_EventOutputServer = grpc.ClientStreamingServer[Event, emptypb.Empty]
+
+func _Output_AlertOutput_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(OutputServer).AlertOutput(&grpc.GenericServerStream[Alert, emptypb.Empty]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Output_AlertOutputServer = grpc.ClientStreamingServer[Alert, emptypb.Empty]
+
+// Output_ServiceDesc is the grpc.ServiceDesc for Output service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Output_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "gosdk.Output",
+	HandlerType: (*OutputServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "EventOutput",
+			Handler:       _Output_EventOutput_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "AlertOutput",
+			Handler:       _Output_AlertOutput_Handler,
 			ClientStreams: true,
 		},
 	},

@@ -113,8 +113,9 @@ message Side {
 	string email = 24;
 }
 
-message JLog {
-	string Log = 1;
+message Draft {
+	string log = 1;
+	repeated string logs = 2;
 }
 
 service Engine{
@@ -123,7 +124,7 @@ service Engine{
 }
 
 service Parsing{
-	rpc ParseLog(Transform) returns (JLog);
+	rpc ParseLog(Transform) returns (Draft);
 }
 
 service Analysis{
@@ -142,8 +143,13 @@ service Integration{
     rpc ProcessLog(stream Log) returns (stream Ack);
 }
 
+service Output{
+	rpc EventOutput(stream Event) returns (google.protobuf.Empty);
+	rpc AlertOutput(stream Alert) returns (google.protobuf.Empty);
+}
+
 message Transform {
-	JLog jlog = 1;
+	Draft draft = 1;
 	Step step = 2;
 }
 
@@ -160,6 +166,7 @@ message Step {
 	Drop drop = 10;
 	Add add = 11;
 	Dynamic dynamic = 12;
+	Expand expand = 13;
 }
 
 message Dynamic {
@@ -197,6 +204,12 @@ message Kv {
 message Json {
 	string source = 1;
 	Where where = 2;
+}
+
+message Expand {
+	string source = 1;
+	string to = 2;
+	Where where = 3;
 }
 
 message Csv {
