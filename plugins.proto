@@ -116,6 +116,7 @@ message Side {
 message Draft {
 	string log = 1;
 	repeated string logs = 2;
+	int32 step = 3;
 }
 
 service Engine{
