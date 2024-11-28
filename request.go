@@ -3,11 +3,10 @@ package go_sdk
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
-
-	"github.com/threatwinds/logger"
 )
 
 // DoReq sends an HTTP request and processes the response.
@@ -29,11 +28,11 @@ import (
 // Returns:
 //   - response: The response body unmarshalled into the specified type.
 //   - int: The HTTP status code of the response.
-//   - *logger.Error: An error if any occurred during the request or response
+//   - error: An error if any occurred during the request or response
 //     processing, otherwise nil.
 func DoReq[response any](url string,
 	data []byte, method string,
-	headers map[string]string) (response, int, *logger.Error) {
+	headers map[string]string) (response, int, error) {
 
 	var result response
 
@@ -41,7 +40,7 @@ func DoReq[response any](url string,
 	if err != nil {
 		return result,
 			http.StatusInternalServerError,
-			Logger().ErrorF("error creating request: %s", err.Error())
+			fmt.Errorf("error creating request: %s", err.Error())
 	}
 
 	for k, v := range headers {
@@ -54,7 +53,7 @@ func DoReq[response any](url string,
 	if err != nil {
 		return result,
 			http.StatusInternalServerError,
-			Logger().ErrorF("error sending request: %s", err.Error())
+			fmt.Errorf("error sending request: %s", err.Error())
 	}
 
 	defer resp.Body.Close()
@@ -63,16 +62,16 @@ func DoReq[response any](url string,
 	if err != nil {
 		return result,
 			http.StatusInternalServerError,
-			Logger().ErrorF("error reading response: %s", err.Error())
+			fmt.Errorf("error reading response: %s", err.Error())
 	}
 
 	if resp.StatusCode >= 400 {
 		return result,
 			resp.StatusCode,
-			Logger().ErrorF("received status code %d", resp.StatusCode)
+			fmt.Errorf("received status code %d", resp.StatusCode)
 	}
 
-	if resp.StatusCode == http.StatusNoContent{
+	if resp.StatusCode == http.StatusNoContent {
 		return result, resp.StatusCode, nil
 	}
 
@@ -80,39 +79,39 @@ func DoReq[response any](url string,
 	if err != nil {
 		return result,
 			http.StatusInternalServerError,
-			Logger().ErrorF("error unmarshalling response: %s", err.Error())
+			fmt.Errorf("error unmarshalling response: %s", err.Error())
 	}
 
 	return result, resp.StatusCode, nil
 }
 
 // Download downloads the content from the specified URL and saves it to the specified file.
-// It returns a *logger.Error if any error occurs during the process.
+// It returns an error if any error occurs during the process.
 //
 // Parameters:
 //   - url: The URL from which to download the content.
 //   - file: The path to the file where the content should be saved.
 //
 // Returns:
-//   - *logger.Error: An error object if an error occurs, otherwise nil.
-func Download(url, file string) *logger.Error {
+//   - error: An error object if an error occurs, otherwise nil.
+func Download(url, file string) error {
 	out, err := os.Create(file)
 	if err != nil {
-		return Logger().ErrorF("could not create file: %s", err.Error())
+		return fmt.Errorf("could not create file: %s", err.Error())
 	}
 
 	defer out.Close()
 
 	resp, err := http.Get(url)
 	if err != nil {
-		return Logger().ErrorF("could not do request to the URL: %s", err.Error())
+		return fmt.Errorf("could not do request to the URL: %s", err.Error())
 	}
 
 	defer resp.Body.Close()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return Logger().ErrorF("could not save data to file: %s", err.Error())
+		return fmt.Errorf("could not save data to file: %s", err.Error())
 	}
 
 	return nil

@@ -1,11 +1,10 @@
 package go_sdk
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
-
-	"github.com/threatwinds/logger"
 )
 
 // getEnvStr retrieves the value of the environment variable named by the key `name`.
@@ -20,13 +19,13 @@ import (
 //
 // Returns:
 //   - string: The value of the environment variable, or the default value if not set and not required.
-//   - *logger.Error: An error if the environment variable is required but not set, otherwise nil.
-func getEnvStr(name, def string, required bool) (string, *logger.Error) {
+//   - error: An error if the environment variable is required but not set, otherwise nil.
+func getEnvStr(name, def string, required bool) (string, error) {
 	val := os.Getenv(name)
 
 	if val == "" {
 		if required {
-			return "", Logger().ErrorF("configuration required: %s", name)
+			return "", fmt.Errorf("configuration required: %s", name)
 		} else {
 			return def, nil
 		}
@@ -36,7 +35,7 @@ func getEnvStr(name, def string, required bool) (string, *logger.Error) {
 }
 
 // getEnvInt retrieves an environment variable as an integer.
-// 
+//
 // Parameters:
 // - name: The name of the environment variable.
 // - def: The default value to use if the environment variable is not set.
@@ -44,16 +43,16 @@ func getEnvStr(name, def string, required bool) (string, *logger.Error) {
 //
 // Returns:
 // - int64: The integer value of the environment variable.
-// - *logger.Error: An error object if the environment variable is required but not set, or if the value cannot be parsed as an integer.
-func getEnvInt(name string, def string, required bool) (int64, *logger.Error) {
-	str, e := getEnvStr(name, def, required)
-	if e != nil {
-		return 0, e
+// - error: An error object if the environment variable is required but not set, or if the value cannot be parsed as an integer.
+func getEnvInt(name string, def string, required bool) (int64, error) {
+	str, err := getEnvStr(name, def, required)
+	if err != nil {
+		return 0, err
 	}
 
 	val, err := strconv.ParseInt(str, 10, 64)
 	if err != nil {
-		return 0, Logger().ErrorF(err.Error())
+		return 0, err
 	}
 
 	return val, nil
@@ -71,11 +70,11 @@ func getEnvInt(name string, def string, required bool) (int64, *logger.Error) {
 //
 // Returns:
 //   - []string: A slice of strings obtained from the environment variable.
-//   - *logger.Error: An error object if the environment variable is required but not set.
-func getEnvStrSlice(name, def string, required bool) ([]string, *logger.Error) {
-	str, e := getEnvStr(name, def, required)
-	if e != nil {
-		return nil, e
+//   - error: An error object if the environment variable is required but not set.
+func getEnvStrSlice(name, def string, required bool) ([]string, error) {
+	str, err := getEnvStr(name, def, required)
+	if err != nil {
+		return nil, err
 	}
 
 	var items = make([]string, 0, 1)
@@ -95,26 +94,26 @@ func getEnvStrSlice(name, def string, required bool) ([]string, *logger.Error) {
 // If any required environment variable is missing or invalid, the function will panic with an error message.
 func getEnv() *Env {
 	var env = new(Env)
-	var e *logger.Error
+	var err error
 
-	env.NodeName, e = getEnvStr("NODE_NAME", "", false)
-	if e != nil {
-		panic(e.Message)
+	env.NodeName, err = getEnvStr("NODE_NAME", "", false)
+	if err != nil {
+		panic(err)
 	}
 
-	env.NodeGroups, e = getEnvStrSlice("NODE_GROUPS", "", false)
-	if e != nil {
-		panic(e.Message)
+	env.NodeGroups, err = getEnvStrSlice("NODE_GROUPS", "", false)
+	if err != nil {
+		panic(err)
 	}
 
-	env.Workdir, e = getEnvStr("WORK_DIR", "", true)
-	if e != nil {
-		panic(e.Message)
+	env.Workdir, err = getEnvStr("WORK_DIR", "", true)
+	if err != nil {
+		panic(err)
 	}
 
-	env.LogLevel, e = getEnvInt("LOG_LEVEL", "200", false)
-	if e != nil {
-		panic(e.Message)
+	env.LogLevel, err = getEnvInt("LOG_LEVEL", "200", false)
+	if err != nil {
+		panic(err)
 	}
 
 	return env

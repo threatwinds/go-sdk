@@ -2,11 +2,11 @@ package go_sdk
 
 import (
 	"encoding/json"
+	"fmt"
 	"path"
 	"sync"
 	"time"
 
-	"github.com/threatwinds/logger"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -107,33 +107,36 @@ func GetCfg() *Config {
 }
 
 // PluginCfg retrieves the configuration for a specified plugin by name and unmarshals it into the provided type.
-// The function returns a pointer to the configuration of the specified type and a pointer to a logger.Error if any error occurs.
+// The function returns a pointer to the configuration of the specified type and a pointer to a error if any error occurs.
 //
 // Type Parameters:
-//   t: The type into which the plugin configuration should be unmarshaled.
+//
+//	t: The type into which the plugin configuration should be unmarshaled.
 //
 // Parameters:
-//   name: The name of the plugin whose configuration is to be retrieved.
+//
+//	name: The name of the plugin whose configuration is to be retrieved.
 //
 // Returns:
-//   *t: A pointer to the configuration of the specified type.
-//   *logger.Error: A pointer to a logger.Error if any error occurs during the process, otherwise nil.
-func PluginCfg[t any](name string) (*t, *logger.Error) {
+//
+//	*t: A pointer to the configuration of the specified type.
+//	error: An error object if any error occurs during the process, otherwise nil.
+func PluginCfg[t any](name string) (*t, error) {
 	cfg := GetCfg()
 	if cfg.Plugins[name] == nil {
-		return nil, Logger().ErrorF("plugin %s not found", name)
+		return nil, fmt.Errorf("plugin %s not found", name)
 	}
 
 	tmpJson, err := protojson.Marshal(cfg.Plugins[name])
 	if err != nil {
-		return nil, Logger().ErrorF("error reading plugin config: %s", err.Error())
+		return nil, fmt.Errorf("error reading plugin config: %s", err.Error())
 	}
 
 	finalCfg := new(t)
 
 	err = json.Unmarshal(tmpJson, finalCfg)
 	if err != nil {
-		return nil, Logger().ErrorF("error writing plugin config: %s", err.Error())
+		return nil, fmt.Errorf("error writing plugin config: %s", err.Error())
 	}
 
 	return finalCfg, nil

@@ -8,16 +8,16 @@ import (
 
 func TestReadPbYaml(t *testing.T) {
 	t.Run("ReadPYAML", func(t *testing.T) {
-		b, e := ReadPbYaml("test.yaml")
-		if e != nil {
-			t.Errorf("Expected nil, got %s", e.Message)
+		b, err := ReadPbYaml("test.yaml")
+		if err != nil {
+			t.Errorf("Expected nil, got %s", err.Error())
 		}
 
 		var value = new(Config)
 		value.Plugins = make(map[string]*Value)
 		value.Patterns = make(map[string]string)
 
-		err := protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, value)
+		err = protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, value)
 		if err != nil {
 			t.Errorf("error decoding JSON from YAML file: %s", err.Error())
 		}

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/threatwinds/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -49,20 +48,20 @@ const (
 //
 // Returns:
 //
-//	*logger.Error: An error object if any error occurs during the process.
-func SendNotificationsFromChannel() *logger.Error {
+//	error: An error object if any error occurs during the process.
+func SendNotificationsFromChannel() error {
 	conn, err := grpc.NewClient(fmt.Sprintf("unix://%s", path.Join(
 		GetCfg().Env.Workdir, "sockets", "engine_server.sock")),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return Logger().ErrorF("failed to connect to engine server: %v", err)
+		return fmt.Errorf("failed to connect to engine server: %v", err)
 	}
 
 	client := NewEngineClient(conn)
 
 	notifyClient, err := client.Notify(context.Background())
 	if err != nil {
-		return Logger().ErrorF("failed to create notify client: %v", err)
+		return fmt.Errorf("failed to create notify client: %v", err)
 	}
 
 	for {
@@ -70,12 +69,12 @@ func SendNotificationsFromChannel() *logger.Error {
 
 		err = notifyClient.Send(msg)
 		if err != nil {
-			return Logger().ErrorF("failed to send notification: %v", err)
+			return fmt.Errorf("failed to send notification: %v", err)
 		}
 
 		ack, err := notifyClient.Recv()
 		if err != nil {
-			return Logger().ErrorF("failed to receive notification ack: %v", err)
+			return fmt.Errorf("failed to receive notification ack: %v", err)
 		}
 
 		Logger().LogF(100, "received notification ack: %v", ack)
@@ -90,11 +89,11 @@ func SendNotificationsFromChannel() *logger.Error {
 //   - message: The notification message to be sent. Must be a JSON serializable object.
 //
 // Returns:
-//   - *logger.Error: Returns an error if the message marshalling fails, otherwise returns nil.
-func EnqueueNotification[T any](topic Topic, message T) *logger.Error {
+//   - error: Returns an error if the message marshalling fails, otherwise returns nil.
+func EnqueueNotification[T any](topic Topic, message T) error {
 	mBytes, err := json.Marshal(message)
 	if err != nil {
-		return Logger().ErrorF("failed to marshal notification body: %v", err)
+		return fmt.Errorf("failed to marshal notification body: %v", err)
 	}
 
 	msg := &Message{

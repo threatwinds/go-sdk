@@ -2,9 +2,8 @@ package go_sdk
 
 import (
 	"encoding/csv"
+	"fmt"
 	"os"
-
-	"github.com/threatwinds/logger"
 )
 
 // ReadCSV reads a CSV file from the given URL and returns its contents as a slice of string slices.
@@ -15,18 +14,18 @@ import (
 //
 // Returns:
 //   - [][]string: The contents of the CSV file.
-//   - *logger.Error: An error object if an error occurs, otherwise nil.
-func ReadCSV(url string) ([][]string, *logger.Error) {
+//   - error: An error object if an error occurs, otherwise nil.
+func ReadCSV(url string) ([][]string, error) {
 	f, err := os.Open(url)
 	if err != nil {
-		Logger().ErrorF("error opening file '%s': %s", url, err.Error())
+		return nil, fmt.Errorf("error opening file '%s': %s", url, err.Error())
 	}
 	defer f.Close()
 
 	r := csv.NewReader(f)
 	result, err := r.ReadAll()
 	if err != nil {
-		Logger().ErrorF("error reading CSV file '%s': %s", url, err.Error())
+		return nil, fmt.Errorf("error reading CSV file '%s': %s", url, err.Error())
 	}
 
 	return result, nil
