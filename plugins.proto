@@ -36,7 +36,7 @@ message Alert {
 	string severity = 15;
 	Side adversary = 16;
 	Side target = 17;
-	repeated string events = 18;
+	repeated Event events = 18;
 }
 
 message Impact {
@@ -145,8 +145,8 @@ service Integration{
 }
 
 service Output{
-	rpc EventOutput(stream Event) returns (google.protobuf.Empty);
-	rpc AlertOutput(stream Alert) returns (google.protobuf.Empty);
+	rpc EventOutput(Event) returns (google.protobuf.Empty);
+	rpc AlertOutput(Alert) returns (google.protobuf.Empty);
 }
 
 message Transform {
