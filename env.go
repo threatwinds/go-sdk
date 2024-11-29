@@ -101,7 +101,14 @@ func getEnv() *Env {
 		panic(err)
 	}
 
-	env.NodeGroups, err = getEnvStrSlice("NODE_GROUPS", "", false)
+	if env.NodeName == "" {
+		env.NodeName, err = os.Hostname()
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	env.NodeGroups, err = getEnvStrSlice("NODE_GROUPS", "default", false)
 	if err != nil {
 		panic(err)
 	}
