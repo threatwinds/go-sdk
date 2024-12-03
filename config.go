@@ -1,12 +1,12 @@
 package go_sdk
 
 import (
-	"encoding/json"
 	"fmt"
 	"path"
 	"sync"
 	"time"
 
+	"github.com/tidwall/gjson"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -121,23 +121,18 @@ func GetCfg() *Config {
 //
 //	*t: A pointer to the configuration of the specified type.
 //	error: An error object if any error occurs during the process, otherwise nil.
-func PluginCfg[t any](name string) (*t, error) {
+func PluginCfg(pluginName string) (gjson.Result, error) {
 	cfg := GetCfg()
-	if cfg.Plugins[name] == nil {
-		return nil, fmt.Errorf("plugin %s not found", name)
+	if cfg.Plugins[pluginName] == nil {
+		return gjson.Result{}, fmt.Errorf("plugin %s not found", pluginName)
 	}
 
-	tmpJson, err := protojson.Marshal(cfg.Plugins[name])
+	bJson, err := protojson.Marshal(cfg.Plugins[pluginName])
 	if err != nil {
-		return nil, fmt.Errorf("error reading plugin config: %s", err.Error())
+		return gjson.Result{}, fmt.Errorf("error reading plugin config: %s", err.Error())
 	}
 
-	finalCfg := new(t)
+	pJson := gjson.ParseBytes(bJson)
 
-	err = json.Unmarshal(tmpJson, finalCfg)
-	if err != nil {
-		return nil, fmt.Errorf("error writing plugin config: %s", err.Error())
-	}
-
-	return finalCfg, nil
+	return pJson, nil
 }
