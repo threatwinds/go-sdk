@@ -123,5 +123,10 @@ func getEnv() *Env {
 		panic(err)
 	}
 
+	env.Mode, err = getEnvStr("MODE", "", true)
+	if err != nil {
+		panic(err)
+	}
+
 	return env
 }

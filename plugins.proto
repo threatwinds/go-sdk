@@ -300,4 +300,5 @@ message Env {
 	repeated string nodeGroups = 2;
 	string workdir = 3;
 	int64 logLevel = 4;
+	string mode = 5;
 }
