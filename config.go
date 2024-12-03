@@ -1,7 +1,6 @@
 package go_sdk
 
 import (
-	"fmt"
 	"path"
 	"sync"
 	"time"
@@ -13,7 +12,6 @@ import (
 var cfg *Config
 var cfgOnce sync.Once
 var cfgMutex sync.RWMutex
-var cfgFirst bool = true
 
 // loadCfg loads configuration files from the "pipeline" directory within the working directory.
 // It reads all YAML files, unmarshals them into Config objects, and merges their contents into the receiver Config object.
@@ -69,15 +67,6 @@ func updateCfg() {
 	*cfg = *tmpCfg
 
 	cfgMutex.Unlock()
-
-	cfgStr, err := protojson.Marshal(cfg)
-	if err != nil {
-		Logger().ErrorF("error marshalling config: %s", err.Error())
-	}
-
-	Logger().LogF(100, "config updated: %s", cfgStr)
-
-	cfgFirst = false
 }
 
 // GetCfg initializes the configuration if it hasn't been initialized yet,
@@ -85,19 +74,23 @@ func updateCfg() {
 // It waits for the initial configuration to be set before returning it.
 // The function returns a pointer to the Config struct.
 func GetCfg() *Config {
+	var first bool
+	
 	cfgOnce.Do(func() {
+		first = true
 		cfg = new(Config)
 
 		go func() {
 			for {
 				updateCfg()
+				first = false
 				time.Sleep(60 * time.Second)
 			}
 		}()
 	})
 
-	for cfgFirst {
-		time.Sleep(10 * time.Second)
+	for first {
+		time.Sleep(1 * time.Second)
 	}
 
 	cfgMutex.RLock()
@@ -109,30 +102,27 @@ func GetCfg() *Config {
 // PluginCfg retrieves the configuration for a specified plugin by name and unmarshals it into the provided type.
 // The function returns a pointer to the configuration of the specified type and a pointer to a error if any error occurs.
 //
-// Type Parameters:
-//
-//	t: The type into which the plugin configuration should be unmarshaled.
-//
 // Parameters:
 //
-//	name: The name of the plugin whose configuration is to be retrieved.
+//	pluginName: The name of the plugin whose configuration is to be retrieved.
 //
 // Returns:
 //
-//	*t: A pointer to the configuration of the specified type.
-//	error: An error object if any error occurs during the process, otherwise nil.
-func PluginCfg(pluginName string) (gjson.Result, error) {
+//	gjson.Result: An object containing the configuration of the specified plugin.
+func PluginCfg(pluginName string) gjson.Result {
 	cfg := GetCfg()
-	if cfg.Plugins[pluginName] == nil {
-		return gjson.Result{}, fmt.Errorf("plugin %s not found", pluginName)
+
+	pConfig, ok := cfg.Plugins[pluginName]
+	if !ok {
+		panic("plugin config not found")
 	}
 
-	bJson, err := protojson.Marshal(cfg.Plugins[pluginName])
+	bJson, err := protojson.Marshal(pConfig)
 	if err != nil {
-		return gjson.Result{}, fmt.Errorf("error reading plugin config: %s", err.Error())
+		panic(err)
 	}
 
 	pJson := gjson.ParseBytes(bJson)
 
-	return pJson, nil
+	return pJson
 }
