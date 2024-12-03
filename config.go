@@ -75,7 +75,7 @@ func updateCfg() {
 // The function returns a pointer to the Config struct.
 func GetCfg() *Config {
 	var first bool
-	
+
 	cfgOnce.Do(func() {
 		first = true
 		cfg = new(Config)
@@ -105,24 +105,37 @@ func GetCfg() *Config {
 // Parameters:
 //
 //	pluginName: The name of the plugin whose configuration is to be retrieved.
+//	wait: A boolean value that determines whether the function should wait for the configuration to be available.
 //
 // Returns:
 //
 //	gjson.Result: An object containing the configuration of the specified plugin.
-func PluginCfg(pluginName string) gjson.Result {
-	cfg := GetCfg()
+func PluginCfg(pluginName string, wait bool) gjson.Result {
+	for {
+		cfg := GetCfg()
 
-	pConfig, ok := cfg.Plugins[pluginName]
-	if !ok {
-		panic("plugin config not found")
+		pConfig, ok := cfg.Plugins[pluginName]
+		if !ok {
+			if wait {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			panic("plugin config not found")
+		}
+
+		bJson, err := protojson.Marshal(pConfig)
+		if err != nil {
+			if wait {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			panic(err)
+		}
+
+		pJson := gjson.ParseBytes(bJson)
+
+		return pJson
 	}
-
-	bJson, err := protojson.Marshal(pConfig)
-	if err != nil {
-		panic(err)
-	}
-
-	pJson := gjson.ParseBytes(bJson)
-
-	return pJson
 }
