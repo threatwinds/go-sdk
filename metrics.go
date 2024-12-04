@@ -24,7 +24,7 @@ type MetterOptions struct {
 
 // NewMetter creates a new Metter instance to measure the execution time of a function.
 // It takes a function name as a string and an optional list of MetterOptions.
-// If no options are provided, it defaults to logging slow executions with a threshold of 500 milliseconds.
+// If no options are provided, it defaults to logging slow executions with a threshold of 50 milliseconds.
 //
 // Parameters:
 //   - function: The name of the function to be measured.
@@ -35,7 +35,7 @@ type MetterOptions struct {
 //	A pointer to a Metter instance.
 func NewMetter(function string, options ...MetterOptions) *Metter {
 	if len(options) == 0 {
-		options = []MetterOptions{{LogSlow: true, SlowThreshold: 500 * time.Millisecond}}
+		options = []MetterOptions{{LogSlow: true, SlowThreshold: 50 * time.Millisecond}}
 	}
 
 	return &Metter{
