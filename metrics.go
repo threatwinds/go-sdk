@@ -14,10 +14,11 @@ type Metter struct {
 // It includes options to log slow operations and set a threshold for what is considered slow.
 //
 // Fields:
-//   LogSlow: A boolean indicating whether to log operations that are considered slow.
-//   SlowThreshold: A time.Duration value that specifies the threshold duration for slow operations.
+//
+//	LogSlow: A boolean indicating whether to log operations that are considered slow.
+//	SlowThreshold: A time.Duration value that specifies the threshold duration for slow operations.
 type MetterOptions struct {
-	LogSlow bool
+	LogSlow       bool
 	SlowThreshold time.Duration
 }
 
@@ -30,7 +31,8 @@ type MetterOptions struct {
 //   - options: Optional MetterOptions to customize the behavior of the Metter.
 //
 // Returns:
-//   A pointer to a Metter instance.
+//
+//	A pointer to a Metter instance.
 func NewMetter(function string, options ...MetterOptions) *Metter {
 	if len(options) == 0 {
 		options = []MetterOptions{{LogSlow: true, SlowThreshold: 500 * time.Millisecond}}
@@ -55,4 +57,10 @@ func (m *Metter) Elapsed(point ...string) time.Duration {
 		}
 	}
 	return elapsed
+}
+
+// Reset sets the StartTime of the Metter to the current time.
+// This method is typically used to reset the timing metrics.
+func (m *Metter) Reset() {
+	m.StartTime = time.Now()
 }
