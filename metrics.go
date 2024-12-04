@@ -44,14 +44,14 @@ func NewMetter(function string, options ...MetterOptions) *Metter {
 }
 
 // Elapsed calculates the duration since the Metter's StartTime.
-// If the LogSlow option is enabled and the elapsed time exceeds 500 milliseconds,
+// If the LogSlow option is enabled and the elapsed time exceeds the configured threshold,
 // it logs an informational message indicating that the function is slow.
 // Returns the elapsed time as a time.Duration.
-func (m *Metter) Elapsed() time.Duration {
+func (m *Metter) Elapsed(point ...string) time.Duration {
 	elapsed := time.Since(m.StartTime)
 	if m.Options.LogSlow {
-		if elapsed > 500*time.Millisecond {
-			Logger().Info("slow function: %s, elapsed %v", m.Function, elapsed)
+		if elapsed > m.Options.SlowThreshold {
+			Logger().Info("slow function '%s', elapsed %v to reach point '%v'", m.Function, elapsed, point)
 		}
 	}
 	return elapsed
