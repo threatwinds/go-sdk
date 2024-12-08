@@ -38,9 +38,7 @@ func DoReq[response any](url string,
 
 	var result response
 
-	// Add request size limit
-	const maxRequestSize = 1048576 // 1MB
-	if len(data) > maxRequestSize {
+	if len(data) > maxMessageSize {
 		return result, http.StatusRequestEntityTooLarge, fmt.Errorf("request too large")
 	}
 
