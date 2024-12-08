@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
+	"crypto/tls"
 )
 
 // DoReq sends an HTTP request and processes the response.
@@ -36,6 +38,12 @@ func DoReq[response any](url string,
 
 	var result response
 
+	// Add request size limit
+	const maxRequestSize = 1048576 // 1MB
+	if len(data) > maxRequestSize {
+		return result, http.StatusRequestEntityTooLarge, fmt.Errorf("request too large")
+	}
+
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(data))
 	if err != nil {
 		return result,
@@ -47,7 +55,16 @@ func DoReq[response any](url string,
 		req.Header.Add(k, v)
 	}
 
-	client := &http.Client{}
+	// Configure HTTP client with security settings
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+			DisableCompression: true,
+		},
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -102,7 +119,17 @@ func Download(url, file string) error {
 
 	defer out.Close()
 
-	resp, err := http.Get(url)
+	// Add secure HTTP client configuration
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
+
+	resp, err := client.Get(url)
 	if err != nil {
 		return fmt.Errorf("could not do request to the URL: %s", err.Error())
 	}

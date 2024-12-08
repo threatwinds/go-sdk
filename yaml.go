@@ -1,8 +1,10 @@
 package go_sdk
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 	k8syaml "sigs.k8s.io/yaml"
@@ -18,6 +20,11 @@ import (
 //   - []byte: The JSON bytes converted from the YAML file.
 //   - error: An error object if an error occurs, otherwise nil.
 func ReadPbYaml(f string) ([]byte, error) {
+	// Add path validation
+	if err := validateFilePath(f); err != nil {
+		return nil, fmt.Errorf("invalid file path: %s", err)
+	}
+
 	content, err := os.ReadFile(f)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file '%s': %s", f, err.Error())
@@ -48,6 +55,11 @@ func ReadPbYaml(f string) ([]byte, error) {
 //	*t: A pointer to the unmarshaled content of type t.
 //	error: A pointer to an error object if an error occurs, otherwise nil.
 func ReadYaml[t any](f string, jsonMode bool) (*t, error) {
+	// Add path validation
+	if err := validateFilePath(f); err != nil {
+		return nil, fmt.Errorf("invalid file path: %s", err)
+	}
+
 	content, err := os.ReadFile(f)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file '%s': %s", f, err.Error())
@@ -67,4 +79,15 @@ func ReadYaml[t any](f string, jsonMode bool) (*t, error) {
 	}
 
 	return value, nil
+}
+
+// Helper function to validate file paths
+func validateFilePath(path string) error {
+	// Add validation logic for file paths
+	// Check for directory traversal attempts
+	if strings.Contains(path, "..") {
+		return errors.New("path contains invalid characters")
+	}
+	
+	return nil
 }

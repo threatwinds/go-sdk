@@ -23,6 +23,11 @@ import (
 //	*t: A pointer to the unmarshaled value of the specified type.
 //	error: An error object if any error occurs during the process.
 func ReadJSON[t any](f string) (*t, error) {
+	err := validateFilePath(f)
+	if err != nil {
+		return nil, fmt.Errorf("invalid file path: %s", err)
+	}
+
 	content, err := os.ReadFile(f)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file '%s': %s", f, err.Error())

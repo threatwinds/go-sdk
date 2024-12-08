@@ -12,8 +12,13 @@ var loggerOnce sync.Once
 // Logger initializes a logger instance and returns it.
 func Logger() *logger.Logger {
 	loggerOnce.Do(func() {
+		level := int(getEnv().LogLevel)
+		// Add validation for log level
+		if level < 0 {
+			level = 0
+		}
 		loggerInstance = logger.NewLogger(&logger.Config{
-			Level:   int(getEnv().LogLevel),
+			Level:   level,
 			Format:  "text",
 			Retries: 3,
 			Wait:    5,
