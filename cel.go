@@ -124,6 +124,7 @@ func GetCelType(t string) *cel.Type {
 //
 // Returns:
 //   - bool: Returns true if the event satisfies the expression, otherwise false.
+//	 - error: Returns an error if there are any issues during the evaluation process.
 //
 // The function performs the following steps:
 //  1. Initializes CEL environment options and a map to hold variable values.

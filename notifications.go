@@ -12,6 +12,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// notificationsChannel is a channel used to queue notification messages
+// that need to be sent to the engine server
 var notificationsChannel chan *Message
 
 // Represent the details of a success or failure during the processing of a log. Used as a message body for notifications.
