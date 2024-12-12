@@ -1,6 +1,8 @@
 package go_sdk
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,22 +10,19 @@ import (
 )
 
 type ErrorObject struct {
-	Message string                 `json:"message"`
-	Trace   []string               `json:"trace"`
-	Args    map[string]interface{} `json:"args"`
+	Code  string                 `json:"code"`
+	Trace []string               `json:"trace"`
+	Args  map[string]interface{} `json:"args"`
 }
 
-func Error(err error, trace []string, args map[string]interface{}) error {
-	if err != nil {
-		a, _ := json.Marshal(ErrorObject{
-			Message: err.Error(),
-			Trace:   trace,
-			Args:    args,
-		})
-		return errors.New(string(a))
-	}
-
-	return nil
+func Error(trace []string, args map[string]interface{}) error {
+	sum := md5.Sum([]byte(fmt.Sprint(trace, args)))
+	a, _ := json.Marshal(ErrorObject{
+		Code:  hex.EncodeToString(sum[:]),
+		Trace: trace,
+		Args:  args,
+	})
+	return errors.New(string(a))
 }
 
 func Trace() []string {

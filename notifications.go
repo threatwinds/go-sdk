@@ -18,16 +18,9 @@ var notificationsChannel chan *Message
 
 // Represent the details of a success or failure during the processing of a log. Used as a message body for notifications.
 type DataProcessingMessage struct {
-	Cause      *string `json:"cause,omitempty"`
-	DataType   string  `json:"dataType"`
-	DataSource string  `json:"dataSource"`
-}
-
-// Represents a notification message to be sent to the backend in the event of a failure in an integration.
-type IntegrationFailureMessage struct {
-	Cause           string  `json:"cause"`
-	IntegrationName string  `json:"integrationName"`
-	Tenant          *string `json:"tenant,omitempty"`
+	Error      interface{} `json:"error,omitempty"`
+	DataType   string      `json:"dataType"`
+	DataSource string      `json:"dataSource"`
 }
 
 type Topic string
