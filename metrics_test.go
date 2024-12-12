@@ -10,5 +10,5 @@ func TestMetter(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	t.Log(m.Elapsed())
+	t.Log(m.Elapsed("end"))
 }

@@ -74,12 +74,10 @@ func SendNotificationsFromChannel() error {
 			return fmt.Errorf("failed to send notification: %v", err)
 		}
 
-		ack, err := notifyClient.Recv()
+		_, err := notifyClient.Recv()
 		if err != nil {
 			return fmt.Errorf("failed to receive notification ack: %v", err)
 		}
-
-		Logger().LogF(100, "received notification ack: %v", ack)
 	}
 }
 

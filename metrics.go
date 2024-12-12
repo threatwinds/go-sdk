@@ -1,6 +1,7 @@
 package go_sdk
 
 import (
+	"log"
 	"sync"
 	"time"
 )
@@ -53,13 +54,13 @@ func NewMetter(function string, options ...MetterOptions) *Metter {
 // If the LogSlow option is enabled and the elapsed time exceeds the configured threshold,
 // it logs an informational message indicating that the function is slow.
 // Returns the elapsed time as a time.Duration.
-func (m *Metter) Elapsed(point ...string) time.Duration {
+func (m *Metter) Elapsed(point string) time.Duration {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	elapsed := time.Since(m.StartTime)
 	if m.Options.LogSlow {
 		if elapsed > m.Options.SlowThreshold {
-			Logger().Info("slow function '%s', elapsed %v to reach point '%v'", m.Function, elapsed, point)
+			log.Printf("slow function '%s', elapsed %v to reach point '%s'", m.Function, elapsed, point)
 		}
 	}
 	return elapsed

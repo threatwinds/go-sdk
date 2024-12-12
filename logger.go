@@ -1,47 +1,45 @@
 package go_sdk
 
 import (
-	"sync"
-
-	"github.com/threatwinds/logger"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"runtime"
 )
 
-var loggerInstance *logger.Logger
-var loggerOnce sync.Once
+type ErrorObject struct {
+	Message string                 `json:"message"`
+	Trace   []string               `json:"trace"`
+	Args    map[string]interface{} `json:"args"`
+}
 
-// Logger initializes a logger instance and returns it.
-func Logger() *logger.Logger {
-	loggerOnce.Do(func() {
-		level := int(getEnv().LogLevel)
-		// Add validation for log level
-		if level < 0 {
-			level = 0
-		}
-		loggerInstance = logger.NewLogger(&logger.Config{
-			Level:   level,
-			Format:  "text",
-			Retries: 3,
-			Wait:    5,
-			StatusMap: map[int][]string{
-				403: {
-					"permission denied",
-				},
-				407: {
-					"connection key",
-					"unauthorized",
-				},
-				400: {
-					"missing",
-					"invalid",
-				},
-				100: {
-					"no such file or directory",
-					"signal: interrupt",
-					"context canceled",
-				},
-			},
+func Error(err error, trace []string, args map[string]interface{}) error {
+	if err != nil {
+		a, _ := json.Marshal(ErrorObject{
+			Message: err.Error(),
+			Trace:   trace,
+			Args:    args,
 		})
-	})
+		return errors.New(string(a))
+	}
 
-	return loggerInstance
+	return nil
+}
+
+func Trace() []string {
+	pc := make([]uintptr, 25)
+	n := runtime.Callers(2, pc)
+	frames := runtime.CallersFrames(pc[:n])
+
+	var trace = make([]string, 0, 10)
+	for {
+		frame, more := frames.Next()
+
+		trace = append(trace, fmt.Sprint(frame.Function, " ", frame.Line))
+		if !more {
+			break
+		}
+	}
+
+	return trace
 }

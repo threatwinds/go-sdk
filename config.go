@@ -1,6 +1,7 @@
 package go_sdk
 
 import (
+	"log"
 	"path"
 	"sync"
 	"time"
@@ -28,7 +29,7 @@ func (c *Config) loadCfg() {
 
 		err := protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, nCfg)
 		if err != nil {
-			Logger().ErrorF("error decoding JSON from YAML file '%s': %s", cFile, err.Error())
+			log.Printf("error decoding JSON from YAML file '%s': %s", cFile, err.Error())
 			continue
 		}
 
