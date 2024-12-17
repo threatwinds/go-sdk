@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"runtime"
 )
@@ -15,14 +14,19 @@ type ErrorObject struct {
 	Args  map[string]interface{} `json:"args"`
 }
 
+func (e ErrorObject) Error() string {
+	a, _ := json.Marshal(e)
+	return string(a)
+}
+
 func Error(trace []string, args map[string]interface{}) error {
 	sum := md5.Sum([]byte(fmt.Sprint(trace, args)))
-	a, _ := json.Marshal(ErrorObject{
+
+	return ErrorObject{
 		Code:  hex.EncodeToString(sum[:]),
 		Trace: trace,
 		Args:  args,
-	})
-	return errors.New(string(a))
+	}
 }
 
 func Trace() []string {
