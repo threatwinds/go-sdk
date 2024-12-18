@@ -64,13 +64,13 @@ func Trace() []string {
 func (e ErrorObject) GinError(c *gin.Context) {
 	c.Header("x-error-id", e.Code)
 
-	message, ok := e.Args["message"].(string)
+	err, ok := e.Args["error"].(string)
 	if !ok {
 		c.Header("x-error", "internal server error")
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	} else {
-		c.Header("x-error", message)
+		c.Header("x-error", err)
 	}
 
 	status, ok := e.Args["status"].(int)
