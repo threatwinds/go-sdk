@@ -10,18 +10,27 @@ import (
 	"runtime"
 )
 
+// SdkError is an interface that defines the methods that an error object should implement.
+type SdkError interface {
+	Error() string
+	GinError(c *gin.Context)
+}
+
+// ErrorObject is a struct that implements the SdkError interface.
 type ErrorObject struct {
 	Code  string                 `json:"code"`
 	Trace []string               `json:"trace,omitempty"`
 	Args  map[string]interface{} `json:"args,omitempty"`
 }
 
+// Error returns the error message.
 func (e ErrorObject) Error() string {
 	a, _ := json.Marshal(e)
 	return string(a)
 }
 
-func Error(trace []string, args map[string]interface{}) error {
+// Error creates a new SdkError with a unique code generated from the trace and args.
+func Error(trace []string, args map[string]interface{}) SdkError {
 	sum := md5.Sum([]byte(fmt.Sprint(trace, args)))
 
 	return ErrorObject{
@@ -31,6 +40,7 @@ func Error(trace []string, args map[string]interface{}) error {
 	}
 }
 
+// Trace returns the stack trace of the caller.
 func Trace() []string {
 	pc := make([]uintptr, 25)
 	n := runtime.Callers(2, pc)
