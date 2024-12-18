@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/gin-gonic/gin"
+	"net/http"
 	"runtime"
 )
 
@@ -45,4 +47,26 @@ func Trace() []string {
 	}
 
 	return trace
+}
+
+// GinError is a helper function to return an error to the client using Gin framework context.
+// It sets the headers x-error and x-error-id with the error message and UUID respectively and sets the status code.
+func (e ErrorObject) GinError(c *gin.Context) {
+	c.Header("x-error-id", e.Code)
+
+	message, ok := e.Args["message"].(string)
+	if !ok {
+		c.Header("x-error", "internal server error")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	} else {
+		c.Header("x-error", message)
+	}
+
+	status, ok := e.Args["status"].(int)
+	if !ok {
+		c.AbortWithStatus(http.StatusBadRequest)
+	} else {
+		c.AbortWithStatus(status)
+	}
 }
