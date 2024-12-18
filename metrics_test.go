@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-func TestMetter(t *testing.T) {
-	m := NewMetter("TestMetter")
+func TestMeter(t *testing.T) {
+	m := NewMeter("TestMeter")
 
 	time.Sleep(1 * time.Second)
 

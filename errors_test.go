@@ -21,4 +21,17 @@ func TestTrace(t *testing.T) {
 			t.Log(err)
 		}
 	})
+
+	t.Run("cast from error", func(t *testing.T) {
+		var err error
+		err = Error(Trace(), map[string]interface{}{"error": "test"})
+
+		e := ToSdkError(err)
+		if e == nil {
+			t.Error("expected an SdkError")
+			return
+		}
+
+		t.Log(e.Error())
+	})
 }

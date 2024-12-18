@@ -34,30 +34,21 @@ func Error(trace []string, args map[string]interface{}) *SdkError {
 	}
 }
 
-// FromError converts a Go error with a JSON message to a SdkError.
-// If the error message is not a valid JSON, it returns an error with the original message.
-// If the error is nil, it returns nil.
-// The error message should be a JSON object with the following fields:
-// - code: string
-// - trace: []string
-// - args: map[string]interface{}
-func FromError(err error) *SdkError {
+func ToSdkError(err error) *SdkError {
 	if err == nil {
 		return nil
 	}
 
-	var e = new(SdkError)
-	unmarshalErr := json.Unmarshal([]byte(err.Error()), e)
-	if unmarshalErr != nil {
+	switch err.(type) {
+	case *SdkError:
+		return err.(*SdkError)
+	default:
 		return Error(Trace(), map[string]interface{}{
-			"cause":         unmarshalErr.Error(),
-			"error":         "could not parse error",
-			"advise":        "please report this error to the developers",
 			"originalError": err.Error(),
+			"error":         "cannot cast error to SdkError",
+			"advice":        "please report this error to the developers",
 		})
 	}
-
-	return e
 }
 
 // Trace returns the stack trace of the caller.
