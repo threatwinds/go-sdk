@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"log"
 	"net/http"
 	"runtime"
 )
@@ -26,12 +27,13 @@ func (e SdkError) Error() string {
 // Error creates a new SdkError with a unique code generated from the trace and args.
 func Error(trace []string, args map[string]interface{}) *SdkError {
 	sum := md5.Sum([]byte(fmt.Sprint(trace, args)))
-
-	return &SdkError{
+	err := SdkError{
 		Code:  hex.EncodeToString(sum[:]),
 		Trace: trace,
 		Args:  args,
 	}
+	log.Println(err.Error())
+	return &err
 }
 
 func ToSdkError(err error) *SdkError {
