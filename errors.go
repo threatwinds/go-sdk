@@ -40,6 +40,25 @@ func Error(trace []string, args map[string]interface{}) SdkError {
 	}
 }
 
+func FromError(err error) SdkError {
+	if err == nil {
+		return nil
+	}
+
+	var e ErrorObject
+	unmarshalErr := json.Unmarshal([]byte(err.Error()), &e)
+	if unmarshalErr != nil {
+		return Error(Trace(), map[string]interface{}{
+			"cause":         unmarshalErr.Error(),
+			"error":         "could not parse error",
+			"advise":        "please report this error to the developers",
+			"originalError": err.Error(),
+		})
+	}
+
+	return e
+}
+
 // Trace returns the stack trace of the caller.
 func Trace() []string {
 	pc := make([]uintptr, 25)
