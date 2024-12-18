@@ -10,43 +10,44 @@ import (
 	"runtime"
 )
 
-// SdkError is an interface that defines the methods that an error object should implement.
-type SdkError interface {
-	Error() string
-	GinError(c *gin.Context)
-}
-
-// ErrorObject is a struct that implements the SdkError interface.
-type ErrorObject struct {
+// SdkError is a struct that implements the Go error interface.
+type SdkError struct {
 	Code  string                 `json:"code"`
 	Trace []string               `json:"trace,omitempty"`
 	Args  map[string]interface{} `json:"args,omitempty"`
 }
 
 // Error returns the error message.
-func (e ErrorObject) Error() string {
+func (e SdkError) Error() string {
 	a, _ := json.Marshal(e)
 	return string(a)
 }
 
 // Error creates a new SdkError with a unique code generated from the trace and args.
-func Error(trace []string, args map[string]interface{}) SdkError {
+func Error(trace []string, args map[string]interface{}) *SdkError {
 	sum := md5.Sum([]byte(fmt.Sprint(trace, args)))
 
-	return ErrorObject{
+	return &SdkError{
 		Code:  hex.EncodeToString(sum[:]),
 		Trace: trace,
 		Args:  args,
 	}
 }
 
-func FromError(err error) SdkError {
+// FromError converts a Go error with a JSON message to a SdkError.
+// If the error message is not a valid JSON, it returns an error with the original message.
+// If the error is nil, it returns nil.
+// The error message should be a JSON object with the following fields:
+// - code: string
+// - trace: []string
+// - args: map[string]interface{}
+func FromError(err error) *SdkError {
 	if err == nil {
 		return nil
 	}
 
-	var e ErrorObject
-	unmarshalErr := json.Unmarshal([]byte(err.Error()), &e)
+	var e = new(SdkError)
+	unmarshalErr := json.Unmarshal([]byte(err.Error()), e)
 	if unmarshalErr != nil {
 		return Error(Trace(), map[string]interface{}{
 			"cause":         unmarshalErr.Error(),
@@ -80,7 +81,7 @@ func Trace() []string {
 
 // GinError is a helper function to return an error to the client using Gin framework context.
 // It sets the headers x-error and x-error-id with the error message and UUID respectively and sets the status code.
-func (e ErrorObject) GinError(c *gin.Context) {
+func (e SdkError) GinError(c *gin.Context) {
 	c.Header("x-error-id", e.Code)
 
 	err, ok := e.Args["error"].(string)
