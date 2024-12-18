@@ -43,11 +43,7 @@ func ToSdkError(err error) *SdkError {
 	case *SdkError:
 		return err.(*SdkError)
 	default:
-		return Error(Trace(), map[string]interface{}{
-			"originalError": err.Error(),
-			"error":         "cannot cast error to SdkError",
-			"advice":        "please report this error to the developers",
-		})
+		return nil
 	}
 }
 
