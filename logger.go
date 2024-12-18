@@ -10,8 +10,8 @@ import (
 
 type ErrorObject struct {
 	Code  string                 `json:"code"`
-	Trace []string               `json:"trace"`
-	Args  map[string]interface{} `json:"args"`
+	Trace []string               `json:"trace,omitempty"`
+	Args  map[string]interface{} `json:"args,omitempty"`
 }
 
 func (e ErrorObject) Error() string {
