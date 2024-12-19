@@ -55,20 +55,14 @@ func Bulk(ctx context.Context, items []BulkItem) error {
 
 	nd, err := generateNd(items)
 	if err != nil {
-		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "failed to generate bulk request",
-		})
+		return gosdk.Error("failed to generate bulk request", err, nil)
 	}
 
 	req.Body = strings.NewReader(nd)
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "failed to send bulk request",
-		})
+		return gosdk.Error("failed to send bulk request", err, nil)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -76,17 +70,13 @@ func Bulk(ctx context.Context, items []BulkItem) error {
 	if resp.StatusCode != 200 && resp.StatusCode != 201 && resp.StatusCode != 202 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return gosdk.Error(gosdk.Trace(), map[string]interface{}{
-				"cause": err.Error(),
-				"error": "failed to read bulk response body",
-			})
+			return gosdk.Error("failed to read bulk response body", err, nil)
 		}
 
-		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
-			"statusCode": resp.StatusCode,
-			"response":   string(body),
-			"error":      "bulk request failed",
-		})
+		return gosdk.Error("bulk request failed", nil, map[string]any{
+			"status":   resp.StatusCode,
+			"response": string(body)},
+		)
 	}
 
 	return nil
@@ -102,9 +92,8 @@ func generateNd(items []BulkItem) (string, error) {
 
 			err := json.Compact(cl, item.Body)
 			if err != nil {
-				return nd, gosdk.Error(gosdk.Trace(), map[string]interface{}{
-					"cause": err.Error(),
-					"error": "failed to compact JSON",
+				return nd, gosdk.Error("failed to compact JSON", err, map[string]any{
+					"body": string(item.Body),
 				})
 			}
 
@@ -117,10 +106,7 @@ func generateNd(items []BulkItem) (string, error) {
 
 			bAH, err := json.Marshal(aH)
 			if err != nil {
-				return nd, gosdk.Error(gosdk.Trace(), map[string]interface{}{
-					"cause": err.Error(),
-					"error": "failed to encode action header",
-				})
+				return nd, gosdk.Error("failed to encode action header", err, nil)
 			}
 
 			nd += strings.Join([]string{string(bAH), cl.String()}, "\n") + "\n"

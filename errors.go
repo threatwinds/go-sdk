@@ -13,9 +13,11 @@ import (
 
 // SdkError is a struct that implements the Go error interface.
 type SdkError struct {
-	Code  string                 `json:"code"`
-	Trace []string               `json:"trace,omitempty"`
-	Args  map[string]interface{} `json:"args,omitempty"`
+	Code  string         `json:"code"`
+	Trace []string       `json:"trace"`
+	Msg   string         `json:"msg"`
+	Cause *string        `json:"cause,omitempty"`
+	Args  map[string]any `json:"args,omitempty"`
 }
 
 // Error returns the error message.
@@ -24,35 +26,17 @@ func (e SdkError) Error() string {
 	return string(a)
 }
 
-// Error creates a new SdkError with a unique code generated from the trace and args.
-func Error(trace []string, args map[string]interface{}) *SdkError {
-	sum := md5.Sum([]byte(fmt.Sprint(trace, args)))
-	err := SdkError{
-		Code:  hex.EncodeToString(sum[:]),
-		Trace: trace,
-		Args:  args,
-	}
-	log.Println(err.Error())
-	return &err
-}
-
-// ToSdkError converts an error to a SdkError if it is an SdkError.
-// If the error is not an SdkError, it returns nil.
-func ToSdkError(err error) *SdkError {
-	if err == nil {
-		return nil
-	}
-
-	switch err.(type) {
-	case *SdkError:
-		return err.(*SdkError)
-	default:
-		return nil
-	}
-}
-
-// Trace returns the stack trace of the caller.
-func Trace() []string {
+// Error tries to cast the cause as an SdkError, if it is not an SdkError, it creates a new SdkError with the given parameters.
+// It logs the error message and returns the error.
+// If cause is nil, it will store a blank string in the Cause field.
+// The field Code is a hash of the message and trace. It is used to identify the recurrence of an error.
+// Params:
+// msg: the error message.
+// cause: the error that caused this error.
+// args: a map of additional information.
+// Returns:
+// *SdkError: the error. This type implements the Go error interface.
+func Error(msg string, cause error, args map[string]any) *SdkError {
 	pc := make([]uintptr, 25)
 	n := runtime.Callers(2, pc)
 	frames := runtime.CallersFrames(pc[:n])
@@ -67,26 +51,52 @@ func Trace() []string {
 		}
 	}
 
-	return trace
+	var err *SdkError
+	if err = ToSdkError(cause); err == nil {
+		sum := md5.Sum([]byte(fmt.Sprint(msg, trace)))
+		err = &SdkError{
+			Code:  hex.EncodeToString(sum[:]),
+			Trace: trace,
+			Args:  args,
+			Msg:   msg,
+			Cause: func() *string {
+				if cause != nil {
+					return PointerOf(cause.Error())
+				} else {
+					return nil
+				}
+			}(),
+		}
+	}
+	log.Println(err.Error())
+
+	return err
+}
+
+// ToSdkError tries to cast an error to a SdkError.
+// If the error is not an SdkError, it returns nil.
+func ToSdkError(err error) *SdkError {
+	if err == nil {
+		return nil
+	}
+
+	switch err.(type) {
+	case *SdkError:
+		return err.(*SdkError)
+	default:
+		return nil
+	}
 }
 
 // GinError is a helper function to return an error to the client using Gin framework context.
 // It sets the headers x-error and x-error-id with the error message and UUID respectively and sets the status code.
 func (e SdkError) GinError(c *gin.Context) {
 	c.Header("x-error-id", e.Code)
-
-	err, ok := e.Args["error"].(string)
-	if !ok {
-		c.Header("x-error", "internal server error")
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	} else {
-		c.Header("x-error", err)
-	}
+	c.Header("x-error", e.Msg)
 
 	status, ok := e.Args["status"].(int)
 	if !ok {
-		c.AbortWithStatus(http.StatusBadRequest)
+		c.AbortWithStatus(http.StatusInternalServerError)
 	} else {
 		c.AbortWithStatus(status)
 	}

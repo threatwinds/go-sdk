@@ -60,8 +60,7 @@ func (m *Meter) Elapsed(point string) time.Duration {
 	elapsed := time.Since(m.StartTime)
 	if m.Options.LogSlow {
 		if elapsed > m.Options.SlowThreshold {
-			log.Println(Error([]string{}, map[string]interface{}{
-				"warning":  "slow operation",
+			log.Println(Error("slow operation", nil, map[string]any{
 				"function": m.Function,
 				"elapsed":  elapsed,
 				"point":    point,

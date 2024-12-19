@@ -17,8 +17,7 @@ func ValidateFilePath(path string) error {
 
 	for _, c := range contains {
 		if strings.Contains(path, c) {
-			return Error(Trace(), map[string]interface{}{
-				"error":   "path contains an invalid character",
+			return Error("path contains an invalid character", nil, map[string]any{
 				"path":    path,
 				"invalid": c,
 			})
@@ -27,8 +26,7 @@ func ValidateFilePath(path string) error {
 
 	for _, p := range prefixes {
 		if strings.HasPrefix(path, p) {
-			return Error(Trace(), map[string]interface{}{
-				"error":   "path starts with an invalid character",
+			return Error("path starts with an invalid character", nil, map[string]any{
 				"path":    path,
 				"invalid": p,
 			})

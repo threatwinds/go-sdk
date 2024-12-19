@@ -18,10 +18,7 @@ func (q SearchRequest) SearchIn(ctx context.Context, index []string) (SearchResu
 
 	j, err := json.Marshal(q)
 	if err != nil {
-		return SearchResult{}, gosdk.Error(gosdk.Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "failed to encode search request",
-		})
+		return SearchResult{}, gosdk.Error("failed to encode search request", err, nil)
 	}
 
 	reader := strings.NewReader(string(j))
@@ -33,27 +30,20 @@ func (q SearchRequest) SearchIn(ctx context.Context, index []string) (SearchResu
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return SearchResult{}, gosdk.Error(gosdk.Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "failed to execute search request",
-		})
+		return SearchResult{}, gosdk.Error("failed to execute search request", err, nil)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return SearchResult{}, gosdk.Error(gosdk.Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "failed to read search response",
-		})
+		return SearchResult{}, gosdk.Error("failed to read search response", err, nil)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return SearchResult{}, gosdk.Error(gosdk.Trace(), map[string]interface{}{
-			"error":      "failed to execute search request",
-			"statusCode": resp.Status,
-			"response":   string(body),
+		return SearchResult{}, gosdk.Error("failed to execute search request", nil, map[string]interface{}{
+			"status":   resp.StatusCode,
+			"response": string(body),
 		})
 	}
 
@@ -61,10 +51,7 @@ func (q SearchRequest) SearchIn(ctx context.Context, index []string) (SearchResu
 
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return SearchResult{}, gosdk.Error(gosdk.Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "failed to decode search response",
-		})
+		return SearchResult{}, gosdk.Error("failed to decode search response", err, nil)
 	}
 
 	return result, nil

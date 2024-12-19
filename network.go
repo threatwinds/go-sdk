@@ -22,10 +22,7 @@ func GetMainIP() (string, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "udp", "8.8.8.8:80")
 	if err != nil {
-		return "", Error(Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "error: failed to create Dial context",
-		})
+		return "", Error("failed to create Dial context", err, nil)
 	}
 	defer func() {
 		_ = conn.Close()
@@ -33,15 +30,11 @@ func GetMainIP() (string, error) {
 
 	localAddr, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok {
-		return "", Error(Trace(), map[string]interface{}{
-			"error": "error: failed to cast LocalAddr to UDPAddr",
-		})
+		return "", Error("failed to get local address", nil, nil)
 	}
 
 	if localAddr.IP == nil {
-		return "", Error(Trace(), map[string]interface{}{
-			"error": "failed to get IP address",
-		})
+		return "", Error("failed to get local IP address", nil, nil)
 	}
 
 	return localAddr.IP.String(), nil

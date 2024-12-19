@@ -19,20 +19,12 @@ import (
 func ReadPbYaml(f string) ([]byte, error) {
 	content, err := os.ReadFile(f)
 	if err != nil {
-		return nil, Error(Trace(), map[string]interface{}{
-			"file":  f,
-			"cause": err.Error(),
-			"error": "error opening file",
-		})
+		return nil, Error("error opening file", err, map[string]interface{}{"file": f})
 	}
 
 	bytes, err := k8syaml.YAMLToJSON(content)
 	if err != nil {
-		return nil, Error(Trace(), map[string]interface{}{
-			"file":  f,
-			"cause": err.Error(),
-			"error": "error converting YAML to JSON",
-		})
+		return nil, Error("error converting YAML to JSON", err, map[string]interface{}{"file": f})
 	}
 
 	return bytes, nil
@@ -57,31 +49,19 @@ func ReadPbYaml(f string) ([]byte, error) {
 func ReadYaml[t any](f string, jsonMode bool) (*t, error) {
 	content, err := os.ReadFile(f)
 	if err != nil {
-		return nil, Error(Trace(), map[string]interface{}{
-			"file":  f,
-			"cause": err.Error(),
-			"error": "error opening file",
-		})
+		return nil, Error("error opening file", err, map[string]any{"file": f})
 	}
 
 	var value = new(t)
 	if jsonMode {
 		err = k8syaml.Unmarshal(content, value)
 		if err != nil {
-			return nil, Error(Trace(), map[string]interface{}{
-				"file":  f,
-				"cause": err.Error(),
-				"error": "error decoding file",
-			})
+			return nil, Error("error decoding file", err, map[string]any{"file": f})
 		}
 	} else {
 		err = yaml.Unmarshal(content, value)
 		if err != nil {
-			return nil, Error(Trace(), map[string]interface{}{
-				"file":  f,
-				"cause": err.Error(),
-				"error": "error decoding file",
-			})
+			return nil, Error("error decoding file", err, map[string]any{"file": f})
 		}
 	}
 

@@ -14,7 +14,7 @@ var cfgOnce sync.Once
 var cfgMutex sync.RWMutex
 
 // loadCfg loads configuration files from the "pipeline" directory within the working directory.
-// It reads all YAML files, unmarshals them into Config objects, and merges their contents into the receiver Config object.
+// It reads all YAML files, decodes them into Config objects, and merges their contents into the receiver Config object.
 // The function updates the Pipeline, DisabledRules, Tenants, Patterns, and Plugins fields of the receiver Config object.
 // If an error occurs while reading or unmarshalling a file, the function logs the error and continues with the next file.
 func (c *Config) loadCfg() {
@@ -23,21 +23,13 @@ func (c *Config) loadCfg() {
 		var nCfg = new(Config)
 		b, err := ReadPbYaml(cFile)
 		if err != nil {
-			_ = Error(Trace(), map[string]interface{}{
-				"cause": err.Error(),
-				"file":  cFile,
-				"error": "error reading YAML file",
-			})
+			_ = Error("error reading YAML file", err, map[string]interface{}{"file": cFile})
 			continue
 		}
 
 		err = protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, nCfg)
 		if err != nil {
-			_ = Error(Trace(), map[string]interface{}{
-				"cause": err.Error(),
-				"file":  cFile,
-				"error": "error reading YAML file",
-			})
+			_ = Error("error reading YAML file", err, map[string]interface{}{"file": cFile})
 			continue
 		}
 

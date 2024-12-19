@@ -7,31 +7,36 @@ import (
 
 func TestTrace(t *testing.T) {
 	t.Run("test error", func(t *testing.T) {
-		if err := Error(Trace(), map[string]interface{}{"sada": "adadasd"}); err == nil {
-			t.Errorf("Error(Trace(), NewError('test error')) should return error")
-		} else {
-			t.Log(err)
+		if err := Error("any error", nil, nil); err == nil {
+			t.Errorf("should return error")
+			return
 		}
 	})
 
-	t.Run("test error with trace", func(t *testing.T) {
-		if err := Error(Trace(), map[string]interface{}{"error": errors.New("test error").Error(), "sada": "adadas"}); err == nil {
-			t.Errorf("Error(Trace(), NewError('test error')) should return error")
-		} else {
-			t.Log(err)
+	t.Run("test error with arg", func(t *testing.T) {
+		if err := Error("any error with arg", errors.New("and cause"), map[string]any{"argument": "value"}); err == nil {
+			t.Errorf("should return error")
+			return
 		}
 	})
 
 	t.Run("cast from error", func(t *testing.T) {
 		var err error
-		err = Error(Trace(), map[string]interface{}{"error": "test"})
+		err = Error("any error with arg", errors.New("and cause"), map[string]any{"argument": "value"})
 
-		e := ToSdkError(err)
+		e := Error("casting error", err, nil)
 		if e == nil {
 			t.Error("expected an SdkError")
 			return
 		}
+	})
 
-		t.Log(e.Error())
+	t.Run("new error", func(t *testing.T) {
+		err := errors.New("any error")
+		e := Error("error from Go error", err, nil)
+		if e == nil {
+			t.Error("expected an SdkError")
+			return
+		}
 	})
 }

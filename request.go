@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,24 +33,20 @@ import (
 //   - int: The HTTP status code of the response.
 //   - error: An error if any occurred during the request or response
 //     processing, otherwise nil.
-func DoReq[response any](url string,
-	data []byte, method string,
-	headers map[string]string) (response, int, error) {
-
+func DoReq[response any](url string, data []byte, method string, headers map[string]string) (response, int, error) {
 	var result response
 
 	if len(data) > maxMessageSize {
-		return result, http.StatusRequestEntityTooLarge, fmt.Errorf("request too large")
+		return result, http.StatusBadRequest, Error("cannot convert to object",
+			errors.New("data size exceeds limit"), map[string]any{
+				"size":  fmt.Sprintf("%d bytes", len(data)),
+				"limit": fmt.Sprintf("%d bytes", maxMessageSize),
+			})
 	}
 
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(data))
 	if err != nil {
-		return result,
-			http.StatusInternalServerError,
-			Error(Trace(), map[string]interface{}{
-				"cause": err.Error(),
-				"error": "error creating request",
-			})
+		return result, http.StatusInternalServerError, Error("error creating request", err, nil)
 	}
 
 	for k, v := range headers {
@@ -69,33 +66,21 @@ func DoReq[response any](url string,
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return result,
-			http.StatusInternalServerError,
-			Error(Trace(), map[string]interface{}{
-				"cause": err.Error(),
-				"error": "error doing request",
-			})
+		return result, http.StatusInternalServerError, Error("error doing request", err, nil)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return result,
-			http.StatusInternalServerError,
-			Error(Trace(), map[string]interface{}{
-				"cause": err.Error(),
-				"error": "error reading response body",
-			})
+		return result, http.StatusInternalServerError, Error("error reading response body", err, nil)
 	}
 
 	if resp.StatusCode >= 400 {
-		return result,
-			resp.StatusCode,
-			Error(Trace(), map[string]interface{}{
-				"error":  "error response",
-				"status": resp.StatusCode,
-			})
+		return result, resp.StatusCode, Error("error response", nil, map[string]interface{}{
+			"response": string(body),
+			"status":   resp.StatusCode,
+		})
 	}
 
 	if resp.StatusCode == http.StatusNoContent {
@@ -104,12 +89,7 @@ func DoReq[response any](url string,
 
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return result,
-			resp.StatusCode,
-			Error(Trace(), map[string]interface{}{
-				"cause": err.Error(),
-				"error": "error parsing response",
-			})
+		return result, resp.StatusCode, Error("error parsing response", err, nil)
 	}
 
 	return result, resp.StatusCode, nil
@@ -127,11 +107,7 @@ func DoReq[response any](url string,
 func Download(url, file string) error {
 	out, err := os.Create(file)
 	if err != nil {
-		return Error(Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "error creating file",
-			"file":  file,
-		})
+		return Error("error creating file", err, map[string]interface{}{"file": file})
 	}
 
 	defer func() { _ = out.Close() }()
@@ -148,22 +124,14 @@ func Download(url, file string) error {
 
 	resp, err := client.Get(url)
 	if err != nil {
-		return Error(Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "error downloading file",
-			"url":   url,
-		})
+		return Error("error downloading file", err, map[string]any{"url": url})
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return Error(Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "error saving file",
-			"file":  file,
-		})
+		return Error("error saving file", err, map[string]any{"file": file})
 	}
 
 	return nil

@@ -139,7 +139,7 @@ func GetCelType(t string) *cel.Type {
 //  10. Checks if the output type is a boolean and returns its value. Otherwise, returns false.
 func (def *Where) Evaluate(event *string) (bool, error) {
 	vars := make([]cel.EnvOption, 0, 3)
-	values := make(map[string]interface{})
+	values := make(map[string]any)
 	for _, variable := range def.Variables {
 		vars = append(vars, cel.Variable(variable.As, GetCelType(variable.OfType)))
 		vars = append(vars, cel.Variable(fmt.Sprintf("%s_ok", variable.As), GetCelType("bool")))
@@ -156,52 +156,35 @@ func (def *Where) Evaluate(event *string) (bool, error) {
 
 	celEnv, err := cel.NewEnv(vars...)
 	if err != nil {
-		err = Error(Trace(), map[string]interface{}{
-			"cause":     err.Error(),
-			"error":     "failed to start CEL environment",
-			"variables": vars,
-		})
-		return false, err
+		return false, Error("failed to start CEL environment", err, map[string]any{"variables": vars})
 	}
 
 	ast, issues := celEnv.Compile(def.Expression)
 	if issues != nil && issues.Err() != nil {
-		err := Error(Trace(), map[string]interface{}{
-			"cause":      issues.String(),
-			"error":      "failed to compile expression",
-			"expression": def.Expression,
-		})
-		return false, err
+		return false, Error("failed to compile expression", err, map[string]any{"expression": def.Expression})
 	}
 
 	prg, err := celEnv.Program(ast)
 	if err != nil {
-		err = Error(Trace(), map[string]interface{}{
-			"cause":      err.Error(),
-			"error":      "failed to create program",
+		return false, Error("failed to create program", err, map[string]any{
 			"expression": def.Expression,
 			"variables":  vars,
 		})
-		return false, err
 	}
 
 	out, _, err := prg.Eval(values)
 	if err != nil {
-		err = Error(Trace(), map[string]interface{}{
-			"cause":      err.Error(),
-			"error":      "failed to evaluate program",
+		return false, Error("failed to evaluate program", err, map[string]any{
 			"expression": def.Expression,
 			"variables":  vars,
 		})
-		return false, err
 	}
 
 	if out.Type() == cel.BoolType {
 		return out.Value().(bool), nil
 	}
 
-	return false, Error(Trace(), map[string]interface{}{
-		"error":      "output type is not boolean",
+	return false, Error("output type is not boolean", err, map[string]any{
 		"expression": def.Expression,
 		"variables":  vars,
 	})

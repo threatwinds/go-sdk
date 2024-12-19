@@ -26,9 +26,5 @@ func Connect(nodes []string) error {
 		})
 	})
 
-	return gosdk.Error(gosdk.Trace(), map[string]interface{}{
-		"nodes": nodes,
-		"cause": err.Error(),
-		"error": "failed to connect to OpenSearch",
-	})
+	return gosdk.Error("failed to connect to OpenSearch", err, map[string]any{"nodes": nodes})
 }

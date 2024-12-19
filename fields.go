@@ -1,7 +1,7 @@
 package go_sdk
 
 import (
-	"log"
+	"errors"
 	"regexp"
 	"strings"
 )
@@ -16,20 +16,13 @@ func ValidateReservedField(f string, allowEmpty bool) error {
 	}
 
 	if f == "" && !allowEmpty {
-		return Error(Trace(), map[string]interface{}{
-			"error": "error validating field",
-			"cause": "field cannot be empty",
-		})
+		return Error("error validating field", errors.New("field name cannot be empty"), nil)
 	}
 
 	for _, rf := range reservedFields {
 		if f == rf {
-			return Error(Trace(), map[string]interface{}{
-				"error":          "error validating field",
-				"cause":          "field cannot be a reserved field",
-				"reservedFields": reservedFields,
-				"usedField":      f,
-			})
+			return Error("error validating field", errors.New("field cannot be a reserved field"),
+				map[string]any{"reservedFields": reservedFields, "usedField": f})
 		}
 	}
 
@@ -45,11 +38,7 @@ func SanitizeField(s *string) {
 	// compile the pattern
 	compiledPattern, err := regexp.Compile(exp)
 	if err != nil {
-		log.Println(Error(Trace(), map[string]interface{}{
-			"advise": "consider to review the error cause",
-			"cause":  err.Error(),
-			"error":  "error compiling regexp",
-		}))
+		_ = Error("error compiling regexp", err, nil)
 		return
 	}
 

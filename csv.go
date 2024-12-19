@@ -17,22 +17,14 @@ import (
 func ReadCSV(url string) ([][]string, error) {
 	file, err := os.Open(url)
 	if err != nil {
-		return nil, Error(Trace(), map[string]interface{}{
-			"cause": err,
-			"file":  url,
-			"error": "error opening CSV file",
-		})
+		return nil, Error("error opening CSV file", err, map[string]any{"file": url})
 	}
 	defer func() { _ = file.Close() }()
 
 	reader := csv.NewReader(file)
 	result, err := reader.ReadAll()
 	if err != nil {
-		return nil, Error(Trace(), map[string]interface{}{
-			"cause": err,
-			"file":  url,
-			"error": "error reading CSV file",
-		})
+		return nil, Error("error reading CSV file", err, map[string]any{"file": url})
 	}
 
 	return result, nil

@@ -49,14 +49,14 @@ func SendNotificationsFromChannel() error {
 		GetCfg().Env.Workdir, "sockets", "engine_server.sock")),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return fmt.Errorf("failed to connect to engine server: %v", err)
+		return Error("failed to connect to engine server", err, nil)
 	}
 
 	client := NewEngineClient(conn)
 
 	notifyClient, err := client.Notify(context.Background())
 	if err != nil {
-		return fmt.Errorf("failed to create notify client: %v", err)
+		return Error("failed to create notify client", err, nil)
 	}
 
 	for {
@@ -64,12 +64,12 @@ func SendNotificationsFromChannel() error {
 
 		err = notifyClient.Send(msg)
 		if err != nil {
-			return fmt.Errorf("failed to send notification: %v", err)
+			return Error("failed to send notification", err, nil)
 		}
 
 		_, err := notifyClient.Recv()
 		if err != nil {
-			return fmt.Errorf("failed to receive notification ack: %v", err)
+			return Error("failed to receive notification ack", err, nil)
 		}
 	}
 }
@@ -86,7 +86,7 @@ func SendNotificationsFromChannel() error {
 func EnqueueNotification[T any](topic Topic, message T) error {
 	mBytes, err := json.Marshal(message)
 	if err != nil {
-		return fmt.Errorf("failed to marshal notification body: %v", err)
+		return Error("failed to marshal notification body", err, nil)
 	}
 
 	msg := &Message{

@@ -24,10 +24,7 @@ func getEnvStr(name, def string, required bool) (string, error) {
 
 	if val == "" {
 		if required {
-			return "", Error(Trace(), map[string]interface{}{
-				"error": "missing required environment variable",
-				"name":  name,
-			})
+			return "", Error("missing required environment variable", nil, map[string]any{"name": name})
 		} else {
 			return def, nil
 		}
@@ -54,11 +51,9 @@ func getEnvInt(name string, def string, required bool) (int64, error) {
 
 	val, err := strconv.ParseInt(str, 10, 64)
 	if err != nil {
-		err = Error(Trace(), map[string]interface{}{
-			"error": "invalid environment variable",
+		err = Error("invalid environment variable", err, map[string]interface{}{
 			"name":  name,
 			"value": str,
-			"cause": err.Error(),
 		})
 		return 0, err
 	}
@@ -73,7 +68,7 @@ func getEnvInt(name string, def string, required bool) (int64, error) {
 //
 // Parameters:
 //   - name: The name of the environment variable.
-//   - def: The default value to use if the environment variable is not set.
+//   - def: The default value to use if the environment variable is unset.
 //   - required: A boolean indicating if the environment variable is required.
 //
 // Returns:
