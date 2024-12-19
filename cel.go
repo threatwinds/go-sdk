@@ -124,7 +124,7 @@ func GetCelType(t string) *cel.Type {
 //
 // Returns:
 //   - bool: Returns true if the event satisfies the expression, otherwise false.
-//	 - error: Returns an error if there are any issues during the evaluation process.
+//   - error: Returns an error if there are any issues during the evaluation process.
 //
 // The function performs the following steps:
 //  1. Initializes CEL environment options and a map to hold variable values.
@@ -143,7 +143,7 @@ func (def *Where) Evaluate(event *string) (bool, error) {
 	for _, variable := range def.Variables {
 		vars = append(vars, cel.Variable(variable.As, GetCelType(variable.OfType)))
 		vars = append(vars, cel.Variable(fmt.Sprintf("%s_ok", variable.As), GetCelType("bool")))
-		
+
 		value := gjson.Get(*event, variable.Get)
 		values[variable.As] = value.Value()
 
@@ -156,21 +156,43 @@ func (def *Where) Evaluate(event *string) (bool, error) {
 
 	celEnv, err := cel.NewEnv(vars...)
 	if err != nil {
+		err = Error(Trace(), map[string]interface{}{
+			"cause":     err.Error(),
+			"error":     "failed to start CEL environment",
+			"variables": vars,
+		})
 		return false, err
 	}
 
 	ast, issues := celEnv.Compile(def.Expression)
 	if issues != nil && issues.Err() != nil {
-		return false, fmt.Errorf("error processing expression (%s): %s", def.Expression, issues.Err())
+		err := Error(Trace(), map[string]interface{}{
+			"cause":      issues.String(),
+			"error":      "failed to compile expression",
+			"expression": def.Expression,
+		})
+		return false, err
 	}
 
 	prg, err := celEnv.Program(ast)
 	if err != nil {
+		err = Error(Trace(), map[string]interface{}{
+			"cause":      err.Error(),
+			"error":      "failed to create program",
+			"expression": def.Expression,
+			"variables":  vars,
+		})
 		return false, err
 	}
 
 	out, _, err := prg.Eval(values)
 	if err != nil {
+		err = Error(Trace(), map[string]interface{}{
+			"cause":      err.Error(),
+			"error":      "failed to evaluate program",
+			"expression": def.Expression,
+			"variables":  vars,
+		})
 		return false, err
 	}
 
@@ -178,5 +200,9 @@ func (def *Where) Evaluate(event *string) (bool, error) {
 		return out.Value().(bool), nil
 	}
 
-	return false, fmt.Errorf("expression does not evaluate to a boolean")
+	return false, Error(Trace(), map[string]interface{}{
+		"error":      "output type is not boolean",
+		"expression": def.Expression,
+		"variables":  vars,
+	})
 }

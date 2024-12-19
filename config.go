@@ -1,7 +1,6 @@
 package go_sdk
 
 import (
-	"log"
 	"path"
 	"sync"
 	"time"
@@ -22,14 +21,23 @@ func (c *Config) loadCfg() {
 	cFiles := ListFiles(path.Join(getEnv().Workdir, "pipeline"), ".yaml")
 	for _, cFile := range cFiles {
 		var nCfg = new(Config)
-		b, e := ReadPbYaml(cFile)
-		if e != nil {
+		b, err := ReadPbYaml(cFile)
+		if err != nil {
+			_ = Error(Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"file":  cFile,
+				"error": "error reading YAML file",
+			})
 			continue
 		}
 
-		err := protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, nCfg)
+		err = protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, nCfg)
 		if err != nil {
-			log.Printf("error decoding JSON from YAML file '%s': %s", cFile, err.Error())
+			_ = Error(Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"file":  cFile,
+				"error": "error reading YAML file",
+			})
 			continue
 		}
 
@@ -100,8 +108,8 @@ func GetCfg() *Config {
 	return cfg
 }
 
-// PluginCfg retrieves the configuration for a specified plugin by name and unmarshals it into the provided type.
-// The function returns a pointer to the configuration of the specified type and a pointer to a error if any error occurs.
+// PluginCfg retrieves the configuration for a specified plugin by name and unmarshal it into the provided type.
+// The function returns a pointer to the configuration of the specified type and a pointer to an error if any error occurs.
 //
 // Parameters:
 //

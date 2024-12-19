@@ -1,7 +1,6 @@
 package go_sdk
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -25,7 +24,10 @@ func getEnvStr(name, def string, required bool) (string, error) {
 
 	if val == "" {
 		if required {
-			return "", fmt.Errorf("configuration required: %s", name)
+			return "", Error(Trace(), map[string]interface{}{
+				"error": "missing required environment variable",
+				"name":  name,
+			})
 		} else {
 			return def, nil
 		}
@@ -52,6 +54,12 @@ func getEnvInt(name string, def string, required bool) (int64, error) {
 
 	val, err := strconv.ParseInt(str, 10, 64)
 	if err != nil {
+		err = Error(Trace(), map[string]interface{}{
+			"error": "invalid environment variable",
+			"name":  name,
+			"value": str,
+			"cause": err.Error(),
+		})
 		return 0, err
 	}
 

@@ -2,7 +2,6 @@ package go_sdk
 
 import (
 	"encoding/csv"
-	"fmt"
 	"os"
 )
 
@@ -16,16 +15,24 @@ import (
 //   - [][]string: The contents of the CSV file.
 //   - error: An error object if an error occurs, otherwise nil.
 func ReadCSV(url string) ([][]string, error) {
-	f, err := os.Open(url)
+	file, err := os.Open(url)
 	if err != nil {
-		return nil, fmt.Errorf("error opening file '%s': %s", url, err.Error())
+		return nil, Error(Trace(), map[string]interface{}{
+			"cause": err,
+			"file":  url,
+			"error": "error opening CSV file",
+		})
 	}
-	defer f.Close()
+	defer func() { _ = file.Close() }()
 
-	r := csv.NewReader(f)
-	result, err := r.ReadAll()
+	reader := csv.NewReader(file)
+	result, err := reader.ReadAll()
 	if err != nil {
-		return nil, fmt.Errorf("error reading CSV file '%s': %s", url, err.Error())
+		return nil, Error(Trace(), map[string]interface{}{
+			"cause": err,
+			"file":  url,
+			"error": "error reading CSV file",
+		})
 	}
 
 	return result, nil

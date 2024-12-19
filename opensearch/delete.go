@@ -2,7 +2,7 @@ package opensearch
 
 import (
 	"context"
-	"fmt"
+	gosdk "github.com/threatwinds/go-sdk"
 	"io"
 
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
@@ -17,18 +17,28 @@ func (h Hit) Delete(ctx context.Context) error {
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return err
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to delete document",
+		})
 	}
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 && resp.StatusCode != 202 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return err
+			return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "failed to read response body",
+			})
 		}
 
-		return fmt.Errorf("search engine status %d, response: %s", resp.StatusCode, body)
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"response":   string(body),
+			"error":      "failed to delete document",
+			"statusCode": resp.StatusCode,
+		})
 	}
 
 	return nil

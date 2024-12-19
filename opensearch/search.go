@@ -3,7 +3,7 @@ package opensearch
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	gosdk "github.com/threatwinds/go-sdk"
 	"io"
 	"net/http"
 	"strings"
@@ -18,7 +18,10 @@ func (q SearchRequest) SearchIn(ctx context.Context, index []string) (SearchResu
 
 	j, err := json.Marshal(q)
 	if err != nil {
-		return SearchResult{}, err
+		return SearchResult{}, gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to encode search request",
+		})
 	}
 
 	reader := strings.NewReader(string(j))
@@ -30,25 +33,38 @@ func (q SearchRequest) SearchIn(ctx context.Context, index []string) (SearchResu
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return SearchResult{}, err
+		return SearchResult{}, gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to execute search request",
+		})
 	}
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return SearchResult{}, err
+		return SearchResult{}, gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to read search response",
+		})
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return SearchResult{}, fmt.Errorf("search engine status %d, response: %s", resp.StatusCode, body)
+		return SearchResult{}, gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"error":      "failed to execute search request",
+			"statusCode": resp.Status,
+			"response":   string(body),
+		})
 	}
 
 	var result SearchResult
 
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return SearchResult{}, err
+		return SearchResult{}, gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to decode search response",
+		})
 	}
 
 	return result, nil

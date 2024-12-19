@@ -3,7 +3,7 @@ package opensearch
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	gosdk "github.com/threatwinds/go-sdk"
 	"io"
 	"strings"
 
@@ -18,7 +18,10 @@ type Update struct {
 func (h Hit) Save(ctx context.Context) error {
 	j, err := json.Marshal(Update{Doc: h.Source})
 	if err != nil {
-		return err
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to encode update request",
+		})
 	}
 
 	reader := strings.NewReader(string(j))
@@ -31,18 +34,28 @@ func (h Hit) Save(ctx context.Context) error {
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return err
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to update document",
+		})
 	}
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 && resp.StatusCode != 202 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return err
+			return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "failed to read response body",
+			})
 		}
 
-		return fmt.Errorf("search engine status %d, response: %s", resp.StatusCode, body)
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"statusCode": resp.StatusCode,
+			"response":   string(body),
+			"error":      "failed to update document",
+		})
 	}
 
 	return nil

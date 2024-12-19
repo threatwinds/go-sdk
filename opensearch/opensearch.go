@@ -2,6 +2,7 @@ package opensearch
 
 import (
 	"crypto/tls"
+	gosdk "github.com/threatwinds/go-sdk"
 	"net/http"
 	"sync"
 
@@ -25,5 +26,9 @@ func Connect(nodes []string) error {
 		})
 	})
 
-	return err
+	return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+		"nodes": nodes,
+		"cause": err.Error(),
+		"error": "failed to connect to OpenSearch",
+	})
 }

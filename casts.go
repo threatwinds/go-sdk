@@ -26,6 +26,11 @@ func CastInt64(value interface{}) int64 {
 	case string:
 		val, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
+			_ = Error(Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "failed to cast string to int64",
+				"value": v,
+			})
 			return 0
 		}
 		return val
@@ -55,6 +60,11 @@ func CastFloat64(value interface{}) float64 {
 	case string:
 		val, err := strconv.ParseFloat(v, 64)
 		if err != nil {
+			_ = Error(Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "failed to cast string to float64",
+				"value": v,
+			})
 			return 0
 		}
 		return val
@@ -87,6 +97,11 @@ func CastBool(value interface{}) bool {
 	case string:
 		val, err := strconv.ParseBool(v)
 		if err != nil {
+			_ = Error(Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "failed to cast string to bool",
+				"value": v,
+			})
 			return false
 		}
 		return val
@@ -95,9 +110,8 @@ func CastBool(value interface{}) bool {
 	}
 }
 
-
-// CastString attempts to cast an interface{} to a string. 
-// If the value is already a string, it returns the value directly. 
+// CastString attempts to cast an interface{} to a string.
+// If the value is already a string, it returns the value directly.
 // Otherwise, it converts the value to a string using fmt.Sprintf.
 //
 // Parameters:

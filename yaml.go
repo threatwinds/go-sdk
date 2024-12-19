@@ -1,7 +1,6 @@
 package go_sdk
 
 import (
-	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -18,61 +17,71 @@ import (
 //   - []byte: The JSON bytes converted from the YAML file.
 //   - error: An error object if an error occurs, otherwise nil.
 func ReadPbYaml(f string) ([]byte, error) {
-	// Add path validation
-	if err := ValidateFilePath(f); err != nil {
-		return nil, fmt.Errorf("invalid file path: %s", err)
-	}
-
 	content, err := os.ReadFile(f)
 	if err != nil {
-		return nil, fmt.Errorf("error opening file '%s': %s", f, err.Error())
+		return nil, Error(Trace(), map[string]interface{}{
+			"file":  f,
+			"cause": err.Error(),
+			"error": "error opening file",
+		})
 	}
 
 	bytes, err := k8syaml.YAMLToJSON(content)
 	if err != nil {
-		return nil, fmt.Errorf("error converting YAML file '%s' to JSON: %s", f, err.Error())
+		return nil, Error(Trace(), map[string]interface{}{
+			"file":  f,
+			"cause": err.Error(),
+			"error": "error converting YAML to JSON",
+		})
 	}
 
 	return bytes, nil
 }
 
-// ReadYaml reads a YAML file and unmarshals its content into a specified type.
+// ReadYaml reads a YAML file and converts its content into a specified type.
 // The function can also handle JSON mode if specified.
 //
 // Type Parameters:
 //
-//	t: The type into which the YAML content will be unmarshaled.
+//	t: The type into which the YAML content will be converted.
 //
 // Parameters:
 //
 //	f: The file path to the YAML file.
-//	jsonMode: A boolean flag indicating whether to use JSON mode for unmarshaling.
+//	jsonMode: A boolean flag indicating whether to use JSON mode for conversion.
 //
 // Returns:
 //
-//	*t: A pointer to the unmarshaled content of type t.
+//	*t: A pointer to the converted content of type t.
 //	error: A pointer to an error object if an error occurs, otherwise nil.
 func ReadYaml[t any](f string, jsonMode bool) (*t, error) {
-	// Add path validation
-	if err := ValidateFilePath(f); err != nil {
-		return nil, fmt.Errorf("invalid file path: %s", err)
-	}
-
 	content, err := os.ReadFile(f)
 	if err != nil {
-		return nil, fmt.Errorf("error opening file '%s': %s", f, err.Error())
+		return nil, Error(Trace(), map[string]interface{}{
+			"file":  f,
+			"cause": err.Error(),
+			"error": "error opening file",
+		})
 	}
 
 	var value = new(t)
 	if jsonMode {
 		err = k8syaml.Unmarshal(content, value)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding YAML file '%s': %s", f, err.Error())
+			return nil, Error(Trace(), map[string]interface{}{
+				"file":  f,
+				"cause": err.Error(),
+				"error": "error decoding file",
+			})
 		}
 	} else {
 		err = yaml.Unmarshal(content, value)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding YAML file '%s': %s", f, err.Error())
+			return nil, Error(Trace(), map[string]interface{}{
+				"file":  f,
+				"cause": err.Error(),
+				"error": "error decoding file",
+			})
 		}
 	}
 

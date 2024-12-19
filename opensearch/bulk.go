@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	gosdk "github.com/threatwinds/go-sdk"
 	"io"
 	"strings"
 
@@ -55,25 +55,38 @@ func Bulk(ctx context.Context, items []BulkItem) error {
 
 	nd, err := generateNd(items)
 	if err != nil {
-		return err
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to generate bulk request",
+		})
 	}
 
 	req.Body = strings.NewReader(nd)
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return err
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to send bulk request",
+		})
 	}
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 && resp.StatusCode != 202 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return err
+			return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "failed to read bulk response body",
+			})
 		}
 
-		return fmt.Errorf("search engine status %d, response: %s", resp.StatusCode, body)
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"statusCode": resp.StatusCode,
+			"response":   string(body),
+			"error":      "bulk request failed",
+		})
 	}
 
 	return nil
@@ -89,7 +102,10 @@ func generateNd(items []BulkItem) (string, error) {
 
 			err := json.Compact(cl, item.Body)
 			if err != nil {
-				return nd, err
+				return nd, gosdk.Error(gosdk.Trace(), map[string]interface{}{
+					"cause": err.Error(),
+					"error": "failed to compact JSON",
+				})
 			}
 
 			aH := IndexAction{
@@ -101,10 +117,13 @@ func generateNd(items []BulkItem) (string, error) {
 
 			bAH, err := json.Marshal(aH)
 			if err != nil {
-				return nd, err
+				return nd, gosdk.Error(gosdk.Trace(), map[string]interface{}{
+					"cause": err.Error(),
+					"error": "failed to encode action header",
+				})
 			}
 
-			nd += strings.Join([]string{string(bAH), cl.String()}, "\n")+ "\n"
+			nd += strings.Join([]string{string(bAH), cl.String()}, "\n") + "\n"
 		}
 	}
 

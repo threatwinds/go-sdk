@@ -2,7 +2,6 @@ package go_sdk
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"time"
 )
@@ -23,7 +22,10 @@ func GetMainIP() (string, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "udp", "8.8.8.8:80")
 	if err != nil {
-		return "", fmt.Errorf("error getting main IP: %s", err.Error())
+		return "", Error(Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "error: failed to create Dial context",
+		})
 	}
 	defer func() {
 		_ = conn.Close()
@@ -31,11 +33,15 @@ func GetMainIP() (string, error) {
 
 	localAddr, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok {
-		return "", fmt.Errorf("error: unexpected address type")
+		return "", Error(Trace(), map[string]interface{}{
+			"error": "error: failed to cast LocalAddr to UDPAddr",
+		})
 	}
 
 	if localAddr.IP == nil {
-		return "", fmt.Errorf("error: nil IP address")
+		return "", Error(Trace(), map[string]interface{}{
+			"error": "failed to get IP address",
+		})
 	}
 
 	return localAddr.IP.String(), nil

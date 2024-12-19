@@ -2,13 +2,13 @@ package go_sdk
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"time"
-	"crypto/tls"
 )
 
 // DoReq sends an HTTP request and processes the response.
@@ -46,7 +46,10 @@ func DoReq[response any](url string,
 	if err != nil {
 		return result,
 			http.StatusInternalServerError,
-			fmt.Errorf("error creating request: %s", err.Error())
+			Error(Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "error creating request",
+			})
 	}
 
 	for k, v := range headers {
@@ -68,22 +71,31 @@ func DoReq[response any](url string,
 	if err != nil {
 		return result,
 			http.StatusInternalServerError,
-			fmt.Errorf("error sending request: %s", err.Error())
+			Error(Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "error doing request",
+			})
 	}
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return result,
 			http.StatusInternalServerError,
-			fmt.Errorf("error reading response: %s", err.Error())
+			Error(Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "error reading response body",
+			})
 	}
 
 	if resp.StatusCode >= 400 {
 		return result,
 			resp.StatusCode,
-			fmt.Errorf("received status code %d", resp.StatusCode)
+			Error(Trace(), map[string]interface{}{
+				"error":  "error response",
+				"status": resp.StatusCode,
+			})
 	}
 
 	if resp.StatusCode == http.StatusNoContent {
@@ -93,8 +105,11 @@ func DoReq[response any](url string,
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return result,
-			http.StatusInternalServerError,
-			fmt.Errorf("error unmarshalling response: %s", err.Error())
+			resp.StatusCode,
+			Error(Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "error parsing response",
+			})
 	}
 
 	return result, resp.StatusCode, nil
@@ -112,10 +127,14 @@ func DoReq[response any](url string,
 func Download(url, file string) error {
 	out, err := os.Create(file)
 	if err != nil {
-		return fmt.Errorf("could not create file: %s", err.Error())
+		return Error(Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "error creating file",
+			"file":  file,
+		})
 	}
 
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	// Add secure HTTP client configuration
 	client := &http.Client{
@@ -129,14 +148,22 @@ func Download(url, file string) error {
 
 	resp, err := client.Get(url)
 	if err != nil {
-		return fmt.Errorf("could not do request to the URL: %s", err.Error())
+		return Error(Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "error downloading file",
+			"url":   url,
+		})
 	}
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return fmt.Errorf("could not save data to file: %s", err.Error())
+		return Error(Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "error saving file",
+			"file":  file,
+		})
 	}
 
 	return nil

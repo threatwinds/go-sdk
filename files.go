@@ -1,16 +1,38 @@
 package go_sdk
 
 import (
-	"errors"
 	"strings"
 )
 
-// Helper function to validate file paths security.
+// ValidateFilePath validates the file path to ensure it does not contain any invalid characters or directory traversal attempts
 func ValidateFilePath(path string) error {
-	// Add validation logic for file paths
-	// Check for directory traversal attempts
-	if strings.Contains(path, "..") {
-		return errors.New("path contains invalid characters")
+	var contains []string = []string{
+		"..",
+		"~",
+	}
+
+	var prefixes []string = []string{
+		"/",
+	}
+
+	for _, c := range contains {
+		if strings.Contains(path, c) {
+			return Error(Trace(), map[string]interface{}{
+				"error":   "path contains an invalid character",
+				"path":    path,
+				"invalid": c,
+			})
+		}
+	}
+
+	for _, p := range prefixes {
+		if strings.HasPrefix(path, p) {
+			return Error(Trace(), map[string]interface{}{
+				"error":   "path starts with an invalid character",
+				"path":    path,
+				"invalid": p,
+			})
+		}
 	}
 
 	return nil

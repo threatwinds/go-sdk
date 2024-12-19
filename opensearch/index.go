@@ -3,7 +3,7 @@ package opensearch
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	gosdk "github.com/threatwinds/go-sdk"
 	"io"
 	"strings"
 
@@ -18,7 +18,10 @@ import (
 func IndexDoc(ctx context.Context, doc interface{}, index, id string) error {
 	j, err := json.Marshal(doc)
 	if err != nil {
-		return err
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to marshal document to JSON",
+		})
 	}
 
 	reader := strings.NewReader(string(j))
@@ -32,18 +35,28 @@ func IndexDoc(ctx context.Context, doc interface{}, index, id string) error {
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return err
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"cause": err.Error(),
+			"error": "failed to index document",
+		})
 	}
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 && resp.StatusCode != 202 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return err
+			return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+				"cause": err.Error(),
+				"error": "failed to read response body",
+			})
 		}
 
-		return fmt.Errorf("search engine status %d, response: %s", resp.StatusCode, body)
+		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
+			"response":   string(body),
+			"statusCode": resp.StatusCode,
+			"error":      "failed to index document",
+		})
 	}
 
 	return nil

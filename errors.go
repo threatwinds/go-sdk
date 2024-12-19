@@ -36,6 +36,8 @@ func Error(trace []string, args map[string]interface{}) *SdkError {
 	return &err
 }
 
+// ToSdkError converts an error to a SdkError if it is an SdkError.
+// If the error is not an SdkError, it returns nil.
 func ToSdkError(err error) *SdkError {
 	if err == nil {
 		return nil
