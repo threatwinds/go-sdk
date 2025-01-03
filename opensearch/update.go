@@ -18,7 +18,7 @@ type Update struct {
 func (h Hit) Save(ctx context.Context) error {
 	j, err := json.Marshal(Update{Doc: h.Source})
 	if err != nil {
-		return gosdk.Error("failed to encode document", err, nil)
+		return gosdk.Error("cannot encode document", err, nil)
 	}
 
 	reader := strings.NewReader(string(j))
@@ -31,7 +31,7 @@ func (h Hit) Save(ctx context.Context) error {
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return gosdk.Error("failed to update document", err, nil)
+		return gosdk.Error("cannot update document", err, nil)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -39,10 +39,10 @@ func (h Hit) Save(ctx context.Context) error {
 	if resp.StatusCode != 200 && resp.StatusCode != 202 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return gosdk.Error("failed to read response body", err, nil)
+			return gosdk.Error("cannot read response body", err, nil)
 		}
 
-		return gosdk.Error("failed to update document", nil, map[string]interface{}{
+		return gosdk.Error("cannot update document", nil, map[string]interface{}{
 			"status":   resp.StatusCode,
 			"response": string(body),
 		})

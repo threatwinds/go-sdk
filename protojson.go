@@ -17,7 +17,7 @@ const maxMessageSize = 10 * 1024 * 1024 // 10MB limit
 //
 // Returns:
 //   - *string: A pointer to the JSON string representation of the object.
-//   - *error: A pointer to a error if an error occurs, otherwise nil.
+//   - *error: A pointer to an error if an error occurs, otherwise nil.
 func ToString(object protoreflect.ProtoMessage) (*string, error) {
 	if object == nil {
 		return nil, Error("cannot convert to string", errors.New("object is a nil pointer"), nil)

@@ -6,12 +6,12 @@ import (
 
 // ValidateFilePath validates the file path to ensure it does not contain any invalid characters or directory traversal attempts
 func ValidateFilePath(path string) error {
-	var contains []string = []string{
+	var contains = []string{
 		"..",
 		"~",
 	}
 
-	var prefixes []string = []string{
+	var prefixes = []string{
 		"/",
 	}
 

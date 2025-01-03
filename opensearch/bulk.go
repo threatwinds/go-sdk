@@ -88,7 +88,7 @@ func generateNd(items []BulkItem) (string, error) {
 	for _, item := range items {
 		switch item.Action {
 		case "index":
-			var cl *bytes.Buffer = new(bytes.Buffer)
+			var cl = new(bytes.Buffer)
 
 			err := json.Compact(cl, item.Body)
 			if err != nil {

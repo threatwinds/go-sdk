@@ -29,12 +29,26 @@ func TestTrace(t *testing.T) {
 			t.Error("expected an SdkError")
 			return
 		}
+		if e.Msg != "any error with arg" {
+			t.Error("expected an SdkError")
+			return
+		}
 	})
 
 	t.Run("new error", func(t *testing.T) {
 		err := errors.New("any error")
 		e := Error("error from Go error", err, nil)
 		if e == nil {
+			t.Error("expected an SdkError")
+			return
+		}
+
+		if e.Msg != "error from Go error" {
+			t.Error("expected an SdkError")
+			return
+		}
+
+		if *e.Cause != "any error" {
 			t.Error("expected an SdkError")
 			return
 		}

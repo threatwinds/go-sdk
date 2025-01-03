@@ -17,9 +17,8 @@ func (h Hit) Delete(ctx context.Context) error {
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
-			"cause": err.Error(),
-			"error": "failed to delete document",
+		return gosdk.Error("cannot delete document", err, map[string]any{
+			"id": h.ID,
 		})
 	}
 
@@ -28,16 +27,15 @@ func (h Hit) Delete(ctx context.Context) error {
 	if resp.StatusCode != 200 && resp.StatusCode != 202 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return gosdk.Error(gosdk.Trace(), map[string]interface{}{
-				"cause": err.Error(),
-				"error": "failed to read response body",
+			return gosdk.Error("cannot delete document", err, map[string]any{
+				"id": h.ID,
 			})
 		}
 
-		return gosdk.Error(gosdk.Trace(), map[string]interface{}{
-			"response":   string(body),
-			"error":      "failed to delete document",
-			"statusCode": resp.StatusCode,
+		return gosdk.Error("cannot delete document", nil, map[string]any{
+			"id":       h.ID,
+			"response": string(body),
+			"status":   resp.StatusCode,
 		})
 	}
 

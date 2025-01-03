@@ -26,14 +26,14 @@ type DataProcessingMessage struct {
 type Topic string
 
 const (
-	TOPIC_ENQUEUE_FAILURE          Topic = "enqueue_failure"          // TOPIC_ENQUEUE_FAILURE represents the topic name for enqueue failure notifications.
-	TOPIC_ENQUEUE_SUCCESS          Topic = "enqueue_success"          // TOPIC_ENQUEUE_SUCCESS represents the topic name for enqueue success notifications.
-	TOPIC_INTEGRATION_FAILURE      Topic = "integration_failure"      // TOPIC_INTEGRATION_FAILURE represents the topic name for integration failure notifications.
-	TOPIC_PARSING_FAILURE          Topic = "parsing_failure"          // TOPIC_PARSING_FAILURE represents the topic name for parsing failure notifications.
-	TOPIC_ANALYSIS_FAILURE         Topic = "analysis_failure"         // TOPIC_ANALYSIS_FAILURE represents the topic name for analysis failure notifications.
-	TOPIC_CORRELATION_FAILURE      Topic = "correlation_failure"      // TOPIC_CORRELATION_FAILURE represents the topic name for correlation failure notifications.
-	TOPIC_OUTGOING_REQUEST_FAILURE Topic = "outgoing_request_failure" // TOPIC_OUTGOING_REQUEST_FAILURE represents the topic name for outgoing request failure notifications.
-	TOPIC_CEL_EVALATUAION_FAILURE  Topic = "cel_evaluation_failure"   // TOPIC_CEL_EVALUATION_FAILURE represents the topic name for CEL evaluation failure notifications.
+	TopicEnqueueFailure         Topic = "enqueue_failure"          // represents the topic name for enqueue failure notifications.
+	TopicEnqueueSuccess         Topic = "enqueue_success"          // represents the topic name for enqueue success notifications.
+	TopicIntegrationFailure     Topic = "integration_failure"      // represents the topic name for integration failure notifications.
+	TopicParsingFailure         Topic = "parsing_failure"          // represents the topic name for parsing failure notifications.
+	TopicAnalysisFailure        Topic = "analysis_failure"         // represents the topic name for analysis failure notifications.
+	TopicCorrelationFailure     Topic = "correlation_failure"      // represents the topic name for correlation failure notifications.
+	TopicOutgoingRequestFailure Topic = "outgoing_request_failure" // represents the topic name for outgoing request failure notifications.
+	TopicCelEvaluationFailure   Topic = "cel_evaluation_failure"   // represents the topic name for CEL evaluation failure notifications.
 )
 
 // SendNotificationsFromChannel listens to the notificationsChannel and sends notifications

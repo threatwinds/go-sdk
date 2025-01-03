@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"log"
@@ -80,8 +81,9 @@ func ToSdkError(err error) *SdkError {
 		return nil
 	}
 
-	switch err.(type) {
-	case *SdkError:
+	var sdkError *SdkError
+	switch {
+	case errors.As(err, &sdkError):
 		return err.(*SdkError)
 	default:
 		return nil

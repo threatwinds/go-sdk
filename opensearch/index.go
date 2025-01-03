@@ -18,7 +18,7 @@ import (
 func IndexDoc(ctx context.Context, doc interface{}, index, id string) error {
 	j, err := json.Marshal(doc)
 	if err != nil {
-		return gosdk.Error("failed to marshal document to JSON", err, nil)
+		return gosdk.Error("cannot encode document to JSON", err, nil)
 	}
 
 	reader := strings.NewReader(string(j))
@@ -32,7 +32,7 @@ func IndexDoc(ctx context.Context, doc interface{}, index, id string) error {
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return gosdk.Error("failed to index document", err, nil)
+		return gosdk.Error("cannot index document", err, nil)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -40,10 +40,10 @@ func IndexDoc(ctx context.Context, doc interface{}, index, id string) error {
 	if resp.StatusCode != 200 && resp.StatusCode != 201 && resp.StatusCode != 202 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return gosdk.Error("failed to read response body", err, nil)
+			return gosdk.Error("cannot read response body", err, nil)
 		}
 
-		return gosdk.Error("failed to index document", err, map[string]any{
+		return gosdk.Error("cannot index document", err, map[string]any{
 			"response": string(body),
 			"status":   resp.StatusCode,
 		})
