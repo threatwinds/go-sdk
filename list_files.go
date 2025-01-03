@@ -3,8 +3,7 @@ package go_sdk
 import (
 	"os"
 	"path/filepath"
-
-	"github.com/threatwinds/logger"
+	"strings"
 )
 
 // ListFiles walks through the directory specified by the route and returns a slice of file paths
@@ -32,8 +31,8 @@ func ListFiles(route string, filter string) []string {
 		return nil
 	})
 	if err != nil {
-		if !logger.Is(err, "no such file or directory") {
-			panic(err)
+		if !strings.Contains(err.Error(), "no such file or directory") {
+			panic(Error("cannot walk through directory", err, map[string]any{"route": route}))
 		}
 	}
 

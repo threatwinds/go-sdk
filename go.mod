@@ -7,7 +7,6 @@ require (
 	github.com/google/cel-go v0.22.1
 	github.com/google/uuid v1.6.0
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
-	github.com/threatwinds/logger v1.1.12
 	github.com/tidwall/gjson v1.18.0
 	google.golang.org/grpc v1.69.2
 	google.golang.org/protobuf v1.36.1
@@ -48,5 +47,4 @@ require (
 	golang.org/x/text v0.21.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250102185135-69823020774d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250102185135-69823020774d // indirect
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )
