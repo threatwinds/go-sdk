@@ -1,6 +1,7 @@
-package go_sdk
+package plugins
 
 import (
+	"github.com/threatwinds/go-sdk/catcher"
 	"os"
 	"strconv"
 	"strings"
@@ -24,7 +25,7 @@ func getEnvStr(name, def string, required bool) (string, error) {
 
 	if val == "" {
 		if required {
-			return "", Error("missing required environment variable", nil, map[string]any{"name": name})
+			return "", catcher.Error("missing required environment variable", nil, map[string]any{"name": name})
 		} else {
 			return def, nil
 		}
@@ -51,7 +52,7 @@ func getEnvInt(name string, def string, required bool) (int64, error) {
 
 	val, err := strconv.ParseInt(str, 10, 64)
 	if err != nil {
-		err = Error("invalid environment variable", err, map[string]interface{}{
+		err = catcher.Error("invalid environment variable", err, map[string]interface{}{
 			"name":  name,
 			"value": str,
 		})

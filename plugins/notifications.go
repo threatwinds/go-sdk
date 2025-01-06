@@ -1,9 +1,10 @@
-package go_sdk
+package plugins
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/threatwinds/go-sdk/catcher"
 	"path"
 	"time"
 
@@ -37,7 +38,7 @@ const (
 )
 
 // SendNotificationsFromChannel listens to the notificationsChannel and sends notifications
-// to the engine server via gRPC. It logs errors if the connection to the engine server fails,
+// to the engine server via gRPC. It logs an error if the connection to the engine server fails,
 // if sending a notification fails, or if receiving an acknowledgment fails. It runs indefinitely
 // and should be run as a goroutine.
 //
@@ -49,14 +50,14 @@ func SendNotificationsFromChannel() error {
 		GetCfg().Env.Workdir, "sockets", "engine_server.sock")),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return Error("failed to connect to engine server", err, nil)
+		return catcher.Error("failed to connect to engine server", err, nil)
 	}
 
 	client := NewEngineClient(conn)
 
 	notifyClient, err := client.Notify(context.Background())
 	if err != nil {
-		return Error("failed to create notify client", err, nil)
+		return catcher.Error("failed to create notify client", err, nil)
 	}
 
 	for {
@@ -64,12 +65,12 @@ func SendNotificationsFromChannel() error {
 
 		err = notifyClient.Send(msg)
 		if err != nil {
-			return Error("failed to send notification", err, nil)
+			return catcher.Error("failed to send notification", err, nil)
 		}
 
 		_, err := notifyClient.Recv()
 		if err != nil {
-			return Error("failed to receive notification ack", err, nil)
+			return catcher.Error("failed to receive notification ack", err, nil)
 		}
 	}
 }
@@ -86,7 +87,7 @@ func SendNotificationsFromChannel() error {
 func EnqueueNotification[T any](topic Topic, message T) error {
 	mBytes, err := json.Marshal(message)
 	if err != nil {
-		return Error("failed to marshal notification body", err, nil)
+		return catcher.Error("failed to marshal notification body", err, nil)
 	}
 
 	msg := &Message{

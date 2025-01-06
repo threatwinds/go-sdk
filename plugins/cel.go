@@ -1,9 +1,9 @@
-package go_sdk
+package plugins
 
 import (
 	"fmt"
-
 	"github.com/google/cel-go/cel"
+	"github.com/threatwinds/go-sdk/catcher"
 	"github.com/tidwall/gjson"
 )
 
@@ -156,17 +156,17 @@ func (def *Where) Evaluate(event *string) (bool, error) {
 
 	celEnv, err := cel.NewEnv(vars...)
 	if err != nil {
-		return false, Error("failed to start CEL environment", err, map[string]any{"variables": vars})
+		return false, catcher.Error("failed to start CEL environment", err, map[string]any{"variables": vars})
 	}
 
 	ast, issues := celEnv.Compile(def.Expression)
 	if issues != nil && issues.Err() != nil {
-		return false, Error("failed to compile expression", err, map[string]any{"expression": def.Expression})
+		return false, catcher.Error("failed to compile expression", err, map[string]any{"expression": def.Expression})
 	}
 
 	prg, err := celEnv.Program(ast)
 	if err != nil {
-		return false, Error("failed to create program", err, map[string]any{
+		return false, catcher.Error("failed to create program", err, map[string]any{
 			"expression": def.Expression,
 			"variables":  vars,
 		})
@@ -174,7 +174,7 @@ func (def *Where) Evaluate(event *string) (bool, error) {
 
 	out, _, err := prg.Eval(values)
 	if err != nil {
-		return false, Error("failed to evaluate program", err, map[string]any{
+		return false, catcher.Error("failed to evaluate program", err, map[string]any{
 			"expression": def.Expression,
 			"variables":  vars,
 		})
@@ -184,7 +184,7 @@ func (def *Where) Evaluate(event *string) (bool, error) {
 		return out.Value().(bool), nil
 	}
 
-	return false, Error("output type is not boolean", err, map[string]any{
+	return false, catcher.Error("output type is not boolean", err, map[string]any{
 		"expression": def.Expression,
 		"variables":  vars,
 	})

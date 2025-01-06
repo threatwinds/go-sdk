@@ -1,7 +1,8 @@
-package go_sdk
+package utils
 
 import (
 	"encoding/json"
+	"github.com/threatwinds/go-sdk/catcher"
 	"os"
 )
 
@@ -24,14 +25,14 @@ import (
 func ReadJSON[t any](f string) (*t, error) {
 	content, err := os.ReadFile(f)
 	if err != nil {
-		return nil, Error("error reading JSON file", err, map[string]any{"file": f})
+		return nil, catcher.Error("error reading JSON file", err, map[string]any{"file": f})
 	}
 
 	var value = new(t)
 
 	err = json.Unmarshal(content, value)
 	if err != nil {
-		return nil, Error("error parsing JSON file", err, map[string]any{"file": f})
+		return nil, catcher.Error("error parsing JSON file", err, map[string]any{"file": f})
 	}
 
 	return value, nil

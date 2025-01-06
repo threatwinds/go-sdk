@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package gosdk;
+package plugins;
 
-option go_package = "github.com/threatwinds/go-sdk";
+option go_package = "github.com/threatwinds/go-sdk/plugins";
 
 import public "google/protobuf/empty.proto";
 import public "google/protobuf/struct.proto";
@@ -254,17 +254,6 @@ message Add {
 	Where where = 3;
 }
 
-message Where {
-	repeated Variable variables = 1;
-	string expression = 2;
-}
-
-message Variable {
-	string get = 1;
-	string as = 2;
-	string ofType = 3;
-}
-
 message Config {
 	repeated Pipeline pipeline = 1;
 	repeated int64 disabledRules = 2;
@@ -301,4 +290,15 @@ message Env {
 	string workdir = 3;
 	int64 logLevel = 4;
 	string mode = 5;
+}
+
+message Where {
+	repeated Variable variables = 1;
+	string expression = 2;
+}
+
+message Variable {
+	string get = 1;
+	string as = 2;
+	string ofType = 3;
 }

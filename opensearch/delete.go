@@ -2,7 +2,7 @@ package opensearch
 
 import (
 	"context"
-	gosdk "github.com/threatwinds/go-sdk"
+	"github.com/threatwinds/go-sdk/catcher"
 	"io"
 
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
@@ -17,7 +17,7 @@ func (h Hit) Delete(ctx context.Context) error {
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return gosdk.Error("cannot delete document", err, map[string]any{
+		return catcher.Error("cannot delete document", err, map[string]any{
 			"id": h.ID,
 		})
 	}
@@ -27,12 +27,12 @@ func (h Hit) Delete(ctx context.Context) error {
 	if resp.StatusCode != 200 && resp.StatusCode != 202 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return gosdk.Error("cannot delete document", err, map[string]any{
+			return catcher.Error("cannot delete document", err, map[string]any{
 				"id": h.ID,
 			})
 		}
 
-		return gosdk.Error("cannot delete document", nil, map[string]any{
+		return catcher.Error("cannot delete document", nil, map[string]any{
 			"id":       h.ID,
 			"response": string(body),
 			"status":   resp.StatusCode,

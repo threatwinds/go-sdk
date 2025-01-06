@@ -1,7 +1,8 @@
-package go_sdk
+package utils
 
 import (
 	"encoding/csv"
+	"github.com/threatwinds/go-sdk/catcher"
 	"os"
 )
 
@@ -17,14 +18,14 @@ import (
 func ReadCSV(url string) ([][]string, error) {
 	file, err := os.Open(url)
 	if err != nil {
-		return nil, Error("error opening CSV file", err, map[string]any{"file": url})
+		return nil, catcher.Error("error opening CSV file", err, map[string]any{"file": url})
 	}
 	defer func() { _ = file.Close() }()
 
 	reader := csv.NewReader(file)
 	result, err := reader.ReadAll()
 	if err != nil {
-		return nil, Error("error reading CSV file", err, map[string]any{"file": url})
+		return nil, catcher.Error("error reading CSV file", err, map[string]any{"file": url})
 	}
 
 	return result, nil

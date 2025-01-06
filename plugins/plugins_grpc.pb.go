@@ -4,7 +4,7 @@
 // - protoc             v3.21.12
 // source: plugins.proto
 
-package go_sdk
+package plugins
 
 import (
 	context "context"
@@ -20,8 +20,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Engine_Input_FullMethodName  = "/gosdk.Engine/Input"
-	Engine_Notify_FullMethodName = "/gosdk.Engine/Notify"
+	Engine_Input_FullMethodName  = "/plugins.Engine/Input"
+	Engine_Notify_FullMethodName = "/plugins.Engine/Notify"
 )
 
 // EngineClient is the client API for Engine service.
@@ -127,7 +127,7 @@ type Engine_NotifyServer = grpc.BidiStreamingServer[Message, Ack]
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Engine_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "gosdk.Engine",
+	ServiceName: "plugins.Engine",
 	HandlerType: (*EngineServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -148,7 +148,7 @@ var Engine_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Parsing_ParseLog_FullMethodName = "/gosdk.Parsing/ParseLog"
+	Parsing_ParseLog_FullMethodName = "/plugins.Parsing/ParseLog"
 )
 
 // ParsingClient is the client API for Parsing service.
@@ -237,7 +237,7 @@ func _Parsing_ParseLog_Handler(srv interface{}, ctx context.Context, dec func(in
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Parsing_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "gosdk.Parsing",
+	ServiceName: "plugins.Parsing",
 	HandlerType: (*ParsingServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -250,7 +250,7 @@ var Parsing_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Analysis_Analyze_FullMethodName = "/gosdk.Analysis/Analyze"
+	Analysis_Analyze_FullMethodName = "/plugins.Analysis/Analyze"
 )
 
 // AnalysisClient is the client API for Analysis service.
@@ -341,7 +341,7 @@ type Analysis_AnalyzeServer = grpc.ServerStreamingServer[Alert]
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Analysis_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "gosdk.Analysis",
+	ServiceName: "plugins.Analysis",
 	HandlerType: (*AnalysisServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -355,7 +355,7 @@ var Analysis_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Correlation_Correlate_FullMethodName = "/gosdk.Correlation/Correlate"
+	Correlation_Correlate_FullMethodName = "/plugins.Correlation/Correlate"
 )
 
 // CorrelationClient is the client API for Correlation service.
@@ -444,7 +444,7 @@ func _Correlation_Correlate_Handler(srv interface{}, ctx context.Context, dec fu
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Correlation_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "gosdk.Correlation",
+	ServiceName: "plugins.Correlation",
 	HandlerType: (*CorrelationServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -457,7 +457,7 @@ var Correlation_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Notification_Notify_FullMethodName = "/gosdk.Notification/Notify"
+	Notification_Notify_FullMethodName = "/plugins.Notification/Notify"
 )
 
 // NotificationClient is the client API for Notification service.
@@ -546,7 +546,7 @@ func _Notification_Notify_Handler(srv interface{}, ctx context.Context, dec func
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Notification_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "gosdk.Notification",
+	ServiceName: "plugins.Notification",
 	HandlerType: (*NotificationServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -559,7 +559,7 @@ var Notification_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Integration_ProcessLog_FullMethodName = "/gosdk.Integration/ProcessLog"
+	Integration_ProcessLog_FullMethodName = "/plugins.Integration/ProcessLog"
 )
 
 // IntegrationClient is the client API for Integration service.
@@ -640,7 +640,7 @@ type Integration_ProcessLogServer = grpc.BidiStreamingServer[Log, Ack]
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Integration_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "gosdk.Integration",
+	ServiceName: "plugins.Integration",
 	HandlerType: (*IntegrationServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -655,8 +655,8 @@ var Integration_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	Output_EventOutput_FullMethodName = "/gosdk.Output/EventOutput"
-	Output_AlertOutput_FullMethodName = "/gosdk.Output/AlertOutput"
+	Output_EventOutput_FullMethodName = "/plugins.Output/EventOutput"
+	Output_AlertOutput_FullMethodName = "/plugins.Output/AlertOutput"
 )
 
 // OutputClient is the client API for Output service.
@@ -778,7 +778,7 @@ func _Output_AlertOutput_Handler(srv interface{}, ctx context.Context, dec func(
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Output_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "gosdk.Output",
+	ServiceName: "plugins.Output",
 	HandlerType: (*OutputServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

@@ -1,6 +1,8 @@
-package go_sdk
+package plugins
 
 import (
+	"github.com/threatwinds/go-sdk/catcher"
+	"github.com/threatwinds/go-sdk/utils"
 	"path"
 	"sync"
 	"time"
@@ -18,18 +20,18 @@ var cfgMutex sync.RWMutex
 // The function updates the Pipeline, DisabledRules, Tenants, Patterns, and Plugins fields of the receiver Config object.
 // If an error occurs while reading or unmarshalling a file, the function logs the error and continues with the next file.
 func (c *Config) loadCfg() {
-	cFiles := ListFiles(path.Join(getEnv().Workdir, "pipeline"), ".yaml")
+	cFiles := utils.ListFiles(path.Join(getEnv().Workdir, "pipeline"), ".yaml")
 	for _, cFile := range cFiles {
 		var nCfg = new(Config)
-		b, err := ReadPbYaml(cFile)
+		b, err := utils.ReadPbYaml(cFile)
 		if err != nil {
-			_ = Error("error reading YAML file", err, map[string]interface{}{"file": cFile})
+			_ = catcher.Error("error reading YAML file", err, map[string]interface{}{"file": cFile})
 			continue
 		}
 
 		err = protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, nCfg)
 		if err != nil {
-			_ = Error("error reading YAML file", err, map[string]interface{}{"file": cFile})
+			_ = catcher.Error("error reading YAML file", err, map[string]interface{}{"file": cFile})
 			continue
 		}
 

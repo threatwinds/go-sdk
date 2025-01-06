@@ -1,6 +1,9 @@
-package go_sdk
+package plugins
 
-import "testing"
+import (
+	"github.com/threatwinds/go-sdk/utils"
+	"testing"
+)
 
 func TestEvaluate(t *testing.T) {
 	t.Run("Equals", func(t *testing.T) {
@@ -20,7 +23,7 @@ func TestEvaluate(t *testing.T) {
 			Expression: "field1 == field2",
 		}
 
-		equal, _ := w.Evaluate(PointerOf(`{"field1": "value1", "field2": "value1"}`))
+		equal, _ := w.Evaluate(utils.PointerOf(`{"field1": "value1", "field2": "value1"}`))
 
 		if !equal {
 			t.Errorf("Expected true, got false")
@@ -44,7 +47,7 @@ func TestEvaluate(t *testing.T) {
 			Expression: "field1 == field2",
 		}
 
-		equal, _ := w.Evaluate(PointerOf(`{"field1": "value0", "field2": "value1"}`))
+		equal, _ := w.Evaluate(utils.PointerOf(`{"field1": "value0", "field2": "value1"}`))
 
 		if equal {
 			t.Errorf("Expected false, got true")
@@ -63,7 +66,7 @@ func TestEvaluate(t *testing.T) {
 			Expression: "field.startsWith('8.1.0')",
 		}
 
-		startsWith, _ := w.Evaluate(PointerOf(`{"log": {"field": "8.1.0-20241029"}}`))
+		startsWith, _ := w.Evaluate(utils.PointerOf(`{"log": {"field": "8.1.0-20241029"}}`))
 
 		if !startsWith {
 			t.Errorf("Expected true, got false")
@@ -82,7 +85,7 @@ func TestEvaluate(t *testing.T) {
 			Expression: "field_ok==true",
 		}
 
-		exists, _ := w.Evaluate(PointerOf(`{"field1": "value"}`))
+		exists, _ := w.Evaluate(utils.PointerOf(`{"field1": "value"}`))
 
 		if exists {
 			t.Errorf("Expected false, got true")

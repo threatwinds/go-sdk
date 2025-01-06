@@ -1,6 +1,7 @@
-package go_sdk
+package utils
 
 import (
+	"github.com/threatwinds/go-sdk/catcher"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,7 @@ func ListFiles(route string, filter string) []string {
 	})
 	if err != nil {
 		if !strings.Contains(err.Error(), "no such file or directory") {
-			panic(Error("cannot walk through directory", err, map[string]any{"route": route}))
+			panic(catcher.Error("cannot walk through directory", err, map[string]any{"route": route}))
 		}
 	}
 

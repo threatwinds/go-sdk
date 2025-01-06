@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	gosdk "github.com/threatwinds/go-sdk"
+	"github.com/threatwinds/go-sdk/catcher"
 	"io"
 	"strings"
 
@@ -34,7 +34,7 @@ type IndexAction struct {
 // - Index: The index name where the document will be stored.
 // - Id: The document ID.
 // - Body: The document content in byte slice format.
-// - Action: The action to be performed (e.g., "index").
+// - Action: The action to be performed (e.g., "index"). Currently only supports "index", we are planning to add "update" and "delete".
 //
 // The function constructs a bulk request by iterating over the items and creating
 // the necessary JSON payload for each item based on its action. Currently, only the "index"
@@ -55,14 +55,14 @@ func Bulk(ctx context.Context, items []BulkItem) error {
 
 	nd, err := generateNd(items)
 	if err != nil {
-		return gosdk.Error("failed to generate bulk request", err, nil)
+		return catcher.Error("failed to generate bulk request", err, nil)
 	}
 
 	req.Body = strings.NewReader(nd)
 
 	resp, err := req.Do(ctx, client)
 	if err != nil {
-		return gosdk.Error("failed to send bulk request", err, nil)
+		return catcher.Error("failed to send bulk request", err, nil)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -70,10 +70,10 @@ func Bulk(ctx context.Context, items []BulkItem) error {
 	if resp.StatusCode != 200 && resp.StatusCode != 201 && resp.StatusCode != 202 {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return gosdk.Error("failed to read bulk response body", err, nil)
+			return catcher.Error("failed to read bulk response body", err, nil)
 		}
 
-		return gosdk.Error("bulk request failed", nil, map[string]any{
+		return catcher.Error("bulk request failed", nil, map[string]any{
 			"status":   resp.StatusCode,
 			"response": string(body)},
 		)
@@ -92,7 +92,7 @@ func generateNd(items []BulkItem) (string, error) {
 
 			err := json.Compact(cl, item.Body)
 			if err != nil {
-				return nd, gosdk.Error("failed to compact JSON", err, map[string]any{
+				return nd, catcher.Error("failed to compact JSON", err, map[string]any{
 					"body": string(item.Body),
 				})
 			}
@@ -106,7 +106,7 @@ func generateNd(items []BulkItem) (string, error) {
 
 			bAH, err := json.Marshal(aH)
 			if err != nil {
-				return nd, gosdk.Error("failed to encode action header", err, nil)
+				return nd, catcher.Error("failed to encode action header", err, nil)
 			}
 
 			nd += strings.Join([]string{string(bAH), cl.String()}, "\n") + "\n"

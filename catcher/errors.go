@@ -1,4 +1,4 @@
-package go_sdk
+package catcher
 
 import (
 	"crypto/md5"
@@ -62,7 +62,7 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 			Msg:   msg,
 			Cause: func() *string {
 				if cause != nil {
-					return PointerOf(cause.Error())
+					return pointerOf(cause.Error())
 				} else {
 					return nil
 				}
@@ -102,4 +102,8 @@ func (e SdkError) GinError(c *gin.Context) {
 	} else {
 		c.AbortWithStatus(status)
 	}
+}
+
+func pointerOf[t any](s t) *t {
+	return &s
 }
