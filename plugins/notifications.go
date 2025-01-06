@@ -24,9 +24,9 @@ var notificationsChannelOnce sync.Once
 
 // DataProcessingMessage represent the details of a success or failure during the processing of a log. Used as a message body for notifications.
 type DataProcessingMessage struct {
-	Error      string `json:"error,omitempty"`
-	DataType   string `json:"dataType"`
-	DataSource string `json:"dataSource"`
+	Error      *catcher.SdkError `json:"error,omitempty"`
+	DataType   string            `json:"dataType"`
+	DataSource string            `json:"dataSource"`
 }
 
 type Topic string
