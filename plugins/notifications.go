@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/threatwinds/go-sdk/catcher"
+	"os"
 	"path"
 	"time"
 
@@ -41,36 +42,40 @@ const (
 // to the engine server via gRPC. It logs an error if the connection to the engine server fails,
 // if sending a notification fails, or if receiving an acknowledgment fails. It runs indefinitely
 // and should be run as a goroutine.
-//
-// Returns:
-//
-//	error: An error object if any error occurs during the process.
-func SendNotificationsFromChannel() error {
+func SendNotificationsFromChannel() {
 	conn, err := grpc.NewClient(fmt.Sprintf("unix://%s", path.Join(
 		GetCfg().Env.Workdir, "sockets", "engine_server.sock")),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return catcher.Error("failed to connect to engine server", err, nil)
+		_ = catcher.Error("failed to connect to engine server", err, nil)
+		os.Exit(1)
 	}
 
 	client := NewEngineClient(conn)
 
 	notifyClient, err := client.Notify(context.Background())
 	if err != nil {
-		return catcher.Error("failed to create notify client", err, nil)
+		_ = catcher.Error("failed to create notify client", err, nil)
+		os.Exit(1)
 	}
 
-	for {
-		msg := <-notificationsChannel
+	go func() {
+		for {
+			msg := <-notificationsChannel
 
-		err = notifyClient.Send(msg)
-		if err != nil {
-			return catcher.Error("failed to send notification", err, nil)
+			err = notifyClient.Send(msg)
+			if err != nil {
+				_ = catcher.Error("failed to send notification", err, nil)
+				os.Exit(1)
+			}
 		}
+	}()
 
+	for {
 		_, err := notifyClient.Recv()
 		if err != nil {
-			return catcher.Error("failed to receive notification ack", err, nil)
+			_ = catcher.Error("failed to receive notification ack", err, nil)
+			os.Exit(1)
 		}
 	}
 }
