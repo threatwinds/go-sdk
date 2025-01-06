@@ -3,10 +3,13 @@ package plugins
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/threatwinds/go-sdk/catcher"
 	"os"
 	"path"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +20,7 @@ import (
 // notificationsChannel is a channel used to queue notification messages
 // that need to be sent to the engine server
 var notificationsChannel chan *Message
+var notificationsChannelOnce sync.Once
 
 // DataProcessingMessage represent the details of a success or failure during the processing of a log. Used as a message body for notifications.
 type DataProcessingMessage struct {
@@ -58,6 +62,10 @@ func SendNotificationsFromChannel() {
 		_ = catcher.Error("failed to create notify client", err, nil)
 		os.Exit(1)
 	}
+
+	notificationsChannelOnce.Do(func() {
+		notificationsChannel = make(chan *Message, runtime.NumCPU()*100)
+	})
 
 	go func() {
 		for {
@@ -102,7 +110,13 @@ func EnqueueNotification[T any](topic Topic, message T) error {
 		Message:   string(mBytes),
 	}
 
-	notificationsChannel <- msg
-
-	return nil
+	select {
+	case notificationsChannel <- msg:
+		return nil
+	case <-time.After(1 * time.Second):
+		return catcher.Error("cannot enqueue message", errors.New("queue is full"), map[string]any{
+			"advise": "please consider to increase resources",
+			"queue":  "notificationsChannel",
+		})
+	}
 }
