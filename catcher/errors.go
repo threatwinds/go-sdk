@@ -68,8 +68,9 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 				}
 			}(),
 		}
+
+		log.Println(err.Error())
 	}
-	log.Println(err.Error())
 
 	return err
 }
