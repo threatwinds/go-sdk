@@ -9,14 +9,13 @@ import (
 	osgo "github.com/opensearch-project/opensearch-go/v2"
 )
 
-var (
-	client *osgo.Client
-	err    error
-)
+var client *osgo.Client
 
 var once = sync.Once{}
 
 func Connect(nodes []string) error {
+	var err error
+
 	once.Do(func() {
 		client, err = osgo.NewClient(osgo.Config{
 			Transport: &http.Transport{
@@ -26,5 +25,9 @@ func Connect(nodes []string) error {
 		})
 	})
 
-	return catcher.Error("failed to connect to OpenSearch", err, map[string]any{"nodes": nodes})
+	if err != nil {
+		return catcher.Error("cannot connect to OpenSearch", err, nil)
+	}
+
+	return nil
 }
