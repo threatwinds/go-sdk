@@ -57,7 +57,9 @@ func ToObject(str *string, object protoreflect.ProtoMessage) error {
 		})
 	}
 
-	err := protojson.Unmarshal([]byte(*str), object)
+	unmarshaler := protojson.UnmarshalOptions{DiscardUnknown: true}
+
+	err := unmarshaler.Unmarshal([]byte(*str), object)
 	if err != nil {
 		return catcher.Error("failed to parse object", err, nil)
 	}
