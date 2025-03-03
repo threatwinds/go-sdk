@@ -4,7 +4,7 @@ go 1.23.1
 
 require (
 	github.com/gin-gonic/gin v1.10.0
-	github.com/google/cel-go v0.22.1
+	github.com/google/cel-go v0.24.1
 	github.com/google/uuid v1.6.0
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/tidwall/gjson v1.18.0
