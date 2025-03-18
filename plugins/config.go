@@ -56,9 +56,7 @@ func (c *Config) loadCfg() {
 // updateCfg updates the global configuration by loading new values
 // into a temporary Config object and then replacing the current
 // configuration with the new one. It ensures thread safety by using
-// a mutex lock. After updating the configuration, it logs the new
-// configuration state. If there is an error during the marshalling
-// of the configuration, it logs the error.
+// a mutex lock.
 func updateCfg() {
 	cfgMutex.Lock()
 
