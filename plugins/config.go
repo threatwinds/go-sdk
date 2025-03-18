@@ -3,7 +3,7 @@ package plugins
 import (
 	"github.com/threatwinds/go-sdk/catcher"
 	"github.com/threatwinds/go-sdk/utils"
-	"path"
+	"os"
 	"sync"
 	"time"
 
@@ -15,12 +15,20 @@ var cfg *Config
 var cfgOnce sync.Once
 var cfgMutex sync.RWMutex
 
+const WorkDir string = "/workdir"
+
 // loadCfg loads configuration files from the "pipeline" directory within the working directory.
 // It reads all YAML files, decodes them into Config objects, and merges their contents into the receiver Config object.
 // The function updates the Pipeline, DisabledRules, Tenants, Patterns, and Plugins fields of the receiver Config object.
 // If an error occurs while reading or unmarshalling a file, the function logs the error and continues with the next file.
 func (c *Config) loadCfg() {
-	cFiles := utils.ListFiles(path.Join(getEnv().Workdir, "pipeline"), ".yaml")
+	pipelineFolder, err := utils.MkdirJoin(WorkDir, "pipeline")
+	if err != nil {
+		_ = catcher.Error("failed to create pipeline folder", err, map[string]interface{}{"dir": pipelineFolder})
+		os.Exit(1)
+	}
+
+	cFiles := utils.ListFiles(pipelineFolder, ".yaml")
 	for _, cFile := range cFiles {
 		var nCfg = new(Config)
 		b, err := utils.ReadPbYaml(cFile)
