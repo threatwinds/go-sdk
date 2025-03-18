@@ -287,7 +287,6 @@ message Pipeline {
 message Env {
 	string nodeName = 1;
 	repeated string nodeGroups = 2;
-	string workdir = 3;
 	int64 logLevel = 4;
 	string mode = 5;
 }
