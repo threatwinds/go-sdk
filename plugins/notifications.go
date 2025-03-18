@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/threatwinds/go-sdk/catcher"
+	"github.com/threatwinds/go-sdk/utils"
 	"os"
-	"path"
 	"runtime"
 	"sync"
 	"time"
@@ -47,8 +47,14 @@ const (
 // if sending a notification fails, or if receiving an acknowledgment fails. It runs indefinitely
 // and should be run as a goroutine.
 func SendNotificationsFromChannel() {
-	conn, err := grpc.NewClient(fmt.Sprintf("unix://%s", path.Join(
-		GetCfg().Env.Workdir, "sockets", "engine_server.sock")),
+	socketDir, err := utils.MkdirJoin(WorkDir, "sockets")
+	if err != nil {
+		_ = catcher.Error("failed to create socket directory", err, nil)
+		os.Exit(1)
+	}
+	socketFile := utils.FileJoin(socketDir, "engine_server.sock")
+
+	conn, err := grpc.NewClient(fmt.Sprintf("unix://%s", socketFile),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		_ = catcher.Error("failed to connect to engine server", err, nil)

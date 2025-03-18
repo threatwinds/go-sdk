@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/threatwinds/go-sdk/catcher"
+	"github.com/threatwinds/go-sdk/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"os"
-	"path"
 	"runtime"
 	"sync"
 	"time"
@@ -22,7 +22,14 @@ var logsChannelOnce sync.Once
 // if sending a notification fails, or if receiving an acknowledgment fails. It runs indefinitely
 // and should be run as a goroutine.
 func SendLogsFromChannel() {
-	conn, err := grpc.NewClient(fmt.Sprintf("unix://%s", path.Join(GetCfg().Env.Workdir, "sockets", "engine_server.sock")), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	socketDir, err := utils.MkdirJoin(WorkDir, "sockets")
+	if err != nil {
+		_ = catcher.Error("failed to create socket directory", err, nil)
+		os.Exit(1)
+	}
+	socketFile := utils.FileJoin(socketDir, "engine_server.sock")
+
+	conn, err := grpc.NewClient(fmt.Sprintf("unix://%s", socketFile), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		_ = catcher.Error("failed to connect to engine server", err, map[string]any{})
 		os.Exit(1)
