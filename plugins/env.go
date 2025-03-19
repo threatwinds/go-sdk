@@ -117,11 +117,6 @@ func getEnv() *Env {
 		panic(err)
 	}
 
-	env.Workdir, err = getEnvStr("WORK_DIR", "", true)
-	if err != nil {
-		panic(err)
-	}
-
 	env.LogLevel, err = getEnvInt("LOG_LEVEL", "200", false)
 	if err != nil {
 		panic(err)
