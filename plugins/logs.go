@@ -27,7 +27,7 @@ func SendLogsFromChannel() {
 		_ = catcher.Error("failed to create socket directory", err, nil)
 		os.Exit(1)
 	}
-	socketFile := utils.FileJoin(socketDir, "engine_server.sock")
+	socketFile := socketDir.FileJoin("engine_server.sock")
 
 	conn, err := grpc.NewClient(fmt.Sprintf("unix://%s", socketFile), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {

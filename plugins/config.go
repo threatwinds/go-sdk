@@ -28,7 +28,7 @@ func (c *Config) loadCfg() {
 		os.Exit(1)
 	}
 
-	cFiles := utils.ListFiles(pipelineFolder, ".yaml")
+	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml")
 	for _, cFile := range cFiles {
 		var nCfg = new(Config)
 		b, err := utils.ReadPbYaml(cFile)
