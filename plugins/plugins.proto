@@ -37,6 +37,7 @@ message Alert {
 	Side adversary = 16;
 	Side target = 17;
 	repeated Event events = 18;
+	repeated string deduplicateBy = 19;
 }
 
 message Impact {
