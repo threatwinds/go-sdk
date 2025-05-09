@@ -7,7 +7,7 @@ import (
 func TestValidateSHA3384(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -24,7 +24,7 @@ func TestValidateSHA3384(t *testing.T) {
 
 	invalidCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{

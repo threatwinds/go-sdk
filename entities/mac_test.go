@@ -7,7 +7,7 @@ import (
 func TestValidateMAC(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -29,7 +29,7 @@ func TestValidateMAC(t *testing.T) {
 
 	invalidCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{

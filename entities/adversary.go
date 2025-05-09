@@ -9,7 +9,7 @@ import (
 // If any of these validations pass, it returns an error.
 // If the value isn't a string, it returns an error.
 // Otherwise, it returns the value and its SHA3-256 hash.
-func ValidateAdversary(value interface{}) (string, string, error) {
+func ValidateAdversary(value string) (string, string, error) {
 	_, _, e1 := ValidateURL(value)
 
 	_, _, e3 := ValidateUUID(value)
@@ -26,10 +26,5 @@ func ValidateAdversary(value interface{}) (string, string, error) {
 		return "", "", fmt.Errorf("invalid adversary: %v", value)
 	}
 
-	v, ok := value.(string)
-	if !ok {
-		return "", "", fmt.Errorf("value is not string: %v", value)
-	}
-
-	return v, GenerateSHA3256(v), nil
+	return value, GenerateSHA3256(value), nil
 }

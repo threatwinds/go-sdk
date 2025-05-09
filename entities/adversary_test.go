@@ -7,7 +7,7 @@ import (
 func TestValidateAdversary(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -74,7 +74,7 @@ func TestValidateAdversary(t *testing.T) {
 
 	invalidCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{

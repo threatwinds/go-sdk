@@ -7,7 +7,7 @@ import (
 func TestValidateMime(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -44,7 +44,7 @@ func TestValidateMime(t *testing.T) {
 
 	invalidCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{

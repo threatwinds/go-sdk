@@ -7,7 +7,7 @@ import (
 func TestValidatePath(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -39,7 +39,7 @@ func TestValidatePath(t *testing.T) {
 
 	invalidCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{

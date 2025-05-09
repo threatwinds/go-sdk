@@ -2,19 +2,13 @@ package entities
 
 import (
 	"encoding/hex"
-	"fmt"
 	"strings"
 )
 
 // ValidateHexadecimal validates if the given value is a valid hexadecimal string.
 // It returns the hexadecimal string in lowercase format, its SHA3-256 hash and an error if any.
-func ValidateHexadecimal(value interface{}) (string, string, error) {
-	v, ok := value.(string)
-	if !ok {
-		return "", "", fmt.Errorf("value is not string: %v", value)
-	}
-
-	v = strings.ToLower(v)
+func ValidateHexadecimal(value string) (string, string, error) {
+	v := strings.ToLower(value)
 
 	h, err := hex.DecodeString(v)
 	if err != nil {

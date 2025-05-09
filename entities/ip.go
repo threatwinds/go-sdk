@@ -8,36 +8,31 @@ import (
 
 // ValidateIP validates if the given IP address is valid and not private, multicast, loopback, or unspecified.
 // It returns the validated IP address and its SHA3-256 hash.
-func ValidateIP(value interface{}) (string, string, error) {
-	v, ok := value.(string)
-	if !ok {
-		return "", "", fmt.Errorf("value not string: %v", value)
-	}
-
-	addr := net.ParseIP(strings.ToLower(v))
+func ValidateIP(value string) (string, string, error) {
+	addr := net.ParseIP(strings.ToLower(value))
 	if addr == nil {
-		return "", "", fmt.Errorf("invalid IP: %s", v)
+		return "", "", fmt.Errorf("invalid IP: %s", value)
 	}
 	if addr.IsPrivate() {
-		return "", "", fmt.Errorf("cannot accept private IP: %s", v)
+		return "", "", fmt.Errorf("cannot accept private IP: %s", value)
 	}
 	if addr.IsInterfaceLocalMulticast() {
-		return "", "", fmt.Errorf("cannot accept interface local multicast IP: %s", v)
+		return "", "", fmt.Errorf("cannot accept interface local multicast IP: %s", value)
 	}
 	if addr.IsLinkLocalMulticast() {
-		return "", "", fmt.Errorf("cannot accept link local multicast IP: %s", v)
+		return "", "", fmt.Errorf("cannot accept link local multicast IP: %s", value)
 	}
 	if addr.IsLinkLocalUnicast() {
-		return "", "", fmt.Errorf("cannot accept link local unicast IP: %s", v)
+		return "", "", fmt.Errorf("cannot accept link local unicast IP: %s", value)
 	}
 	if addr.IsLoopback() {
-		return "", "", fmt.Errorf("cannot accept loopback IP: %s", v)
+		return "", "", fmt.Errorf("cannot accept loopback IP: %s", value)
 	}
 	if addr.IsMulticast() {
-		return "", "", fmt.Errorf("cannot accept multicast IP: %s", v)
+		return "", "", fmt.Errorf("cannot accept multicast IP: %s", value)
 	}
 	if addr.IsUnspecified() {
-		return "", "", fmt.Errorf("cannot accept unspecified IP: %s", v)
+		return "", "", fmt.Errorf("cannot accept unspecified IP: %s", value)
 	}
 
 	a := addr.String()

@@ -7,7 +7,7 @@ import (
 func TestValidateEmail(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -34,7 +34,7 @@ func TestValidateEmail(t *testing.T) {
 
 	invalidCases := []struct {
 		name  string
-		input interface{}
+		input string
 	}{
 		{
 			name:  "invalid email",

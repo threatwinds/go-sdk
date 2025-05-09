@@ -5,7 +5,7 @@ import "fmt"
 // ValidateIdentifier validates a value by checking if it's a valid UUID, MD5 or SHA3256 hash.
 // If the value is valid, it returns the string representation of the hash, the hash itself and no error.
 // If the value is invalid, it returns empty strings and an error.
-func ValidateIdentifier(value interface{}) (string, string, error) {
+func ValidateIdentifier(value string) (string, string, error) {
 	s2, h2, err := ValidateMD5(value)
 	if err == nil {
 		return s2, h2, nil

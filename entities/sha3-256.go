@@ -9,12 +9,8 @@ import (
 )
 
 // ValidateSHA3256 validates if the given value is a valid SHA3-256 hash.
-func ValidateSHA3256(value interface{}) (string, string, error) {
-	v, ok := value.(string)
-	if !ok {
-		return "", "", fmt.Errorf("value is not string: %v", value)
-	}
-	v = strings.ToLower(v)
+func ValidateSHA3256(value string) (string, string, error) {
+	v := strings.ToLower(value)
 	e := ValidateRegEx(`^[0-9a-f]{64}$`, v)
 	if e != nil {
 		return "", "", e
@@ -23,8 +19,9 @@ func ValidateSHA3256(value interface{}) (string, string, error) {
 	return v, GenerateSHA3256(v), nil
 }
 
-// GenerateSHA3256 generates a SHA3-256 hash from the given string.
-func GenerateSHA3256(value string) string {
-	sum := sha3.Sum256([]byte(value))
+// GenerateSHA3256 generates a SHA3-256 hash from the given value.
+func GenerateSHA3256[T string | int64 | float64 | bool](value T) string {
+	v := fmt.Sprintf("%v", value)
+	sum := sha3.Sum256([]byte(v))
 	return hex.EncodeToString(sum[:])
 }

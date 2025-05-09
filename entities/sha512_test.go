@@ -7,7 +7,7 @@ import (
 func TestValidateSHA512(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -19,17 +19,12 @@ func TestValidateSHA512(t *testing.T) {
 
 	invalidCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
 			name:     "invalid SHA-512 hash",
 			input:    "invalid",
-			expected: "",
-		},
-		{
-			name:     "invalid input type",
-			input:    123,
 			expected: "",
 		},
 	}

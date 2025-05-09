@@ -7,7 +7,7 @@ import (
 func TestValidateHexadecimal(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -29,7 +29,7 @@ func TestValidateHexadecimal(t *testing.T) {
 
 	invalidCases := []struct {
 		name  string
-		input interface{}
+		input string
 	}{
 		{
 			name:  "invalid hexadecimal",
@@ -38,10 +38,6 @@ func TestValidateHexadecimal(t *testing.T) {
 		{
 			name:  "invalid hexadecimal with special characters",
 			input: "48@56c6c6f20576f726c",
-		},
-		{
-			name:  "invalid type",
-			input: 123,
 		},
 	}
 

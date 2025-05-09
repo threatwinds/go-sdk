@@ -7,7 +7,7 @@ import (
 func TestValidatePort(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -24,7 +24,7 @@ func TestValidatePort(t *testing.T) {
 
 	invalidCases := []struct {
 		name  string
-		input interface{}
+		input string
 	}{
 		{
 			name:  "invalid port with spaces",

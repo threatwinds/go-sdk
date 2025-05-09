@@ -7,7 +7,7 @@ import (
 func TestValidateInteger(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    int64
 		expected int64
 	}{
 		{
@@ -27,20 +27,6 @@ func TestValidateInteger(t *testing.T) {
 		},
 	}
 
-	invalidCases := []struct {
-		name  string
-		input interface{}
-	}{
-		{
-			name:  "invalid string",
-			input: "not an integer",
-		},
-		{
-			name:  "invalid boolean",
-			input: true,
-		},
-	}
-
 	for _, tc := range validCases {
 		t.Run(tc.name, func(t *testing.T) {
 			actual, _, err := ValidateInteger(tc.input)
@@ -49,15 +35,6 @@ func TestValidateInteger(t *testing.T) {
 			}
 			if actual != tc.expected {
 				t.Errorf("expected %d, but got %d", tc.expected, actual)
-			}
-		})
-	}
-
-	for _, tc := range invalidCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := ValidateInteger(tc.input)
-			if err == nil {
-				t.Fatalf("expected error, but got nil")
 			}
 		})
 	}

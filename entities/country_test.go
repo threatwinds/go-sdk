@@ -7,7 +7,7 @@ import (
 func TestValidateCountry(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -37,28 +37,6 @@ func TestValidateCountry(t *testing.T) {
 		},
 	}
 
-	invalidCases := []struct {
-		name     string
-		input    interface{}
-		expected string
-	}{
-		{
-			name:     "invalid country",
-			input:    123,
-			expected: "",
-		},
-		{
-			name:     "invalid country",
-			input:    true,
-			expected: "",
-		},
-		{
-			name:     "invalid country",
-			input:    []string{"united states"},
-			expected: "",
-		},
-	}
-
 	for _, tc := range validCases {
 		t.Run(tc.name, func(t *testing.T) {
 			actual, _, err := ValidateCountry(tc.input)
@@ -67,15 +45,6 @@ func TestValidateCountry(t *testing.T) {
 			}
 			if actual != tc.expected {
 				t.Errorf("expected %q, but got %q", tc.expected, actual)
-			}
-		})
-	}
-
-	for _, tc := range invalidCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := ValidateCountry(tc.input)
-			if err == nil {
-				t.Fatalf("expected error, but got nil")
 			}
 		})
 	}

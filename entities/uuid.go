@@ -1,20 +1,14 @@
 package entities
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 )
 
 // ValidateUUID validates if a given value is a valid UUID string and returns the UUID, its SHA3-256 hash and an error if any.
-func ValidateUUID(value interface{}) (uuid.UUID, string, error) {
-	v, ok := value.(string)
-	if !ok {
-		return uuid.UUID{}, "", fmt.Errorf("value is not string: %v", value)
-	}
-
-	u, err := uuid.Parse(strings.ToLower(v))
+func ValidateUUID(value string) (uuid.UUID, string, error) {
+	u, err := uuid.Parse(strings.ToLower(value))
 	if err != nil {
 		return uuid.UUID{}, "", err
 	}

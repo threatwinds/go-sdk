@@ -9,15 +9,10 @@ import (
 
 // ValidateString validates a string value and returns the original value, its SHA3-256 hash and an error.
 // If the insensitive flag is set to true, the value is converted to lowercase before hashing.
-func ValidateString(value interface{}, insensitive bool) (string, string, error) {
-	v, ok := value.(string)
-	if !ok {
-		return "", "", fmt.Errorf("value is not string: %v", value)
-	}
-
+func ValidateString(value string, insensitive bool) (string, string, error) {
 	replacement, _ := utf8.DecodeRuneInString(" ")
 	allowed := "\r\n \r \n"
-	v = strings.Map(func(r rune) rune {
+	v := strings.Map(func(r rune) rune {
 		if unicode.IsLetter(r) ||
 			unicode.IsDigit(r) ||
 			unicode.IsPunct(r) ||
@@ -34,7 +29,7 @@ func ValidateString(value interface{}, insensitive bool) (string, string, error)
 		}
 
 		return replacement
-	}, v)
+	}, value)
 
 	if !utf8.ValidString(v) {
 		return "", "", fmt.Errorf("value is not an UTF-8 valid string")

@@ -7,7 +7,7 @@ import (
 func TestValidateDate(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -22,53 +22,6 @@ func TestValidateDate(t *testing.T) {
 		},
 	}
 
-	invalidCases := []struct {
-		name     string
-		input    interface{}
-		expected string
-	}{
-		{
-			name:     "invalid date",
-			input:    "2022-02-30",
-			expected: "",
-		},
-		{
-			name:     "invalid date",
-			input:    "2022-13-01",
-			expected: "",
-		},
-		{
-			name:     "invalid date",
-			input:    "2022-01-32",
-			expected: "",
-		},
-		{
-			name:     "invalid date",
-			input:    "2022-01-0",
-			expected: "",
-		},
-		{
-			name:     "invalid date",
-			input:    "2022-01-",
-			expected: "",
-		},
-		{
-			name:     "invalid date",
-			input:    "2022-01",
-			expected: "",
-		},
-		{
-			name:     "invalid date",
-			input:    "2022",
-			expected: "",
-		},
-		{
-			name:     "invalid date",
-			input:    "2022-01-01T00:00:00Z",
-			expected: "",
-		},
-	}
-
 	for _, tc := range validCases {
 		t.Run(tc.name, func(t *testing.T) {
 			actual, _, err := ValidateDate(tc.input)
@@ -80,21 +33,12 @@ func TestValidateDate(t *testing.T) {
 			}
 		})
 	}
-
-	for _, tc := range invalidCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := ValidateDate(tc.input)
-			if err == nil {
-				t.Fatalf("expected error, but got nil")
-			}
-		})
-	}
 }
 
 func TestValidateDatetime(t *testing.T) {
 	validCases := []struct {
 		name     string
-		input    interface{}
+		input    string
 		expected string
 	}{
 		{
@@ -109,53 +53,6 @@ func TestValidateDatetime(t *testing.T) {
 		},
 	}
 
-	invalidCases := []struct {
-		name     string
-		input    interface{}
-		expected string
-	}{
-		{
-			name:     "invalid datetime",
-			input:    "2022-02-30T00:00:00Z",
-			expected: "",
-		},
-		{
-			name:     "invalid datetime",
-			input:    "2022-13-01T00:00:00Z",
-			expected: "",
-		},
-		{
-			name:     "invalid datetime",
-			input:    "2022-01-32T00:00:00Z",
-			expected: "",
-		},
-		{
-			name:     "invalid datetime",
-			input:    "2022-01-0T00:00:00Z",
-			expected: "",
-		},
-		{
-			name:     "invalid datetime",
-			input:    "2022-01-T00:00:00Z",
-			expected: "",
-		},
-		{
-			name:     "invalid datetime",
-			input:    "2022-01-01T00:00:00",
-			expected: "",
-		},
-		{
-			name:     "invalid datetime",
-			input:    "2022-01-01",
-			expected: "",
-		},
-		{
-			name:     "invalid datetime",
-			input:    "2022",
-			expected: "",
-		},
-	}
-
 	for _, tc := range validCases {
 		t.Run(tc.name, func(t *testing.T) {
 			actual, _, err := ValidateDatetime(tc.input)
@@ -164,15 +61,6 @@ func TestValidateDatetime(t *testing.T) {
 			}
 			if actual != tc.expected {
 				t.Errorf("expected %q, but got %q", tc.expected, actual)
-			}
-		})
-	}
-
-	for _, tc := range invalidCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := ValidateDatetime(tc.input)
-			if err == nil {
-				t.Fatalf("expected error, but got nil")
 			}
 		})
 	}

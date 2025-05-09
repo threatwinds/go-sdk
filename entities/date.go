@@ -1,18 +1,12 @@
 package entities
 
 import (
-	"fmt"
 	"time"
 )
 
 // ValidateDate validates a date string in the format "2006-01-02" and returns the formatted date string and its SHA3-256 hash.
-func ValidateDate(value interface{}) (string, string, error) {
-	v, ok := value.(string)
-	if !ok {
-		return "", "", fmt.Errorf("value is not string: %v", value)
-	}
-
-	tmp, err := time.Parse("2006-01-02", v)
+func ValidateDate(value string) (string, string, error) {
+	tmp, err := time.Parse("2006-01-02", value)
 	if err != nil {
 		return "", "", err
 	}
@@ -22,13 +16,8 @@ func ValidateDate(value interface{}) (string, string, error) {
 }
 
 // ValidateDatetime validates a datetime string in the RFC3339Nano format and returns the formatted datetime string and its SHA3-256 hash.
-func ValidateDatetime(value interface{}) (string, string, error) {
-	v, ok := value.(string)
-	if !ok {
-		return "", "", fmt.Errorf("value not string: %v", value)
-	}
-
-	tmp, err := time.Parse(time.RFC3339Nano, v)
+func ValidateDatetime(value string) (string, string, error) {
+	tmp, err := time.Parse(time.RFC3339Nano, value)
 	if err != nil {
 		return "", "", err
 	}
