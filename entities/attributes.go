@@ -155,7 +155,7 @@ func (d *Attributes) GetAttribute(tagName string) (interface{}, bool) {
 			fieldValue := val.Field(i)
 
 			if fieldValue.IsNil() {
-				return nil, true
+				return nil, false
 			}
 
 			return fieldValue.Elem().Interface(), true

@@ -57,7 +57,7 @@ func TestAttributes_GetAttribute(t *testing.T) {
 			name:       "nil attribute",
 			tagName:    "email-address", // This field exists but is nil in our test instance
 			wantValue:  nil,
-			wantExists: true,
+			wantExists: false,
 		},
 	}
 
