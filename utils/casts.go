@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"github.com/threatwinds/go-sdk/catcher"
+	"reflect"
 	"strconv"
 )
 
@@ -17,6 +18,10 @@ import (
 // Returns:
 //   - The int64 representation of the value, or 0 if the value cannot be cast.
 func CastInt64(value interface{}) int64 {
+	if value == nil {
+		return 0
+	}
+
 	switch v := value.(type) {
 	case int:
 		return int64(v)
@@ -47,6 +52,10 @@ func CastInt64(value interface{}) int64 {
 // Returns:
 //   - The float64 representation of the value, or 0 if the value cannot be cast.
 func CastFloat64(value interface{}) float64 {
+	if value == nil {
+		return 0
+	}
+
 	switch v := value.(type) {
 	case int:
 		return float64(v)
@@ -78,6 +87,10 @@ func CastFloat64(value interface{}) float64 {
 // Returns:
 //   - The bool representation of the value, or false if the value cannot be cast.
 func CastBool(value interface{}) bool {
+	if value == nil {
+		return false
+	}
+
 	switch v := value.(type) {
 	case bool:
 		return v
@@ -109,10 +122,15 @@ func CastBool(value interface{}) bool {
 // Returns:
 //   - A string representation of the input value.
 func CastString(value interface{}) string {
-	switch v := value.(type) {
-	case string:
-		return v
-	default:
-		return fmt.Sprintf("%v", v)
+	if value == nil {
+		return ""
 	}
+
+	ptrValue := reflect.ValueOf(value).Elem()
+
+	if ptrValue.Kind() == reflect.String {
+		return ptrValue.String()
+	}
+
+	return fmt.Sprintf("%v", ptrValue.Interface())
 }
