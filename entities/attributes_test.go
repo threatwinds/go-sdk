@@ -11,7 +11,7 @@ func TestAttributes_GetAttribute(t *testing.T) {
 	attrs := Attributes{
 		Domain:    utils.PointerOf("example.com"),
 		IP:        utils.PointerOf("192.168.1.1"),
-		Port:      utils.PointerOf(443),
+		Port:      utils.PointerOf("443/tcp"),
 		Latitude:  utils.PointerOf(40.7128),
 		Longitude: utils.PointerOf(-74.0060),
 	}
@@ -38,7 +38,7 @@ func TestAttributes_GetAttribute(t *testing.T) {
 		{
 			name:       "existing int attribute",
 			tagName:    "port",
-			wantValue:  443,
+			wantValue:  "443/tcp",
 			wantExists: true,
 		},
 		{
@@ -79,7 +79,7 @@ func TestAttributes_ToMap(t *testing.T) {
 	attrs := Attributes{
 		Domain:    utils.PointerOf("example.com"),
 		IP:        utils.PointerOf("192.168.1.1"),
-		Port:      utils.PointerOf(443),
+		Port:      utils.PointerOf("443/tcp"),
 		Latitude:  utils.PointerOf(40.7128),
 		Longitude: utils.PointerOf(-74.0060),
 	}
@@ -163,14 +163,14 @@ func TestAttributes_SetAttribute(t *testing.T) {
 		{
 			name:    "set int attribute",
 			tagName: "port",
-			value:   443,
+			value:   "443/tcp",
 			wantSet: true,
 			checkFunc: func(t *testing.T, attrs *Attributes) {
 				if attrs.Port == nil {
 					t.Errorf("SetAttribute() failed to set port")
 					return
 				}
-				if *attrs.Port != 443 {
+				if *attrs.Port != "443/tcp" {
 					t.Errorf("SetAttribute() port = %v, want %v", *attrs.Port, 443)
 				}
 			},
@@ -193,14 +193,14 @@ func TestAttributes_SetAttribute(t *testing.T) {
 		{
 			name:    "set int as string",
 			tagName: "port",
-			value:   "8080",
+			value:   "8080/tcp",
 			wantSet: true,
 			checkFunc: func(t *testing.T, attrs *Attributes) {
 				if attrs.Port == nil {
 					t.Errorf("SetAttribute() failed to set port")
 					return
 				}
-				if *attrs.Port != 8080 {
+				if *attrs.Port != "8080/tcp" {
 					t.Errorf("SetAttribute() port = %v, want %v", *attrs.Port, 8080)
 				}
 			},
@@ -238,18 +238,6 @@ func TestAttributes_SetAttribute(t *testing.T) {
 			wantSet: false,
 			checkFunc: func(t *testing.T, attrs *Attributes) {
 				// No changes should be made
-			},
-		},
-		{
-			name:    "invalid type conversion",
-			tagName: "port",
-			value:   "not-an-int",
-			wantSet: false,
-			checkFunc: func(t *testing.T, attrs *Attributes) {
-				// Port should remain unchanged
-				if attrs.Port != nil && *attrs.Port != 8080 {
-					t.Errorf("SetAttribute() port = %v, want %v", *attrs.Port, 8080)
-				}
 			},
 		},
 	}

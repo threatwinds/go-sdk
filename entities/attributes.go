@@ -98,7 +98,7 @@ type Attributes struct {
 	PgpPublicKey              *string  `json:"pgp-public-key,omitempty" example:"-----BEGIN PGP PUBLIC KEY BLOCK----- ... -----END PGP PUBLIC KEY BLOCK-----"`
 	Phone                     *string  `json:"phone,omitempty" example:"+1-555-123-4567"`
 	Pnr                       *string  `json:"pnr,omitempty" example:"ABC123"`
-	Port                      *int     `json:"port,omitempty" example:"443"`
+	Port                      *string  `json:"port,omitempty" example:"443/tcp"`
 	PostalAddress             *string  `json:"postal-address,omitempty" example:"123 Main St, Anytown, CA 12345"`
 	Process                   *string  `json:"process,omitempty" example:"svchost.exe"`
 	ProcessState              *string  `json:"process-state,omitempty" example:"running"`
