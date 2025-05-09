@@ -126,11 +126,22 @@ func CastString(value interface{}) string {
 		return ""
 	}
 
-	ptrValue := reflect.ValueOf(value).Elem()
+	valueType := reflect.TypeOf(value)
 
-	if ptrValue.Kind() == reflect.String {
-		return ptrValue.String()
+	if valueType.Kind() == reflect.Ptr {
+		ptrValue := reflect.ValueOf(value).Elem()
+
+		if ptrValue.Kind() == reflect.String {
+			return ptrValue.String()
+		}
+
+		return fmt.Sprintf("%v", ptrValue.Interface())
 	}
 
-	return fmt.Sprintf("%v", ptrValue.Interface())
+	switch v := value.(type) {
+	case string:
+		return v
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
