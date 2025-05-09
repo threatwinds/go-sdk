@@ -9,7 +9,7 @@ import (
 // It takes a value of any type and a string representing the type to validate against.
 // It returns the validated value, its SHA3-256 hash, and an error if validation fails.
 // The function looks up the type in the Definitions and calls the appropriate validation function.
-func ValidateValue[I string | int64 | float64 | bool](value I, t string) (interface{}, string, error) {
+func ValidateValue(value interface{}, t string) (interface{}, string, error) {
 	for _, def := range Definitions {
 		if def.Type == t {
 			switch def.DataType {
