@@ -10,6 +10,7 @@ import (
 // Attributes represent a collection of various attribute types that can be associated with entities.
 type Attributes struct {
 	AbaRtn                    *int     `json:"aba-rtn,omitempty" example:"123456789"`
+	AccuracyRadius            *float64 `json:"accuracy-radius,omitempty" example:"100"`
 	Adversary                 *string  `json:"adversary,omitempty" example:"APT1"`
 	Airport                   *string  `json:"airport-name,omitempty" example:"London"`
 	Asn                       *int     `json:"asn,omitempty" example:"12345"`

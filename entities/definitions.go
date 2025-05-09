@@ -139,6 +139,13 @@ var longitude = Definition{
 	Label:       "Longitude",
 }
 
+var accuracyRadius = Definition{
+	Type:        "accuracy-radius",
+	Description: "A radius of accuracy in meters",
+	DataType:    FLOAT,
+	Label:       "Accuracy Radius",
+}
+
 var country = Definition{
 	Type:        "country",
 	Description: "A country name",
@@ -1002,6 +1009,7 @@ var Definitions = []Definition{
 	abaRtn,
 	latitude,
 	longitude,
+	accuracyRadius,
 	country,
 	cookie,
 	text,
