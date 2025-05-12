@@ -184,7 +184,7 @@ func (d *Attributes) ToMap() map[string]interface{} {
 			continue
 		}
 
-		result[jsonName] = fieldValue.Interface()
+		result[jsonName] = fieldValue.Elem().Interface()
 	}
 
 	return result

@@ -96,20 +96,20 @@ func TestAttributes_ToMap(t *testing.T) {
 	}
 
 	// Check specific values
-	if val, ok := result["domain"]; !ok || val != attrs.Domain {
-		t.Errorf("ToMap() domain = %v, want %v", val, attrs.Domain)
+	if val, ok := result["domain"]; !ok || val != *attrs.Domain {
+		t.Errorf("ToMap() domain = %v, want %v", val, *attrs.Domain)
 	}
-	if val, ok := result["ip"]; !ok || val != attrs.IP {
-		t.Errorf("ToMap() ip = %v, want %v", val, attrs.IP)
+	if val, ok := result["ip"]; !ok || val != *attrs.IP {
+		t.Errorf("ToMap() ip = %v, want %v", val, *attrs.IP)
 	}
-	if val, ok := result["port"]; !ok || val != attrs.Port {
-		t.Errorf("ToMap() port = %v, want %v", val, attrs.Port)
+	if val, ok := result["port"]; !ok || val != *attrs.Port {
+		t.Errorf("ToMap() port = %v, want %v", val, *attrs.Port)
 	}
-	if val, ok := result["latitude"]; !ok || val != attrs.Latitude {
-		t.Errorf("ToMap() latitude = %v, want %v", val, attrs.Latitude)
+	if val, ok := result["latitude"]; !ok || val != *attrs.Latitude {
+		t.Errorf("ToMap() latitude = %v, want %v", val, *attrs.Latitude)
 	}
-	if val, ok := result["longitude"]; !ok || val != attrs.Longitude {
-		t.Errorf("ToMap() longitude = %v, want %v", val, attrs.Longitude)
+	if val, ok := result["longitude"]; !ok || val != *attrs.Longitude {
+		t.Errorf("ToMap() longitude = %v, want %v", val, *attrs.Longitude)
 	}
 
 	// Verify that nil fields are not included
