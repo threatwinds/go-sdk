@@ -76,7 +76,7 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 }
 
 // ToSdkError tries to cast an error to a SdkError.
-// If the error is not an SdkError, it returns nil.
+// If the error isn't an SdkError, it returns nil.
 func ToSdkError(err error) *SdkError {
 	if err == nil {
 		return nil
