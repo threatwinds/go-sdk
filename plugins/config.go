@@ -1,9 +1,11 @@
 package plugins
 
 import (
+	"fmt"
 	"github.com/threatwinds/go-sdk/catcher"
 	"github.com/threatwinds/go-sdk/utils"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -16,6 +18,48 @@ var cfgOnce sync.Once
 var cfgMutex sync.RWMutex
 
 const WorkDir string = "/workdir"
+const lockFile string = "config.lock"
+
+// AcquireLock tries to acquire the lock file to prevent race conditions
+// when loading or modifying configurations. It returns true if the lock
+// was acquired successfully, false otherwise.
+func AcquireLock() (bool, error) {
+	lockPath := filepath.Join(WorkDir, lockFile)
+
+	// Check if lock file exists
+	if _, err := os.Stat(lockPath); err == nil {
+		// Lock file exists, cannot acquire lock
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		// Error checking lock file
+		return false, fmt.Errorf("error checking lock file: %v", err)
+	}
+
+	// Create lock file
+	file, err := os.Create(lockPath)
+	if err != nil {
+		return false, fmt.Errorf("error creating lock file: %v", err)
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	// Write process ID to lock file for debugging purposes
+	_, err = fmt.Fprintf(file, "%d", os.Getpid())
+	if err != nil {
+		// Try to remove the lock file if we couldn't write to it
+		_ = os.Remove(lockPath)
+		return false, fmt.Errorf("error writing to lock file: %v", err)
+	}
+
+	return true, nil
+}
+
+// ReleaseLock releases the lock file.
+func ReleaseLock() error {
+	lockPath := filepath.Join(WorkDir, lockFile)
+	return os.Remove(lockPath)
+}
 
 // loadCfg loads configuration files from the "pipeline" directory within the working directory.
 // It reads all YAML files, decodes them into Config objects, and merges their contents into the receiver Config object.
@@ -64,8 +108,42 @@ func (c *Config) loadCfg() {
 // updateCfg updates the global configuration by loading new values
 // into a temporary Config object and then replacing the current
 // configuration with the new one. It ensures thread safety by using
-// a mutex lock.
+// a mutex lock and a lockfile mechanism to prevent race conditions
+// with other components that might modify the configuration.
 func updateCfg() {
+	// Try to acquire the lock
+	maxRetries := 5
+	retryDelay := 1 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		acquired, err := AcquireLock()
+		if err != nil {
+			_ = catcher.Error("failed to acquire lock", err, map[string]interface{}{"retry": i + 1})
+			time.Sleep(retryDelay)
+			continue
+		}
+
+		if acquired {
+			// Lock acquired, proceed with updating configuration
+			defer func() {
+				// Release the lock when done
+				if err := ReleaseLock(); err != nil {
+					_ = catcher.Error("failed to release lock", err, nil)
+				}
+			}()
+
+			break
+		}
+
+		// Lock not acquired, wait and retry
+		if i < maxRetries-1 {
+			time.Sleep(retryDelay)
+		} else {
+			_ = catcher.Error("failed to acquire lock after multiple retries", nil, nil)
+			return
+		}
+	}
+
 	cfgMutex.Lock()
 
 	tmpCfg := new(Config)
