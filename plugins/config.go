@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/threatwinds/go-sdk/catcher"
 	"github.com/threatwinds/go-sdk/utils"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -105,6 +106,20 @@ func (c *Config) loadCfg() {
 	c.Env = getEnv()
 }
 
+// RandomDuration returns a random time.Duration between min and max seconds. It panics if max <= 0.
+func RandomDuration(min, max int) time.Duration {
+	source := rand.NewSource(time.Now().UnixNano())
+
+	r := rand.New(source)
+
+	randomNumber := r.Intn(max)
+	if randomNumber < min {
+		randomNumber = min
+	}
+
+	return time.Duration(randomNumber) * time.Second
+}
+
 // updateCfg updates the global configuration by loading new values
 // into a temporary Config object and then replacing the current
 // configuration with the new one. It ensures thread safety by using
@@ -113,36 +128,32 @@ func (c *Config) loadCfg() {
 func updateCfg() {
 	// Try to acquire the lock
 	maxRetries := 5
-	retryDelay := 1 * time.Second
 
 	for i := 0; i < maxRetries; i++ {
 		acquired, err := AcquireLock()
 		if err != nil {
 			_ = catcher.Error("failed to acquire lock", err, map[string]interface{}{"retry": i + 1})
-			time.Sleep(retryDelay)
-			continue
 		}
 
 		if acquired {
-			// Lock acquired, proceed with updating configuration
-			defer func() {
-				// Release the lock when done
-				if err := ReleaseLock(); err != nil {
-					_ = catcher.Error("failed to release lock", err, nil)
-				}
-			}()
-
 			break
 		}
 
 		// Lock not acquired, wait and retry
 		if i < maxRetries-1 {
-			time.Sleep(retryDelay)
+			time.Sleep(RandomDuration(10, 60))
 		} else {
 			_ = catcher.Error("failed to acquire lock after multiple retries", nil, nil)
 			return
 		}
 	}
+
+	defer func() {
+		// Release the lock when done
+		if err := ReleaseLock(); err != nil {
+			_ = catcher.Error("failed to release lock", err, nil)
+		}
+	}()
 
 	cfgMutex.Lock()
 
