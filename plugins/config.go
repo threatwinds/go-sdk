@@ -188,7 +188,7 @@ func GetCfg() *Config {
 	})
 
 	for first {
-		time.Sleep(1 * time.Second)
+		time.Sleep(120 * time.Second)
 	}
 
 	cfgMutex.RLock()
