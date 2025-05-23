@@ -58,14 +58,14 @@ func AcquireLock() (bool, error) {
 
 // ReleaseLock releases the lock file.
 func ReleaseLock() error {
-	lockPath := filepath.Join(WorkDir, lockFile)
+	lockPath := filepath.Join(WorkDir, "pipeline", lockFile)
 	return os.Remove(lockPath)
 }
 
 // checkLockTimeout monitors the lock file and removes it if it has been locked
 // for more than 1 minute, assuming it's a stale lock from a dead process
 func checkLockTimeout() {
-	lockPath := filepath.Join(WorkDir, lockFile)
+	lockPath := filepath.Join(WorkDir, "pipeline", lockFile)
 
 	// Check if lock file exists
 	lockInfo, err := os.Stat(lockPath)
