@@ -25,7 +25,7 @@ const lockFile string = "config.lock"
 // when loading or modifying configurations. It returns true if the lock
 // was acquired successfully, false otherwise.
 func AcquireLock() (bool, error) {
-	lockPath := filepath.Join(WorkDir, lockFile)
+	lockPath := filepath.Join(WorkDir, "pipeline", lockFile)
 
 	// Check if lock file exists
 	if _, err := os.Stat(lockPath); err == nil {
@@ -60,6 +60,50 @@ func AcquireLock() (bool, error) {
 func ReleaseLock() error {
 	lockPath := filepath.Join(WorkDir, lockFile)
 	return os.Remove(lockPath)
+}
+
+// checkLockTimeout monitors the lock file and removes it if it has been locked
+// for more than 1 minute, assuming it's a stale lock from a dead process
+func checkLockTimeout() {
+	lockPath := filepath.Join(WorkDir, lockFile)
+
+	// Check if lock file exists
+	lockInfo, err := os.Stat(lockPath)
+	if os.IsNotExist(err) {
+		// No lock file exists, nothing to check
+		return
+	}
+	if err != nil {
+		_ = catcher.Error("error checking lock file stat", err, map[string]interface{}{"lockPath": lockPath})
+		return
+	}
+
+	// Check if lock has been held for more than 1 minute
+	lockAge := time.Since(lockInfo.ModTime())
+	if lockAge < time.Minute {
+		// Lock is still fresh, no action needed
+		return
+	}
+
+	// Lock is older than 1 minute, remove it as it's likely stale
+	err = os.Remove(lockPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			_ = catcher.Error("error removing stale lock file", err, map[string]interface{}{"lockPath": lockPath, "lockAge": lockAge.String()})
+		}
+	}
+}
+
+// startLockMonitor starts a goroutine that periodically checks for stale lock files
+func startLockMonitor() {
+	go func() {
+		ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
+		defer ticker.Stop()
+
+		for range ticker.C {
+			checkLockTimeout()
+		}
+	}()
 }
 
 // loadCfg loads configuration files from the "pipeline" directory within the working directory.
@@ -177,6 +221,9 @@ func GetCfg() *Config {
 	cfgOnce.Do(func() {
 		first = true
 		cfg = new(Config)
+
+		// Start the lock monitor goroutine
+		startLockMonitor()
 
 		go func() {
 			for {
