@@ -216,10 +216,7 @@ func updateCfg() {
 // It waits for the initial configuration to be set before returning it.
 // The function returns a pointer to the Config struct.
 func GetCfg() *Config {
-	var first bool
-
 	cfgOnce.Do(func() {
-		first = true
 		cfg = new(Config)
 
 		// Start the lock monitor goroutine
@@ -228,14 +225,13 @@ func GetCfg() *Config {
 		go func() {
 			for {
 				updateCfg()
-				first = false
 				time.Sleep(60 * time.Second)
 			}
 		}()
 	})
 
-	for first {
-		time.Sleep(120 * time.Second)
+	for cfg.Env == nil {
+		time.Sleep(20 * time.Second)
 	}
 
 	cfgMutex.RLock()
