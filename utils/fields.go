@@ -11,9 +11,7 @@ import (
 func ValidateReservedField(f string, allowEmpty bool) error {
 	var reservedFields = []string{
 		"raw",
-		"dataType",
 		"@timestamp",
-		"dataSource",
 	}
 
 	if f == "" && !allowEmpty {
