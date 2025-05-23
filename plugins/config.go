@@ -175,9 +175,6 @@ func updateCfg() {
 
 	for i := 0; i < maxRetries; i++ {
 		acquired, err := AcquireLock()
-		if err != nil {
-			_ = catcher.Error("failed to acquire lock", err, map[string]interface{}{"retry": i + 1})
-		}
 
 		if acquired {
 			break
@@ -185,6 +182,7 @@ func updateCfg() {
 
 		// Lock not acquired, wait and retry
 		if i < maxRetries-1 {
+			_ = catcher.Error("failed to acquire lock", err, map[string]interface{}{"retry": i + 1, "maxRetries": maxRetries})
 			time.Sleep(RandomDuration(10, 60))
 		} else {
 			_ = catcher.Error("failed to acquire lock after multiple retries", nil, nil)
