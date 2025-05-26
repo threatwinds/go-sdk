@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 
-	"log"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -82,7 +81,7 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 			err.Severity = calculateSeverity(statusCode)
 		}
 
-		log.Println(err.Error())
+		fmt.Println(err.Error())
 	}
 
 	return err

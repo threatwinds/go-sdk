@@ -94,6 +94,14 @@ func TestErrorCreation(t *testing.T) {
 		if len(sdkErr.Trace) == 0 {
 			t.Error("Expected non-empty trace")
 		}
+
+		if sdkErr.Timestamp == "" {
+			t.Error("Expected non-empty timestamp")
+		}
+
+		if sdkErr.Severity == "" {
+			t.Error("Expected non-empty severity")
+		}
 	})
 }
 
