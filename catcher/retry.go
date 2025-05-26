@@ -18,15 +18,13 @@ var DefaultRetryConfig = &RetryConfig{
 }
 
 // IsException checks if an error matches any of the specified exception patterns
-// This replaces the logger.Is() function for SdkError compatibility
 func IsException(err error, exceptions ...string) bool {
 	if err == nil {
 		return false
 	}
 
-	errorMsg := err.Error()
 	for _, exception := range exceptions {
-		if strings.Contains(errorMsg, exception) {
+		if strings.Contains(err.Error(), exception) {
 			return true
 		}
 	}

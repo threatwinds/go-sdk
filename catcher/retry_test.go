@@ -22,7 +22,7 @@ func TestIsException(t *testing.T) {
 		{
 			name:       "matching exception",
 			err:        errors.New("database connection failed"),
-			exceptions: []string{"connection", "timeout"},
+			exceptions: []string{"database connection", "timeout"},
 			expected:   true,
 		},
 		{
@@ -248,18 +248,20 @@ func TestInfiniteRetry(t *testing.T) {
 		}
 	})
 
+	const fatalError string = "fatal error occurred"
+
 	t.Run("exception stops retry", func(t *testing.T) {
 		attempts := 0
 		f := func() error {
 			attempts++
-			return errors.New("fatal error occurred")
+			return errors.New(fatalError)
 		}
 
 		config := &RetryConfig{
 			WaitTime: 10 * time.Millisecond,
 		}
 
-		err := InfiniteRetry(f, config, "fatal")
+		err := InfiniteRetry(f, config, fatalError)
 		if err == nil {
 			t.Error("Expected error due to exception")
 		}

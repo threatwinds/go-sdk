@@ -2,7 +2,6 @@ package catcher
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +33,8 @@ func TestSdkErrorIntegration(t *testing.T) {
 		}
 	})
 
+	const errorAuthenticationFailed = "authentication failed"
+
 	t.Run("sdk error exception handling", func(t *testing.T) {
 		attempts := 0
 		err := Retry(func() error {
@@ -44,7 +45,7 @@ func TestSdkErrorIntegration(t *testing.T) {
 		}, &RetryConfig{
 			MaxRetries: 5,
 			WaitTime:   10 * time.Millisecond,
-		}, "authentication")
+		}, errorAuthenticationFailed)
 
 		if err == nil {
 			t.Error("Expected error due to authentication exception")
@@ -145,25 +146,7 @@ func BenchmarkRetryPerformance(b *testing.B) {
 	})
 }
 
-// Example_migration shows a complete migration example
-func Example_migration() {
-	// New catcher-style retry with enhanced error handling
-	newRetry := func() error {
-		return Retry(func() error {
-			err := errors.New("temporary error")
-			return Error("operation failed", err, map[string]any{
-				"operation": "example",
-				"status":    500,
-				"retryable": true,
-			})
-		}, &RetryConfig{
-			MaxRetries: 3,
-			WaitTime:   time.Second,
-		}, "fatal")
-	}
-
-	fmt.Printf("New function: %v\n", newRetry())
-}
+const connectionFailed string = "connection failed"
 
 // TestRealWorldScenarios tests scenarios common in ThreatWinds APIs
 func TestRealWorldScenarios(t *testing.T) {
@@ -183,7 +166,7 @@ func TestRealWorldScenarios(t *testing.T) {
 			return nil
 		}, &RetryConfig{
 			WaitTime: 10 * time.Millisecond,
-		}, "connection")
+		}, connectionFailed)
 
 		if err != nil {
 			t.Errorf("Expected eventual success, got: %v", err)
@@ -195,6 +178,8 @@ func TestRealWorldScenarios(t *testing.T) {
 			t.Errorf("Expected 5 attempts, got %d", attempts)
 		}
 	})
+
+	var errorPermanent string = "permanent"
 
 	t.Run("external API with rate limiting", func(t *testing.T) {
 		attempts := 0
@@ -211,7 +196,7 @@ func TestRealWorldScenarios(t *testing.T) {
 		}, &RetryConfig{
 			MaxRetries: 5,
 			WaitTime:   10 * time.Millisecond,
-		}, 500*time.Millisecond, 2.0, "permanent")
+		}, 500*time.Millisecond, 2.0, errorPermanent)
 
 		if err != nil {
 			t.Errorf("Expected success after rate limiting, got: %v", err)

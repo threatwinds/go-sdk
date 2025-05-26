@@ -54,7 +54,7 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 
 	var err *SdkError
 	if err = ToSdkError(cause); err == nil {
-		sum := md5.Sum([]byte(fmt.Sprint(msg, trace)))
+		sum := md5.Sum([]byte(msg))
 		err = &SdkError{
 			Code:  hex.EncodeToString(sum[:]),
 			Trace: trace,
