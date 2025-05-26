@@ -7,18 +7,23 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
+
 	"log"
 	"net/http"
 	"runtime"
+	"strconv"
+	"time"
 )
 
 // SdkError is a struct that implements the Go error interface.
 type SdkError struct {
-	Code  string         `json:"code"`
-	Trace []string       `json:"trace"`
-	Msg   string         `json:"msg"`
-	Cause *string        `json:"cause,omitempty"`
-	Args  map[string]any `json:"args,omitempty"`
+	Timestamp string         `json:"timestamp"`
+	Code      string         `json:"code"`
+	Trace     []string       `json:"trace"`
+	Msg       string         `json:"msg"`
+	Cause     *string        `json:"cause,omitempty"`
+	Args      map[string]any `json:"args,omitempty"`
+	Severity  string         `json:"severity"`
 }
 
 // Error returns the error message.
@@ -56,10 +61,11 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 	if err = ToSdkError(cause); err == nil {
 		sum := md5.Sum([]byte(msg))
 		err = &SdkError{
-			Code:  hex.EncodeToString(sum[:]),
-			Trace: trace,
-			Args:  args,
-			Msg:   msg,
+			Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+			Code:      hex.EncodeToString(sum[:]),
+			Trace:     trace,
+			Args:      args,
+			Msg:       msg,
 			Cause: func() *string {
 				if cause != nil {
 					return pointerOf(cause.Error())
@@ -69,10 +75,39 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 			}(),
 		}
 
+		statusCode, ok := args["status"]
+		if !ok {
+			err.Severity = "ERROR"
+		} else {
+			err.Severity = calculateSeverity(statusCode)
+		}
+
 		log.Println(err.Error())
 	}
 
 	return err
+}
+
+func calculateSeverity(value interface{}) string {
+	statusCode := castInt(value)
+
+	if statusCode >= 100 && statusCode < 200 {
+		return "DEBUG"
+	} else if statusCode >= 200 && statusCode < 300 {
+		return "INFO"
+	} else if statusCode >= 300 && statusCode < 400 {
+		return "NOTICE"
+	} else if statusCode >= 400 && statusCode < 500 {
+		return "WARNING"
+	} else if statusCode >= 500 && statusCode < 502 {
+		return "ERROR"
+	} else if statusCode >= 502 && statusCode < 509 {
+		return "CRITICAL"
+	} else if statusCode >= 509 && statusCode < 511 {
+		return "ALERT"
+	} else {
+		return "ERROR"
+	}
 }
 
 // ToSdkError tries to cast an error to a SdkError.
@@ -97,14 +132,37 @@ func (e SdkError) GinError(c *gin.Context) {
 	c.Header("x-error-id", e.Code)
 	c.Header("x-error", e.Msg)
 
-	status, ok := e.Args["status"].(int)
+	status, ok := e.Args["status"]
 	if !ok {
 		c.AbortWithStatus(http.StatusInternalServerError)
 	} else {
-		c.AbortWithStatus(status)
+		c.AbortWithStatus(castInt(status))
 	}
 }
 
 func pointerOf[t any](s t) *t {
 	return &s
+}
+
+func castInt(value interface{}) int {
+	if value == nil {
+		return 500
+	}
+
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case string:
+		val, err := strconv.Atoi(v)
+		if err != nil {
+			return 500
+		}
+		return val
+	default:
+		return 500
+	}
 }
