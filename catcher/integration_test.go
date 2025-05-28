@@ -130,7 +130,7 @@ func TestBackoffRetry(t *testing.T) {
 		if attempts != 3 {
 			t.Errorf("Expected 3 attempts, got %d", attempts)
 		}
-		// Should have waited: 50ms + 100ms = 150ms minimum
+		// Should have waited: 50 ms + 100 ms = 150 ms minimum
 		if duration < 100*time.Millisecond {
 			t.Errorf("Expected at least 100ms with backoff, got %v", duration)
 		}
@@ -187,7 +187,7 @@ func TestRealWorldScenarios(t *testing.T) {
 		}
 	})
 
-	var errorPermanent string = "permanent"
+	var errorPermanent = "permanent"
 
 	t.Run("external API with rate limiting", func(t *testing.T) {
 		attempts := 0

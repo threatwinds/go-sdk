@@ -44,12 +44,12 @@ func TestValidatePath(t *testing.T) {
 	}{
 		{
 			name:     "invalid path with protocol",
-			input:    "http://example.com",
+			input:    "https://example.com",
 			expected: "",
 		},
 		{
 			name:     "invalid path with spaces and protocol",
-			input:    "http://example.com/path/tofile",
+			input:    "https://example.com/path/tofile",
 			expected: "",
 		},
 	}

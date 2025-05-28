@@ -102,7 +102,7 @@ func SendNotificationsFromChannel() {
 //   - message: The notification message to be sent. Must be a JSON serializable object.
 //
 // Returns:
-//   - error: Returns an error if the message marshalling fails, otherwise returns nil.
+//   - error: Returns an error if the message marshaling fails, otherwise returns nil.
 func EnqueueNotification[T any](topic Topic, message T) error {
 	mBytes, err := json.Marshal(message)
 	if err != nil {
