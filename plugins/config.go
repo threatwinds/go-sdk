@@ -25,7 +25,13 @@ const lockFile string = "config.lock"
 // when loading or modifying configurations. It returns true if the lock
 // was acquired successfully, false otherwise.
 func AcquireLock() (bool, error) {
-	lockPath := filepath.Join(WorkDir, "pipeline", lockFile)
+	pipelinePath, err := utils.MkdirJoin(WorkDir, "pipeline")
+
+	if err != nil {
+		return false, fmt.Errorf("error creating lock file: %v", err)
+	}
+
+	lockPath := pipelinePath.FileJoin(lockFile)
 
 	// Check if lock file exists
 	if _, err := os.Stat(lockPath); err == nil {
