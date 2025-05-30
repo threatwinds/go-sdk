@@ -121,7 +121,7 @@ message Draft {
 }
 
 service Engine{
-    rpc Input(stream Log) returns (stream Ack);
+	rpc Input(stream Log) returns (stream Ack);
 	rpc Notify(stream Message) returns (stream Ack);
 }
 

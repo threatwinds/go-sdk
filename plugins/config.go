@@ -18,9 +18,6 @@ var cfg *Config
 var cfgOnce sync.Once
 var cfgMutex sync.RWMutex
 
-const WorkDir string = "/workdir"
-const lockFile string = "config.lock"
-
 // AcquireLock tries to acquire the lock file to prevent race conditions
 // when loading or modifying configurations. It returns true if the lock
 // was acquired successfully, false otherwise.
