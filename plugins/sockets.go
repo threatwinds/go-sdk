@@ -7,9 +7,21 @@ import (
 	"strings"
 )
 
-func GetOrderedSockets(t string) []string {
+type SocketType string
+
+const (
+	NotificationSocket SocketType = "notification"
+	AnalysisSocket     SocketType = "analysis"
+	CorrelationSocket  SocketType = "correlation"
+)
+
+func (t *SocketType) String() string {
+	return string(*t)
+}
+
+func GetOrderedSockets(t SocketType) []string {
 	var pList = make([]string, 0, 3)
-	order := PluginCfg(t, false).Get("order").Array()
+	order := PluginCfg(t.String(), false).Get("order").Array()
 
 	for _, name := range order {
 		pList = append(pList, filepath.Join(
