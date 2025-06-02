@@ -81,7 +81,11 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 			err.Severity = calculateSeverity(statusCode)
 		}
 
-		fmt.Println(err.Error())
+		if beauty {
+			fmt.Println("%s %s", GetSeverityIcon(err.Severity), err.Error())
+		} else {
+			fmt.Println(err.Error())
+		}
 	}
 
 	return err

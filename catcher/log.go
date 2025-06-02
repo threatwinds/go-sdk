@@ -43,10 +43,20 @@ func Info(msg string, args map[string]any) {
 		Trace:     trace,
 		Args:      args,
 		Msg:       msg,
-		Severity:  "INFO",
 	}
 
-	fmt.Println(sdkLog.String())
+	statusCode, ok := args["status"]
+	if !ok {
+		sdkLog.Severity = "INFO"
+	} else {
+		sdkLog.Severity = calculateSeverity(statusCode)
+	}
+
+	if beauty {
+		fmt.Println("%s %s", GetSeverityIcon(sdkLog.Severity), sdkLog.String())
+	} else {
+		fmt.Println(sdkLog.String())
+	}
 }
 
 // String returns the JSON-encoded string representation of the SdkLog instance.
