@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -53,6 +54,9 @@ func SendLogsFromChannel() {
 
 			err := inputClient.Send(log)
 			if err != nil {
+				if strings.Contains(err.Error(), "EOF") {
+					return
+				}
 				_ = catcher.Error("failed to send log", err, map[string]any{})
 				os.Exit(1)
 			}
@@ -62,6 +66,9 @@ func SendLogsFromChannel() {
 	for {
 		_, err := inputClient.Recv()
 		if err != nil {
+			if strings.Contains(err.Error(), "EOF") {
+				return
+			}
 			_ = catcher.Error("failed to receive ack", err, map[string]any{})
 			os.Exit(1)
 		}

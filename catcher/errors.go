@@ -82,7 +82,7 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 		}
 
 		if beauty {
-			fmt.Println("%s %s", GetSeverityIcon(err.Severity), err.Error())
+			fmt.Println(GetSeverityIcon(err.Severity), err.Error())
 		} else {
 			fmt.Println(err.Error())
 		}

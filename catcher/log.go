@@ -53,7 +53,7 @@ func Info(msg string, args map[string]any) {
 	}
 
 	if beauty {
-		fmt.Println("%s %s", GetSeverityIcon(sdkLog.Severity), sdkLog.String())
+		fmt.Println(GetSeverityIcon(sdkLog.Severity), sdkLog.String())
 	} else {
 		fmt.Println(sdkLog.String())
 	}
