@@ -2,7 +2,6 @@ package utils
 
 import (
 	"github.com/threatwinds/go-sdk/catcher"
-	"log"
 	"sync"
 	"time"
 )
@@ -61,12 +60,12 @@ func (m *Meter) Elapsed(point string) time.Duration {
 	elapsed := time.Since(m.StartTime)
 	if m.Options.LogSlow {
 		if elapsed > m.Options.SlowThreshold {
-			log.Println(catcher.Error("slow operation", nil, map[string]any{
+			catcher.Info("slow operation", map[string]any{
 				"function": m.Function,
 				"elapsed":  elapsed,
 				"point":    point,
 				"advice":   "consider to increase the processing power",
-			}))
+			})
 		}
 	}
 	return elapsed

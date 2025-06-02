@@ -97,7 +97,7 @@ type Attributes struct {
 	Payload                   *string  `json:"payload,omitempty" example:"7a28a1d6ac5b4a7e8c9d0e3f2b1a4c5d6e8f7a9b0c1d2e3f4a5b6c7d8e9f0a1"`
 	PgpPrivateKey             *string  `json:"pgp-private-key,omitempty" example:"-----BEGIN PGP PRIVATE KEY BLOCK----- ... -----END PGP PRIVATE KEY BLOCK-----"`
 	PgpPublicKey              *string  `json:"pgp-public-key,omitempty" example:"-----BEGIN PGP PUBLIC KEY BLOCK----- ... -----END PGP PUBLIC KEY BLOCK-----"`
-	Phone                     *string  `json:"phone,omitempty" example:"+1-555-123-4567"`
+	Phone                     *string  `json:"phone,omitempty" example:"+15551234567"`
 	Pnr                       *string  `json:"pnr,omitempty" example:"ABC123"`
 	Port                      *string  `json:"port,omitempty" example:"443/tcp"`
 	PostalAddress             *string  `json:"postal-address,omitempty" example:"123 Main St, Anytown, CA 12345"`

@@ -8,297 +8,369 @@ import public "google/protobuf/empty.proto";
 import public "google/protobuf/struct.proto";
 
 message Message {
-	string id = 1;
-	string timestamp = 2 [json_name="@timestamp"];
-	string topic = 3;
-	string message = 4;
+  string id = 1;
+  string timestamp = 2 [json_name = "@timestamp"];
+  string topic = 3;
+  string message = 4;
 }
 
 message Ack{
-    string lastId = 1;
+  string lastId = 1;
 }
 
 message Alert {
-	string id = 1;
-	string timestamp = 2 [json_name="@timestamp"];
-	string lastUpdate = 3;
-	string name = 4;
-	string tenantId = 5;
-	string tenantName = 6;
-	string dataSource = 7;
-	string dataType = 8;
-	string category = 9;
-	string technique = 10;
-	string description = 11;
-	repeated string references = 12;
-	Impact impact = 13;
-	int32 impactScore = 14;
-	string severity = 15;
-	Side adversary = 16;
-	Side target = 17;
-	repeated Event events = 18;
-	repeated string deduplicateBy = 19;
+  string id = 1;
+  string timestamp = 2 [json_name = "@timestamp"];
+  string lastUpdate = 3;
+  string name = 4;
+  string tenantId = 5;
+  string tenantName = 6;
+  string dataSource = 7;
+  string dataType = 8;
+  string category = 9;
+  string technique = 10;
+  string description = 11;
+  repeated string references = 12;
+  Impact impact = 13;
+  int32 impactScore = 14;
+  string severity = 15;
+  Side adversary = 16;
+  Side target = 17;
+  repeated Event events = 18;
+  repeated string deduplicateBy = 19;
 }
 
 message Impact {
-	int32 confidentiality = 1;
-	int32 integrity = 2;
-	int32 availability = 3;
+  int32 confidentiality = 1;
+  int32 integrity = 2;
+  int32 availability = 3;
 }
 
 message Event {
-	string id = 1;
-	string timestamp = 2 [json_name="@timestamp"];
-	string deviceTime = 3;
-	string dataType = 4;
-	string dataSource = 5;
-	string tenantId = 6;
-	string tenantName = 7;
-	string raw = 8;
-	map<string, google.protobuf.Value> log = 9;
-	Side target = 10;
-	Side origin = 11;
-	string protocol = 12;
-	string connectionStatus = 13;
-	int64 statusCode = 14;
-	string actionResult = 15;
-	string action = 16;
-	string command = 17;
-	string severity = 18;
-}
-
-message Geolocation {
-	string country = 1;
-	string city = 2;
-	double latitude = 3;
-	double longitude = 4;
-	int64  asn = 5;
-	string aso = 6;
-	string countryCode = 7;
-	int32  accuracy = 8;
-}
-
-message Log {
-    string id = 1;
-    string dataType = 2;
-    string dataSource = 3;
-    string timestamp = 4 [json_name="@timestamp"];
-    string tenantId = 5;
-    string raw = 6;
+  string id = 1;
+  string timestamp = 2 [json_name = "@timestamp"];
+  string deviceTime = 3;
+  string dataType = 4;
+  string dataSource = 5;
+  string tenantId = 6;
+  string tenantName = 7;
+  string raw = 8;
+  map<string, google.protobuf.Value> log = 9;
+  Side target = 10;
+  Side origin = 11;
+  string protocol = 12;
+  string connectionStatus = 13;
+  int64 statusCode = 14;
+  string actionResult = 15;
+  string action = 16;
+  string severity = 17;
 }
 
 message Side {
-	double bytesSent = 1;
-	double bytesReceived = 2;
-	int64 packagesSent = 3;
-	int64 packagesReceived = 4;
-	int64 connections = 5;
-	int64 usedCpuPercent = 6;
-	int64 usedMemPercent = 7;
-	int64 totalCpuUnits = 8;
-	int64 totalMem = 9;
-	string ip = 10;
-	string host = 11;
-	string user = 12;
-	string group = 13;
-	int64 port = 14;
-	string domain = 15;
-	string fqdn = 16;
-	string mac = 17;
-	string process = 18;
-	Geolocation geolocation = 19;
-	string file = 20;
-	string path = 21;
-	string hash = 22;
-	string url = 23;
-	string email = 24;
+  // Network traffic attributes
+  double bytesSent = 1;
+  double bytesReceived = 2;
+  int64 packagesSent = 3;
+  int64 packagesReceived = 4;
+  // Network identification attributes
+  string ip = 5;
+  string host = 6;
+  string user = 7;
+  string group = 8;
+  int64 port = 9;
+  string domain = 10;
+  string mac = 11;
+  Geolocation geolocation = 12;
+  string url = 13;
+  string cidr = 14;
+  // Certificate and fingerprint attributes
+  string certificateFingerprint = 15;
+  string ja3Fingerprint = 16;
+  string jarmFingerprint = 17;
+  string sshBanner = 18;
+  string sshFingerprint = 19;
+  // Web attributes
+  string cookie = 20;
+  string jabberId = 21;
+  // Email attributes
+  string email = 22;
+  string dkim = 23;
+  string dkimSignature = 24;
+  string emailAddress = 25;
+  string emailBody = 26;
+  string emailDisplayName = 27;
+  string emailSubject = 28;
+  string emailThreadIndex = 29;
+  string emailXMailer = 30;
+  // WHOIS attributes
+  string whoisRegistrant = 31;
+  string whoisRegistrar = 32;
+  // Process-related attributes
+  string process = 33;
+  string processState = 34;
+  string command = 35;
+  string windowsScheduledTask = 36;
+  string windowsServiceDisplayName = 37;
+  string windowsServiceName = 38;
+  // File-related attributes
+  string file = 39;
+  string path = 40;
+  string filename = 41;
+  string sizeInBytes = 42;
+  string mimeType = 43;
+  // Hash-related attributes
+  string hash = 44;
+  string authentihash = 45;
+  string cdhash = 46;
+  string md5 = 47;
+  string sha1 = 48;
+  string sha224 = 49;
+  string sha256 = 50;
+  string sha384 = 51;
+  string sha3224 = 52;
+  string sha3256 = 53;
+  string sha3384 = 54;
+  string sha3512 = 55;
+  string sha512 = 56;
+  string sha512224 = 57;
+  string sha512256 = 58;
+  string hex = 59;
+  string base64 = 60;
+  // System-related attributes
+  string operatingSystem = 61;
+  string chromeExtension = 62;
+  string mobileAppId = 63;
+  // Vulnerability-related attributes
+  string cpe = 64;
+  string cve = 65;
+  // Malware-related attributes
+  string malware = 66;
+  string malwareFamily = 67;
+  string malwareType = 68;
+  // Key-related attributes
+  string pgpPrivateKey = 69;
+  string pgpPublicKey = 70;
+  // Resources attributes
+  int64 connections = 71;
+  int64 usedCpuPercent = 72;
+  int64 usedMemPercent = 73;
+  int64 totalCpuUnits = 74;
+  int64 totalMem = 75;
+  repeated DiskInfo disks = 76;
+}
+
+message DiskInfo {
+  string name = 1;
+  int64 totalSpace = 2;
+  int64 usedPercent = 3;
+}
+
+message Geolocation {
+  string country = 1;
+  string city = 2;
+  double latitude = 3;
+  double longitude = 4;
+  int64  asn = 5;
+  string aso = 6;
+  string countryCode = 7;
+  int32  accuracy = 8;
+}
+
+message Log {
+  string id = 1;
+  string dataType = 2;
+  string dataSource = 3;
+  string timestamp = 4 [json_name = "@timestamp"];
+  string tenantId = 5;
+  string raw = 6;
 }
 
 message Draft {
-	string log = 1;
-	repeated string logs = 2;
-	int32 step = 3;
+  string log = 1;
+  repeated string logs = 2;
+  int32 step = 3;
+  int32 pipeline = 4;
 }
 
 service Engine{
-	rpc Input(stream Log) returns (stream Ack);
-	rpc Notify(stream Message) returns (stream Ack);
+  rpc Input(stream Log) returns (stream Ack);
+  rpc Notify(stream Message) returns (stream Ack);
 }
 
 service Parsing{
-	rpc ParseLog(Transform) returns (Draft);
+  rpc ParseLog(Transform) returns (Draft);
 }
 
 service Analysis{
-	rpc Analyze(Event) returns (stream Alert);
+  rpc Analyze(Event) returns (stream Alert);
 }
 
 service Correlation{
-	rpc Correlate(Alert) returns (google.protobuf.Empty);
+  rpc Correlate(Alert) returns (google.protobuf.Empty);
 }
 
 service Notification{
-	rpc Notify(Message) returns (google.protobuf.Empty);
+  rpc Notify(Message) returns (google.protobuf.Empty);
 }
 
 service Integration{
-    rpc ProcessLog(stream Log) returns (stream Ack);
+  rpc ProcessLog(stream Log) returns (stream Ack);
 }
 
 service Output{
-	rpc EventOutput(Event) returns (google.protobuf.Empty);
-	rpc AlertOutput(Alert) returns (google.protobuf.Empty);
+  rpc EventOutput(Event) returns (google.protobuf.Empty);
+  rpc AlertOutput(Alert) returns (google.protobuf.Empty);
 }
 
 message Transform {
-	Draft draft = 1;
-	Step step = 2;
+  Draft draft = 1;
+  Step step = 2;
 }
 
 message Step {
-	Kv kv = 1;
-	Grok grok = 2;
-	Trim trim = 3;
-	Json json = 4;
-	Csv csv = 5;
-	Rename rename = 6;
-	Cast cast = 7;
-	Reformat reformat = 8;
-	Delete delete = 9;
-	Drop drop = 10;
-	Add add = 11;
-	Dynamic dynamic = 12;
-	Expand expand = 13;
+  Kv kv = 1;
+  Grok grok = 2;
+  Trim trim = 3;
+  Json json = 4;
+  Csv csv = 5;
+  Rename rename = 6;
+  Cast cast = 7;
+  Reformat reformat = 8;
+  Delete delete = 9;
+  Drop drop = 10;
+  Add add = 11;
+  Dynamic dynamic = 12;
+  Expand expand = 13;
 }
 
 message Dynamic {
-	string plugin = 1;
-	map<string, google.protobuf.Value> params = 2;
-	Where where = 3;
+  string plugin = 1;
+  map<string, google.protobuf.Value> params = 2;
+  Where where = 3;
 }
 
 message Reformat {
-	repeated string fields = 1;
-	string function = 2;
-	string fromFormat = 3;
-	string toFormat = 4;
-	Where where = 5;
+  repeated string fields = 1;
+  string function = 2;
+  string fromFormat = 3;
+  string toFormat = 4;
+  Where where = 5;
 }
 
 message Grok {
-	repeated Pattern patterns = 1;
-	string source = 2;
-	Where where = 3;
+  repeated Pattern patterns = 1;
+  string source = 2;
+  Where where = 3;
 }
 
 message Pattern {
-	string fieldName = 1;
-	string pattern = 2;
+  string fieldName = 1;
+  string pattern = 2;
 }
 
 message Kv {
-	string fieldSplit = 1;
-	string valueSplit = 2;
-	string source = 3;
-	Where where = 4;
+  string fieldSplit = 1;
+  string valueSplit = 2;
+  string source = 3;
+  Where where = 4;
 }
 
 message Json {
-	string source = 1;
-	Where where = 2;
+  string source = 1;
+  Where where = 2;
 }
 
 message Expand {
-	string source = 1;
-	string to = 2;
-	Where where = 3;
+  string source = 1;
+  string to = 2;
+  Where where = 3;
 }
 
 message Csv {
-	string source = 1;
-	string separator = 2;
-	repeated string headers = 3;
-	Where where = 4;
+  string source = 1;
+  string separator = 2;
+  repeated string headers = 3;
+  Where where = 4;
 }
 
 message Trim {
-	string function = 1;
-	string substring = 2;
-	repeated string fields = 3;
-	Where where = 4;
+  string function = 1;
+  string substring = 2;
+  repeated string fields = 3;
+  Where where = 4;
 }
 
 message Delete {
-	repeated string fields = 1;
-	Where where = 2;
+  repeated string fields = 1;
+  Where where = 2;
 }
 
 message Rename {
-	string to = 1;
-	repeated string from = 2;
-	Where where = 3;
+  string to = 1;
+  repeated string from = 2;
+  Where where = 3;
 }
 
 message Cast {
-	string to = 1;
-	repeated string fields = 2;
-	Where where = 3;
+  string to = 1;
+  repeated string fields = 2;
+  Where where = 3;
 }
 
 message Drop {
-	Where where = 1;
+  Where where = 1;
 }
 
 message Add {
-	string function = 1;
-	map<string, google.protobuf.Value> params = 2;
-	Where where = 3;
+  string function = 1;
+  map<string, google.protobuf.Value> params = 2;
+  Where where = 3;
 }
 
 message Config {
-	repeated Pipeline pipeline = 1;
-	repeated int64 disabledRules = 2;
-	repeated Tenant tenants = 3;
-	map<string, string> patterns = 4;
-	map<string, google.protobuf.Value> plugins = 5;
-	Env env = 6;
+  repeated Pipeline pipeline = 1;
+  repeated int64 disabledRules = 2;
+  repeated Tenant tenants = 3;
+  map<string, string> patterns = 4;
+  map<string, google.protobuf.Value> plugins = 5;
+  Env env = 6;
 }
 
 message Tenant {
-	string name = 1;
-	string id = 2;
-	repeated Asset assets = 3;
-	repeated int64 disabledRules = 4;
+  string name = 1;
+  string id = 2;
+  repeated Asset assets = 3;
+  repeated int64 disabledRules = 4;
 }
 
 message Asset {
-	string name = 1;
-	repeated string hostnames = 2;
-	repeated string ips = 3;
-	int32 confidentiality = 4;
-	int32 availability = 5;
-	int32 integrity = 6;
+  string name = 1;
+  repeated string hostnames = 2;
+  repeated string ips = 3;
+  int32 confidentiality = 4;
+  int32 availability = 5;
+  int32 integrity = 6;
 }
 
 message Pipeline {
-	repeated string dataTypes = 1;
-	repeated Step steps = 2;
+  repeated string dataTypes = 1;
+  repeated Step steps = 2;
 }
 
 message Env {
-	string nodeName = 1;
-	repeated string nodeGroups = 2;
-	int64 logLevel = 4;
-	string mode = 5;
+  string nodeName = 1;
+  repeated string nodeGroups = 2;
+  int64 logLevel = 4;
+  string mode = 5;
 }
 
 message Where {
-	repeated Variable variables = 1;
-	string expression = 2;
+  repeated Variable variables = 1;
+  string expression = 2;
 }
 
 message Variable {
-	string get = 1;
-	string as = 2;
-	string ofType = 3;
+  string get = 1;
+  string as = 2;
+  string ofType = 3;
 }

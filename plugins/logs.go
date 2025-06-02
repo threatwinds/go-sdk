@@ -71,12 +71,12 @@ func SendLogsFromChannel() {
 // EnqueueLog sends a log to the local logs queue.
 // Parameters:
 //   - log: The log to enqueue
-func EnqueueLog(log *Log) {
+func EnqueueLog(log *Log) error {
 	select {
 	case logsChannel <- log:
-		return
+		return nil
 	case <-time.After(1 * time.Second):
-		_ = catcher.Error("cannot enqueue log", errors.New("queue is full"), map[string]any{
+		return catcher.Error("cannot enqueue log", errors.New("queue is full"), map[string]any{
 			"advise": "please consider to increase resources",
 			"queue":  "logsChannel",
 		})
