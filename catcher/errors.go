@@ -27,7 +27,11 @@ type SdkError struct {
 
 // Error returns the error message.
 func (e SdkError) Error() string {
-	a, _ := json.Marshal(e)
+	a, err := json.Marshal(e)
+	if err != nil {
+		Error("failed to marshal SdkError", err, nil)
+		return ""
+	}
 	return string(a)
 }
 
