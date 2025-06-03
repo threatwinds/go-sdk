@@ -65,6 +65,7 @@ func (m *Meter) Elapsed(point string) time.Duration {
 				"elapsed":  elapsed,
 				"point":    point,
 				"advice":   "consider to increase the processing power",
+				"status":   429,
 			})
 		}
 	}
