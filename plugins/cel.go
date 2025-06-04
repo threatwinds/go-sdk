@@ -161,7 +161,7 @@ func (def *Where) Evaluate(event *string) (bool, error) {
 
 	ast, issues := celEnv.Compile(def.Expression)
 	if issues != nil && issues.Err() != nil {
-		return false, catcher.Error("failed to compile expression", err, map[string]any{"expression": def.Expression})
+		return false, catcher.Error("failed to compile expression", nil, map[string]any{"expression": def.Expression, "issues": issues.Errors()})
 	}
 
 	prg, err := celEnv.Program(ast)
