@@ -249,7 +249,7 @@ message Step {
 message Dynamic {
   string plugin = 1;
   map<string, google.protobuf.Value> params = 2;
-  Where where = 3;
+  string where = 3;
 }
 
 message Reformat {
@@ -257,13 +257,13 @@ message Reformat {
   string function = 2;
   string fromFormat = 3;
   string toFormat = 4;
-  Where where = 5;
+  string where = 5;
 }
 
 message Grok {
   repeated Pattern patterns = 1;
   string source = 2;
-  Where where = 3;
+  string where = 3;
 }
 
 message Pattern {
@@ -275,59 +275,59 @@ message Kv {
   string fieldSplit = 1;
   string valueSplit = 2;
   string source = 3;
-  Where where = 4;
+  string where = 4;
 }
 
 message Json {
   string source = 1;
-  Where where = 2;
+  string where = 2;
 }
 
 message Expand {
   string source = 1;
   string to = 2;
-  Where where = 3;
+  string where = 3;
 }
 
 message Csv {
   string source = 1;
   string separator = 2;
   repeated string headers = 3;
-  Where where = 4;
+  string where = 4;
 }
 
 message Trim {
   string function = 1;
   string substring = 2;
   repeated string fields = 3;
-  Where where = 4;
+  string where = 4;
 }
 
 message Delete {
   repeated string fields = 1;
-  Where where = 2;
+  string where = 2;
 }
 
 message Rename {
   string to = 1;
   repeated string from = 2;
-  Where where = 3;
+  string where = 3;
 }
 
 message Cast {
   string to = 1;
   repeated string fields = 2;
-  Where where = 3;
+  string where = 3;
 }
 
 message Drop {
-  Where where = 1;
+  string where = 1;
 }
 
 message Add {
   string function = 1;
   map<string, google.protobuf.Value> params = 2;
-  Where where = 3;
+  string where = 3;
 }
 
 message Config {
@@ -365,11 +365,6 @@ message Env {
   repeated string nodeGroups = 2;
   int64 logLevel = 4;
   string mode = 5;
-}
-
-message Where {
-  repeated Variable variables = 1;
-  string expression = 2;
 }
 
 message Variable {
