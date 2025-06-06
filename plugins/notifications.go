@@ -32,14 +32,11 @@ type DataProcessingMessage struct {
 type Topic string
 
 const (
-	TopicEnqueueFailure         Topic = "enqueue_failure"          // represents the topic name for enqueue failure notifications.
-	TopicEnqueueSuccess         Topic = "enqueue_success"          // represents the topic name for enqueue success notifications.
-	TopicIntegrationFailure     Topic = "integration_failure"      // represents the topic name for integration failure notifications.
-	TopicParsingFailure         Topic = "parsing_failure"          // represents the topic name for parsing failure notifications.
-	TopicAnalysisFailure        Topic = "analysis_failure"         // represents the topic name for analysis failure notifications.
-	TopicCorrelationFailure     Topic = "correlation_failure"      // represents the topic name for correlation failure notifications.
-	TopicOutgoingRequestFailure Topic = "outgoing_request_failure" // represents the topic name for outgoing request failure notifications.
-	TopicCelEvaluationFailure   Topic = "cel_evaluation_failure"   // represents the topic name for CEL evaluation failure notifications.
+	TopicEnqueueSuccess     Topic = "enqueue_success"     // represents the topic name for enqueue success notifications.
+	TopicIntegrationFailure Topic = "integration_failure" // represents the topic name for integration failure notifications.
+	TopicParsingFailure     Topic = "parsing_failure"     // represents the topic name for parsing failure notifications.
+	TopicAnalysisFailure    Topic = "analysis_failure"    // represents the topic name for analysis failure notifications.
+	TopicCorrelationFailure Topic = "correlation_failure" // represents the topic name for correlation failure notifications.
 )
 
 // SendNotificationsFromChannel listens to the notificationsChannel and sends notifications

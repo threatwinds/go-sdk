@@ -38,6 +38,7 @@ message Alert {
   Side target = 17;
   repeated Event events = 18;
   repeated string deduplicateBy = 19;
+  repeated string errors = 20;
 }
 
 message Impact {
@@ -64,6 +65,7 @@ message Event {
   string actionResult = 15;
   string action = 16;
   string severity = 17;
+  repeated string errors = 18;
 }
 
 message Side {
@@ -190,6 +192,7 @@ message Draft {
   repeated string logs = 2;
   int32 step = 3;
   int32 pipeline = 4;
+  repeated string errors = 5;
 }
 
 service Engine{
