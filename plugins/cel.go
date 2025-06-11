@@ -1,61 +1,50 @@
 package plugins
 
 import (
+	"encoding/json"
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/common/types/ref"
 	"github.com/threatwinds/go-sdk/catcher"
+	"github.com/tidwall/gjson"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"reflect"
-	"strings"
+	"time"
 )
 
 // Evaluate evaluates a CEL expression against the given data and returns the boolean result if successful.
 // Returns true/false or an error in case of failure during evaluation or invalid output type.
-func Evaluate[Data any](data *Data, expression string) (bool, error) {
+func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool, error) {
 	if data == nil {
 		return false, catcher.Error("data is nil", nil, map[string]any{})
 	}
 
-	value := reflect.ValueOf(data).Elem()
+	var valuesMap map[string]interface{}
 
-	if value.IsZero() {
-		return false, nil
-	}
-
-	typ := value.Type()
-
-	values := make(map[string]interface{})
-
-	for i := 0; i < value.NumField(); i++ {
-		field := typ.Field(i)
-		fieldValue := value.Field(i)
-
-		tag := field.Tag.Get("json")
-		tagParts := strings.Split(tag, ",")
-		jsonName := tagParts[0]
-
-		if fieldValue.IsZero() {
-			continue
-		}
-
-		switch fieldValue.Kind() {
-		case reflect.Interface:
-			values[jsonName] = fieldValue.Elem().Interface()
-		case reflect.Pointer:
-			values[jsonName] = fieldValue.Elem().Interface()
-		default:
-			values[jsonName] = fieldValue.Interface()
-		}
-	}
-
-	vars := make([]cel.EnvOption, 0, 3)
-
-	for k := range values {
-		vars = append(vars, cel.Variable(k, cel.DynType))
-	}
-
-	celEnv, err := cel.NewEnv(vars...)
+	err := json.Unmarshal([]byte(*data), &valuesMap)
 	if err != nil {
-		return false, catcher.Error("failed to start CEL environment", err, map[string]any{"variables": vars})
+		return false, catcher.Error("cannot unmarshal data", err, map[string]any{})
+	}
+
+	envOptions := []cel.EnvOption{
+		celExists(data),
+		safeBool(data),
+		safeString(data),
+		safeNum(data),
+	}
+
+	// Add the provided environment options first (including cel.Types)
+	envOptions = append(envOptions, envOption...)
+
+	for k, v := range valuesMap {
+		envOptions = append(envOptions, cel.Variable(k, valueToCelType(v)))
+	}
+
+	celEnv, err := cel.NewEnv(envOptions...)
+	if err != nil {
+		return false, catcher.Error("failed to start CEL environment", err, map[string]any{})
 	}
 
 	ast, issues := celEnv.Compile(expression)
@@ -67,15 +56,13 @@ func Evaluate[Data any](data *Data, expression string) (bool, error) {
 	if err != nil {
 		return false, catcher.Error("failed to create program", err, map[string]any{
 			"expression": expression,
-			"variables":  vars,
 		})
 	}
 
-	out, _, err := prg.Eval(values)
+	out, _, err := prg.Eval(valuesMap)
 	if err != nil {
 		return false, catcher.Error("failed to evaluate program", err, map[string]any{
 			"expression": expression,
-			"variables":  vars,
 		})
 	}
 
@@ -85,6 +72,85 @@ func Evaluate[Data any](data *Data, expression string) (bool, error) {
 
 	return false, catcher.Error("output type is not boolean", err, map[string]any{
 		"expression": expression,
-		"variables":  vars,
 	})
+}
+
+func celExists(s *string) cel.EnvOption {
+	return cel.Function("exists",
+		cel.Overload("string_exists_bool",
+			[]*cel.Type{cel.StringType}, cel.BoolType,
+			cel.UnaryBinding(func(key ref.Val) ref.Val {
+				v := gjson.Get(*s, key.Value().(string))
+				return types.Bool(v.Exists())
+			}),
+		),
+	)
+}
+
+func safeString(s *string) cel.EnvOption {
+	return cel.Function("safe", cel.Overload("string_string_safe_string", []*cel.Type{cel.StringType, cel.StringType}, cel.StringType,
+		cel.BinaryBinding(func(key ref.Val, def ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				return types.String(v.String())
+			}
+			return def
+		}),
+	))
+}
+
+func safeNum(s *string) cel.EnvOption {
+	return cel.Function("safe", cel.Overload("string_num_safe_num", []*cel.Type{cel.StringType, cel.DoubleType}, cel.DoubleType,
+		cel.BinaryBinding(func(key ref.Val, def ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.Number {
+				return types.Double(v.Float())
+			}
+			return def
+		}),
+	))
+}
+
+func safeBool(s *string) cel.EnvOption {
+	return cel.Function("safe", cel.Overload("string_bool_safe_bool", []*cel.Type{cel.StringType, cel.BoolType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, def ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.IsBool() {
+				return types.Bool(v.Bool())
+			}
+			return def
+		}),
+	))
+}
+
+func valueToCelType(value interface{}) *cel.Type {
+	switch value.(type) {
+	case bool:
+		return cel.BoolType
+	case string:
+		return cel.StringType
+	case int, int32, int64:
+		return cel.IntType
+	case uint, uint32, uint64:
+		return cel.UintType
+	case float32, float64:
+		return cel.DoubleType
+	case []byte:
+		return cel.BytesType
+	case time.Time:
+		return cel.TimestampType
+	case map[string]interface{}:
+		return cel.MapType(cel.StringType, cel.DynType)
+	case map[string]*structpb.Value:
+		return cel.MapType(cel.StringType, cel.DynType)
+	case []interface{}:
+		return cel.ListType(cel.DynType)
+	case nil:
+		return cel.NullType
+	case proto.Message:
+		return cel.DynType
+	default:
+		t := reflect.TypeOf(value)
+		return cel.ObjectType(t.String())
+	}
 }

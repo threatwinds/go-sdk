@@ -32,7 +32,7 @@ message Alert {
   string description = 11;
   repeated string references = 12;
   Impact impact = 13;
-  int32 impactScore = 14;
+  uint32 impactScore = 14;
   string severity = 15;
   Side adversary = 16;
   Side target = 17;
@@ -42,9 +42,9 @@ message Alert {
 }
 
 message Impact {
-  int32 confidentiality = 1;
-  int32 integrity = 2;
-  int32 availability = 3;
+  uint32 confidentiality = 1;
+  uint32 integrity = 2;
+  uint32 availability = 3;
 }
 
 message Event {
@@ -61,7 +61,7 @@ message Event {
   Side origin = 11;
   string protocol = 12;
   string connectionStatus = 13;
-  int64 statusCode = 14;
+  uint32 statusCode = 14;
   string actionResult = 15;
   string action = 16;
   string severity = 17;
@@ -72,14 +72,14 @@ message Side {
   // Network traffic attributes
   double bytesSent = 1;
   double bytesReceived = 2;
-  int64 packagesSent = 3;
-  int64 packagesReceived = 4;
+  uint64 packagesSent = 3;
+  uint64 packagesReceived = 4;
   // Network identification attributes
   string ip = 5;
   string host = 6;
   string user = 7;
   string group = 8;
-  int64 port = 9;
+  uint32 port = 9;
   string domain = 10;
   string mac = 11;
   Geolocation geolocation = 12;
@@ -153,18 +153,18 @@ message Side {
   string pgpPrivateKey = 69;
   string pgpPublicKey = 70;
   // Resources attributes
-  int64 connections = 71;
-  int64 usedCpuPercent = 72;
-  int64 usedMemPercent = 73;
-  int64 totalCpuUnits = 74;
-  int64 totalMem = 75;
+  uint64 connections = 71;
+  uint32 usedCpuPercent = 72;
+  uint32 usedMemPercent = 73;
+  uint32 totalCpuUnits = 74;
+  uint64 totalMem = 75;
   repeated DiskInfo disks = 76;
 }
 
 message DiskInfo {
   string name = 1;
-  int64 totalSpace = 2;
-  int64 usedPercent = 3;
+  uint64 totalSpace = 2;
+  uint32 usedPercent = 3;
 }
 
 message Geolocation {
@@ -172,10 +172,10 @@ message Geolocation {
   string city = 2;
   double latitude = 3;
   double longitude = 4;
-  int64  asn = 5;
+  uint64  asn = 5;
   string aso = 6;
   string countryCode = 7;
-  int32  accuracy = 8;
+  uint32  accuracy = 8;
 }
 
 message Log {
@@ -190,8 +190,8 @@ message Log {
 message Draft {
   string log = 1;
   repeated string logs = 2;
-  int32 step = 3;
-  int32 pipeline = 4;
+  uint32 step = 3;
+  uint32 pipeline = 4;
   repeated string errors = 5;
 }
 
@@ -332,7 +332,7 @@ message Add {
 
 message Config {
   repeated Pipeline pipeline = 1;
-  repeated int64 disabledRules = 2;
+  repeated uint64 disabledRules = 2;
   repeated Tenant tenants = 3;
   map<string, string> patterns = 4;
   map<string, google.protobuf.Value> plugins = 5;
@@ -343,16 +343,16 @@ message Tenant {
   string name = 1;
   string id = 2;
   repeated Asset assets = 3;
-  repeated int64 disabledRules = 4;
+  repeated uint64 disabledRules = 4;
 }
 
 message Asset {
   string name = 1;
   repeated string hostnames = 2;
   repeated string ips = 3;
-  int32 confidentiality = 4;
-  int32 availability = 5;
-  int32 integrity = 6;
+  uint32 confidentiality = 4;
+  uint32 availability = 5;
+  uint32 integrity = 6;
 }
 
 message Pipeline {
@@ -363,7 +363,7 @@ message Pipeline {
 message Env {
   string nodeName = 1;
   repeated string nodeGroups = 2;
-  int64 logLevel = 4;
+  uint32 logLevel = 4;
   string mode = 5;
 }
 

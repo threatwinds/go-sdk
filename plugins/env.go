@@ -34,7 +34,7 @@ func getEnvStr(name, def string, required bool) (string, error) {
 	return val, nil
 }
 
-// getEnvInt retrieves an environment variable as an integer.
+// getEnvUInt32 retrieves an environment variable as an integer.
 //
 // Parameters:
 // - name: The name of the environment variable.
@@ -44,7 +44,7 @@ func getEnvStr(name, def string, required bool) (string, error) {
 // Returns:
 // - int64: The integer value of the environment variable.
 // - error: An error object if the environment variable is required but not set, or if the value cannot be parsed as an integer.
-func getEnvInt(name string, def string, required bool) (int64, error) {
+func getEnvUInt32(name string, def string, required bool) (uint32, error) {
 	str, err := getEnvStr(name, def, required)
 	if err != nil {
 		return 0, err
@@ -59,7 +59,7 @@ func getEnvInt(name string, def string, required bool) (int64, error) {
 		return 0, err
 	}
 
-	return val, nil
+	return uint32(val), nil
 }
 
 // getEnvStrSlice retrieves an environment variable as a slice of strings.
@@ -117,7 +117,7 @@ func getEnv() *Env {
 		panic(err)
 	}
 
-	env.LogLevel, err = getEnvInt("LOG_LEVEL", "200", false)
+	env.LogLevel, err = getEnvUInt32("LOG_LEVEL", "200", false)
 	if err != nil {
 		panic(err)
 	}
