@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -120,7 +121,7 @@ func TestEvaluate(t *testing.T) {
 				Age:   &age,
 				Score: &score,
 			},
-			expression: `age > 20`,
+			expression: "age > double(20)",
 			want:       true,
 			expectErr:  false,
 		},
@@ -131,7 +132,7 @@ func TestEvaluate(t *testing.T) {
 				Age:   &age,
 				Score: &score,
 			},
-			expression: `age < 20`,
+			expression: "age < double(20)",
 			want:       false,
 			expectErr:  false,
 		},
@@ -142,7 +143,7 @@ func TestEvaluate(t *testing.T) {
 				Age:   &age,
 				Score: &score,
 			},
-			expression: `age > 20 && score > 85.0`,
+			expression: `age > double(20) && score > 85.0`,
 			want:       true,
 			expectErr:  false,
 		},
@@ -153,7 +154,7 @@ func TestEvaluate(t *testing.T) {
 				Age:   &age,
 				Score: &score,
 			},
-			expression: `age > 40 || score < 50.0`,
+			expression: `age > double(40) || score < 50.0`,
 			want:       false,
 			expectErr:  false,
 		},
@@ -333,7 +334,10 @@ func TestEvaluate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Evaluate(tt.data, tt.expression)
+			data, err := json.Marshal(tt.data)
+			assert.NoError(t, err)
+			strData := string(data)
+			got, err := Evaluate(&strData, tt.expression)
 			if tt.expectErr {
 				assert.Error(t, err)
 			} else {
