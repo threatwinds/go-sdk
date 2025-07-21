@@ -92,7 +92,7 @@ func SendNotificationsFromChannel() {
 }
 
 // EnqueueNotification sends a notification message to a specified topic.
-// It marshals the NotificationMessage into JSON format and sends it to the notifications channel.
+// It marshals the NotificationMessage into JSON format and sends it to the notification channel.
 //
 // Parameters:
 //   - topic: The topic to which the notification message will be sent.
