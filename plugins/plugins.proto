@@ -66,6 +66,11 @@ message Event {
   string action = 16;
   string severity = 17;
   repeated string errors = 18;
+  map<string, ComplianceValues> compliance = 19;
+}
+
+message ComplianceValues {
+  repeated string values = 1;
 }
 
 message Side {
