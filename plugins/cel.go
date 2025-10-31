@@ -2,6 +2,8 @@ package plugins
 
 import (
 	"encoding/json"
+	"net"
+
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
@@ -33,6 +35,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		safeBool(data),
 		safeString(data),
 		safeNum(data),
+		inCIDR(data),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -95,6 +98,26 @@ func safeString(s *string) cel.EnvOption {
 				return types.String(v.String())
 			}
 			return def
+		}),
+	))
+}
+
+func inCIDR(s *string) cel.EnvOption {
+	return cel.Function("inCIDR", cel.Overload("string_string_inCIDR_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, network ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				_, subnet, err := net.ParseCIDR(network.Value().(string))
+				if err != nil {
+					return types.False
+				}
+				ip := net.ParseIP(v.String())
+				if ip == nil {
+					return types.False
+				}
+				return types.Bool(subnet.Contains(ip))
+			}
+			return types.False
 		}),
 	))
 }

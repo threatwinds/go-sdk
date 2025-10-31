@@ -26,6 +26,7 @@ type TestData struct {
 	Contacts []*Contact     `json:"contacts"`
 	Metadata map[string]any `json:"metadata"`
 	Tags     []string       `json:"tags"`
+	IP       *string        `json:"ip"`
 }
 
 func TestEvaluate(t *testing.T) {
@@ -43,6 +44,7 @@ func TestEvaluate(t *testing.T) {
 	emailValue := "alice@example.com"
 	phoneType := "phone"
 	phoneValue := "555-123-4567"
+	ipAddr := "192.168.0.1"
 
 	// Tags
 	tags := []string{"student", "premium", "active"}
@@ -78,6 +80,7 @@ func TestEvaluate(t *testing.T) {
 			"mapWithNil":  map[string]any{"key": nil},
 		},
 		Tags: tags,
+		IP:   &ipAddr,
 	}
 
 	// Create data with nil fields for testing nil handling
@@ -329,6 +332,13 @@ func TestEvaluate(t *testing.T) {
 			expression: `size(contacts) == 2 && metadata.yearJoined > 2019 && "premium" in tags`,
 			want:       true,
 			expectErr:  false,
+		},
+		{
+			name: "inCIDR true",
+			data: completeData,
+			want: true,
+			expression: `inCIDR("ip", "192.168.0.0/24")`,
+			expectErr: false,
 		},
 	}
 
