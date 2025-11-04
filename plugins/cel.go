@@ -47,6 +47,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		endWith(data),
 		regexMatch(data),
 		lessThan(data),
+		greaterThan(data),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -265,6 +266,24 @@ func lessThan(s *string) cel.EnvOption {
 			}
 
 			return types.Bool(v.Float() < f2)
+		}),
+	))
+}
+
+func greaterThan(s *string) cel.EnvOption {
+	return cel.Function("greaterThan", cel.Overload("string_string_greaterThan_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if !v.Exists() || v.Type != gjson.Number {
+				return types.False
+			}
+
+			f2, err := strconv.ParseFloat(val.Value().(string), 64)
+			if err != nil {
+				return types.False
+			}
+
+			return types.Bool(v.Float() > f2)
 		}),
 	))
 }
