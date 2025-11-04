@@ -39,6 +39,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		inCIDR(data),
 		equal(data),
 		lowerEqual(data),
+		contain(data),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -167,6 +168,18 @@ func lowerEqual(s *string) cel.EnvOption {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
 				return types.Bool(strings.EqualFold(v.Value().(string), val.Value().(string)))
+			}
+			return types.False
+		}),
+	))
+}
+
+func contain(s *string) cel.EnvOption {
+	return cel.Function("contain", cel.Overload("string_string_contain_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				return types.Bool(strings.Contains(v.Value().(string), val.Value().(string)))
 			}
 			return types.False
 		}),
