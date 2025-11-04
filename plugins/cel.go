@@ -36,6 +36,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		safeString(data),
 		safeNum(data),
 		inCIDR(data),
+		equal(data),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -142,6 +143,18 @@ func safeBool(s *string) cel.EnvOption {
 				return types.Bool(v.Bool())
 			}
 			return def
+		}),
+	))
+}
+
+func equal(s *string) cel.EnvOption {
+	return cel.Function("equal", cel.Overload("string_string_equal_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				return types.Bool(v.Value() == val.Value())
+			}
+			return types.False
 		}),
 	))
 }
