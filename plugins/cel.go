@@ -3,6 +3,7 @@ package plugins
 import (
 	"encoding/json"
 	"net"
+	"strings"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -37,6 +38,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		safeNum(data),
 		inCIDR(data),
 		equal(data),
+		lowerEqual(data),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -153,6 +155,18 @@ func equal(s *string) cel.EnvOption {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
 				return types.Bool(v.Value() == val.Value())
+			}
+			return types.False
+		}),
+	))
+}
+
+func lowerEqual(s *string) cel.EnvOption {
+	return cel.Function("lowerEqual", cel.Overload("string_string_lowerEqual_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				return types.Bool(strings.EqualFold(v.Value().(string), val.Value().(string)))
 			}
 			return types.False
 		}),
