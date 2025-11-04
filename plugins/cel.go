@@ -42,6 +42,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		contain(data),
 		inList(data),
 		startWith(data),
+		endWith(data),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -157,7 +158,7 @@ func equal(s *string) cel.EnvOption {
 		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
-				return types.Bool(v.Value() == val.Value())
+				return types.Bool(v.String() == val.Value())
 			}
 			return types.False
 		}),
@@ -169,7 +170,7 @@ func lowerEqual(s *string) cel.EnvOption {
 		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
-				return types.Bool(strings.EqualFold(v.Value().(string), val.Value().(string)))
+				return types.Bool(strings.EqualFold(v.String(), val.Value().(string)))
 			}
 			return types.False
 		}),
@@ -181,7 +182,7 @@ func contain(s *string) cel.EnvOption {
 		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
-				return types.Bool(strings.Contains(v.Value().(string), val.Value().(string)))
+				return types.Bool(strings.Contains(v.String(), val.Value().(string)))
 			}
 			return types.False
 		}),
@@ -212,6 +213,18 @@ func startWith(s *string) cel.EnvOption {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
 				return types.Bool(strings.HasPrefix(v.String(), prefix.Value().(string)))
+			}
+			return types.False
+		}),
+	))
+}
+
+func endWith(s *string) cel.EnvOption {
+	return cel.Function("endWith", cel.Overload("string_string_endWith_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, suffix ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				return types.Bool(strings.HasSuffix(v.String(), suffix.Value().(string)))
 			}
 			return types.False
 		}),
