@@ -40,6 +40,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		equal(data),
 		lowerEqual(data),
 		contain(data),
+		inList(data),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -180,6 +181,24 @@ func contain(s *string) cel.EnvOption {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
 				return types.Bool(strings.Contains(v.Value().(string), val.Value().(string)))
+			}
+			return types.False
+		}),
+	))
+}
+
+func inList(s *string) cel.EnvOption {
+	return cel.Function("inList", cel.Overload("string_string_inList_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, listVal ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				list := strings.Split(listVal.Value().(string), ",")
+				for _, item := range list {
+					if v.String() == strings.TrimSpace(item) {
+						return types.Bool(true)
+					}
+				}
+				return types.Bool(false)
 			}
 			return types.False
 		}),
