@@ -3,6 +3,7 @@ package plugins
 import (
 	"encoding/json"
 	"net"
+	"regexp"
 	"strings"
 
 	"github.com/google/cel-go/cel"
@@ -43,6 +44,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		inList(data),
 		startWith(data),
 		endWith(data),
+		regexMatch(data),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -225,6 +227,22 @@ func endWith(s *string) cel.EnvOption {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
 				return types.Bool(strings.HasSuffix(v.String(), suffix.Value().(string)))
+			}
+			return types.False
+		}),
+	))
+}
+
+func regexMatch(s *string) cel.EnvOption {
+	return cel.Function("regexMatch", cel.Overload("string_string_regexMatch_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, pattern ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				re, err := regexp.Compile(pattern.Value().(string))
+				if err != nil {
+					return types.False
+				}
+				return types.Bool(re.MatchString(v.String()))
 			}
 			return types.False
 		}),
