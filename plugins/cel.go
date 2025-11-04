@@ -41,6 +41,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		lowerEqual(data),
 		contain(data),
 		inList(data),
+		startWith(data),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -199,6 +200,18 @@ func inList(s *string) cel.EnvOption {
 					}
 				}
 				return types.Bool(false)
+			}
+			return types.False
+		}),
+	))
+}
+
+func startWith(s *string) cel.EnvOption {
+	return cel.Function("startWith", cel.Overload("string_string_startWith_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, prefix ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				return types.Bool(strings.HasPrefix(v.String(), prefix.Value().(string)))
 			}
 			return types.False
 		}),
