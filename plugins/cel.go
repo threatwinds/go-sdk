@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/google/cel-go/cel"
@@ -45,6 +46,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		startWith(data),
 		endWith(data),
 		regexMatch(data),
+		lessThan(data),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -245,6 +247,24 @@ func regexMatch(s *string) cel.EnvOption {
 				return types.Bool(re.MatchString(v.String()))
 			}
 			return types.False
+		}),
+	))
+}
+
+func lessThan(s *string) cel.EnvOption {
+	return cel.Function("lessThan", cel.Overload("string_string_lessThan_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if !v.Exists() || v.Type != gjson.Number {
+				return types.False
+			}
+
+			f2, err := strconv.ParseFloat(val.Value().(string), 64)
+			if err != nil {
+				return types.False
+			}
+
+			return types.Bool(v.Float() < f2)
 		}),
 	))
 }
