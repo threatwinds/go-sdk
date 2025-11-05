@@ -44,7 +44,7 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		equalFloat(data),
 		lowerEqual(data),
 		contain(data),
-		inList(data),
+		oneOf(data),
 		startWith(data),
 		startWithList(data),
 		endWithList(data),
@@ -234,14 +234,14 @@ func contain(s *string) cel.EnvOption {
 	))
 }
 
-func inList(s *string) cel.EnvOption {
-	return cel.Function("inList", cel.Overload("string_string_inList_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+func oneOf(s *string) cel.EnvOption {
+	return cel.Function("oneOf", cel.Overload("string_list_oneOf_bool", []*cel.Type{cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
 		cel.BinaryBinding(func(key ref.Val, listVal ref.Val) ref.Val {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
-				list := strings.Split(listVal.Value().(string), ",")
-				for _, item := range list {
-					if v.String() == strings.TrimSpace(item) {
+				items := listVal.Value().([]ref.Val)
+				for _, item := range items {
+					if v.String() == strings.TrimSpace(item.Value().(string)) {
 						return types.Bool(true)
 					}
 				}
