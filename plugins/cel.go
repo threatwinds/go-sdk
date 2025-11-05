@@ -44,6 +44,8 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		equalFloat(data),
 		lowerEqual(data),
 		contain(data),
+		containAny(data),
+		containAll(data),
 		oneOf(data),
 		startWith(data),
 		startWithList(data),
@@ -228,6 +230,41 @@ func contain(s *string) cel.EnvOption {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
 				return types.Bool(strings.Contains(v.String(), val.Value().(string)))
+			}
+			return types.False
+		}),
+	))
+}
+
+func containAny(s *string) cel.EnvOption {
+	return cel.Function("contain", cel.Overload("string_list_contain_bool", []*cel.Type{cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				items := val.Value().([]ref.Val)
+				for _, item := range items {
+					if strings.Contains(v.String(), strings.TrimSpace(item.Value().(string))) {
+						return types.Bool(true)
+					}
+				}
+			}
+			return types.False
+		}),
+	))
+}
+
+func containAll(s *string) cel.EnvOption {
+	return cel.Function("containAll", cel.Overload("string_list_containAll_bool", []*cel.Type{cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				items := val.Value().([]ref.Val)
+				for _, item := range items {
+					if !strings.Contains(v.String(), strings.TrimSpace(item.Value().(string))) {
+						return types.Bool(false)
+					}
+				}
+				return types.Bool(true)
 			}
 			return types.False
 		}),

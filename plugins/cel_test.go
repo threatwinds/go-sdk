@@ -726,6 +726,20 @@ func TestEvaluate(t *testing.T) {
 			expectErr:  false,
 		},
 		{
+			name:       "contain - containAny",
+			data:       completeData,
+			expression: `contain("address.city", ["York", "Kentucky", "California"])`,
+			want:       true,
+			expectErr:  false,
+		},
+		{
+			name:       "contain - containAll",
+			data:       completeData,
+			expression: `containAll("address.street", ["12", "M", "St"])`,
+			want:       true,
+			expectErr:  false,
+		},
+		{
 			name:       "oneOf - name in literal list",
 			data:       completeData,
 			expression: `oneOf("name", ["Alice","Bob","Charlie"])`,
