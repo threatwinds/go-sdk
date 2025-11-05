@@ -817,6 +817,20 @@ func TestEvaluate(t *testing.T) {
 			expectErr:  false,
 		},
 		{
+			name:       "oneOf - field in literal list integers",
+			data:       completeData,
+			expression: `oneOf("age", [30, 40, 50])`,
+			want:       true,
+			expectErr:  false,
+		},
+		{
+			name:       "oneOf - field in literal list floats",
+			data:       completeData,
+			expression: `oneOf("score", [30.0, 40.0, 50.0, 90.5])`,
+			want:       true,
+			expectErr:  false,
+		},
+		{
 			name:       "startWith - name starts with prefix",
 			data:       completeData,
 			expression: `startWith("name", "Ali")`,

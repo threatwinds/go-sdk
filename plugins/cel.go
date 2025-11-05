@@ -47,6 +47,8 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		containAny(data),
 		containAll(data),
 		oneOf(data),
+		oneOfInt(data),
+		oneOfDouble(data),
 		startWith(data),
 		startWithList(data),
 		endWithList(data),
@@ -280,6 +282,46 @@ func oneOf(s *string) cel.EnvOption {
 				for _, item := range items {
 					if v.String() == strings.TrimSpace(item.Value().(string)) {
 						return types.Bool(true)
+					}
+				}
+				return types.Bool(false)
+			}
+			return types.False
+		}),
+	))
+}
+
+func oneOfInt(s *string) cel.EnvOption {
+	return cel.Function("oneOf", cel.Overload("string_listint_oneOf_bool", []*cel.Type{cel.StringType, cel.ListType(cel.IntType)}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, listVal ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.Number {
+				items := listVal.Value().([]ref.Val)
+				for _, item := range items {
+					if intVal, ok := item.Value().(int64); ok {
+						if v.Float() == float64(v.Int()) && v.Int() == intVal {
+							return types.Bool(true)
+						}
+					}
+				}
+				return types.Bool(false)
+			}
+			return types.False
+		}),
+	))
+}
+
+func oneOfDouble(s *string) cel.EnvOption {
+	return cel.Function("oneOf", cel.Overload("string_listfloat_oneOf_bool", []*cel.Type{cel.StringType, cel.ListType(cel.DoubleType)}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, listVal ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.Number {
+				items := listVal.Value().([]ref.Val)
+				for _, item := range items {
+					if floatVal, ok := item.Value().(float64); ok {
+						if v.Float() != float64(v.Int()) && v.Float() == floatVal {
+							return types.Bool(true)
+						}
 					}
 				}
 				return types.Bool(false)
