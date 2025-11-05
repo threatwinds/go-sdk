@@ -46,6 +46,8 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		contain(data),
 		inList(data),
 		startWith(data),
+		startWithList(data),
+		endWithList(data),
 		endWith(data),
 		regexMatch(data),
 		lessThan(data),
@@ -262,12 +264,48 @@ func startWith(s *string) cel.EnvOption {
 	))
 }
 
+func startWithList(s *string) cel.EnvOption {
+	return cel.Function("startWith", cel.Overload("string_list_startWith_bool", []*cel.Type{cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, listVal ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				items := listVal.Value().([]ref.Val)
+				for _, item := range items {
+					if strings.HasPrefix(v.String(), strings.TrimSpace(item.Value().(string))) {
+						return types.Bool(true)
+					}
+				}
+				return types.Bool(false)
+			}
+			return types.False
+		}),
+	))
+}
+
 func endWith(s *string) cel.EnvOption {
 	return cel.Function("endWith", cel.Overload("string_string_endWith_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
 		cel.BinaryBinding(func(key ref.Val, suffix ref.Val) ref.Val {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
 				return types.Bool(strings.HasSuffix(v.String(), suffix.Value().(string)))
+			}
+			return types.False
+		}),
+	))
+}
+
+func endWithList(s *string) cel.EnvOption {
+	return cel.Function("endWith", cel.Overload("string_list_endWith_bool", []*cel.Type{cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, listVal ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.String {
+				items := listVal.Value().([]ref.Val)
+				for _, item := range items {
+					if strings.HasSuffix(v.String(), strings.TrimSpace(item.Value().(string))) {
+						return types.Bool(true)
+					}
+				}
+				return types.Bool(false)
 			}
 			return types.False
 		}),

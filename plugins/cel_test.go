@@ -1013,6 +1013,20 @@ func TestEvaluate(t *testing.T) {
 			expectErr:  false,
 		},
 		{
+			name:       "startWith - with list",
+			data:       completeData,
+			expression: `startWith("name", ["Ali", "Bob", "Char"])`,
+			want:       true,
+			expectErr:  false,
+		},
+		{
+			name:       "endWith - with list",
+			data:       completeData,
+			expression: `endWith("name", ["ce", "ob", "le"])`,
+			want:       true,
+			expectErr:  false,
+		},
+		{
 			name:       "endWith - name ends with suffix",
 			data:       completeData,
 			expression: `endWith("name", "ice")`,
