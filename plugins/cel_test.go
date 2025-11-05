@@ -439,6 +439,20 @@ func TestEvaluate(t *testing.T) {
 			expectErr:  false,
 		},
 		{
+			name:       "equal - integer value matches",
+			data:       completeData,
+			expression: `equal("age", 30)`,
+			want:       true,
+			expectErr:  false,
+		},
+		{
+			name:       "equal - float value matches",
+			data:       completeData,
+			expression: `equal("score", 90.5)`,
+			want:       true,
+			expectErr:  false,
+		},
+		{
 			name:       "lowerEqual - exact match same case",
 			data:       completeData,
 			expression: `lowerEqual("name", "Alice")`,

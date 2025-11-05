@@ -39,7 +39,9 @@ func Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool
 		safeString(data),
 		safeNum(data),
 		inCIDR(data),
-		equal(data),
+		equalString(data),
+		equalInt(data),
+		equalFloat(data),
 		lowerEqual(data),
 		contain(data),
 		inList(data),
@@ -160,12 +162,46 @@ func safeBool(s *string) cel.EnvOption {
 	))
 }
 
-func equal(s *string) cel.EnvOption {
+func equalString(s *string) cel.EnvOption {
 	return cel.Function("equal", cel.Overload("string_string_equal_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
 		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
 				return types.Bool(v.String() == val.Value())
+			}
+			return types.False
+		}),
+	))
+}
+
+func equalInt(s *string) cel.EnvOption {
+	return cel.Function("equal", cel.Overload("string_int_equal_bool", []*cel.Type{cel.StringType, cel.IntType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.Number {
+				if intVal, ok := val.Value().(int64); ok {
+					if v.Float() != float64(v.Int()) {
+						return types.False
+					}
+					return types.Bool(v.Int() == intVal)
+				}
+			}
+			return types.False
+		}),
+	))
+}
+
+func equalFloat(s *string) cel.EnvOption {
+	return cel.Function("equal", cel.Overload("string_float_equal_bool", []*cel.Type{cel.StringType, cel.DoubleType}, cel.BoolType,
+		cel.BinaryBinding(func(key ref.Val, val ref.Val) ref.Val {
+			v := gjson.Get(*s, key.Value().(string))
+			if v.Exists() && v.Type == gjson.Number {
+				if floatVal, ok := val.Value().(float64); ok {
+					if v.Float() == float64(v.Int()) {
+						return types.False
+					}
+					return types.Bool(v.Float() == floatVal)
+				}
 			}
 			return types.False
 		}),
