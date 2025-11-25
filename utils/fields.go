@@ -1,8 +1,7 @@
 package utils
 
 import (
-	"errors"
-	"github.com/threatwinds/go-sdk/catcher"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -15,13 +14,12 @@ func ValidateReservedField(f string, allowEmpty bool) error {
 	}
 
 	if f == "" && !allowEmpty {
-		return catcher.Error("error validating field", errors.New("field name cannot be empty"), nil)
+		return fmt.Errorf("error validating field: field name cannot be empty")
 	}
 
 	for _, rf := range reservedFields {
 		if f == rf {
-			return catcher.Error("error validating field", errors.New("field cannot be a reserved field"),
-				map[string]any{"reservedFields": reservedFields, "usedField": f})
+			return fmt.Errorf("error validating field: field cannot be a reserved field (reserved: %v, used: %s)", reservedFields, f)
 		}
 	}
 
@@ -37,7 +35,6 @@ func SanitizeField(s *string) {
 	// compile the pattern
 	compiledPattern, err := regexp.Compile(exp)
 	if err != nil {
-		_ = catcher.Error("error compiling regexp", err, nil)
 		return
 	}
 

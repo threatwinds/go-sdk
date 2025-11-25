@@ -2,7 +2,7 @@ package utils
 
 import (
 	"context"
-	"github.com/threatwinds/go-sdk/catcher"
+	"fmt"
 	"net"
 	"time"
 )
@@ -23,7 +23,7 @@ func GetMainIP() (string, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "udp", "8.8.8.8:80")
 	if err != nil {
-		return "", catcher.Error("failed to create Dial context", err, nil)
+		return "", fmt.Errorf("failed to create Dial context: %w", err)
 	}
 	defer func() {
 		_ = conn.Close()
@@ -31,11 +31,11 @@ func GetMainIP() (string, error) {
 
 	localAddr, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok {
-		return "", catcher.Error("failed to get local address", nil, nil)
+		return "", fmt.Errorf("failed to get local address: invalid type")
 	}
 
 	if localAddr.IP == nil {
-		return "", catcher.Error("failed to get local IP address", nil, nil)
+		return "", fmt.Errorf("failed to get local IP address: IP is nil")
 	}
 
 	return localAddr.IP.String(), nil

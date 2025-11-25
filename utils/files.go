@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"github.com/threatwinds/go-sdk/catcher"
+	"fmt"
 	"strings"
 )
 
@@ -18,19 +18,13 @@ func ValidateFilePath(path string) error {
 
 	for _, c := range contains {
 		if strings.Contains(path, c) {
-			return catcher.Error("path contains an invalid character", nil, map[string]any{
-				"path":    path,
-				"invalid": c,
-			})
+			return fmt.Errorf("path contains an invalid character: path=%s, invalid=%s", path, c)
 		}
 	}
 
 	for _, p := range prefixes {
 		if strings.HasPrefix(path, p) {
-			return catcher.Error("path starts with an invalid character", nil, map[string]any{
-				"path":    path,
-				"invalid": p,
-			})
+			return fmt.Errorf("path starts with an invalid character: path=%s, invalid=%s", path, p)
 		}
 	}
 

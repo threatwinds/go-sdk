@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"github.com/threatwinds/go-sdk/catcher"
 	"reflect"
 	"strconv"
 )
@@ -32,7 +31,6 @@ func CastInt64(value interface{}) int64 {
 	case string:
 		val, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			_ = catcher.Error("failed to cast string to int64", err, map[string]any{"value": v})
 			return 0
 		}
 		return val
@@ -66,7 +64,6 @@ func CastFloat64(value interface{}) float64 {
 	case string:
 		val, err := strconv.ParseFloat(v, 64)
 		if err != nil {
-			_ = catcher.Error("failed to cast string to float64", err, map[string]any{"value": v})
 			return 0
 		}
 		return val
@@ -103,7 +100,6 @@ func CastBool(value interface{}) bool {
 	case string:
 		val, err := strconv.ParseBool(v)
 		if err != nil {
-			_ = catcher.Error("failed to cast string to bool", err, map[string]any{"value": v})
 			return false
 		}
 		return val

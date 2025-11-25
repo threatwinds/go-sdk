@@ -2,7 +2,7 @@ package utils
 
 import (
 	"encoding/json"
-	"github.com/threatwinds/go-sdk/catcher"
+	"fmt"
 	"os"
 )
 
@@ -25,14 +25,14 @@ import (
 func ReadJSON[t any](f string) (*t, error) {
 	content, err := os.ReadFile(f)
 	if err != nil {
-		return nil, catcher.Error("error reading JSON file", err, map[string]any{"file": f})
+		return nil, fmt.Errorf("error reading JSON file %s: %w", f, err)
 	}
 
 	var value = new(t)
 
 	err = json.Unmarshal(content, value)
 	if err != nil {
-		return nil, catcher.Error("error parsing JSON file", err, map[string]any{"file": f})
+		return nil, fmt.Errorf("error parsing JSON file %s: %w", f, err)
 	}
 
 	return value, nil

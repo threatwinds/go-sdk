@@ -1,9 +1,7 @@
 package utils
 
 import (
-	"errors"
 	"fmt"
-	"github.com/threatwinds/go-sdk/catcher"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -21,12 +19,12 @@ const maxMessageSize = 10 * 1024 * 1024 // 10MB limit
 //   - *error: A pointer to an error if an error occurs, otherwise nil.
 func ToString(object protoreflect.ProtoMessage) (*string, error) {
 	if object == nil {
-		return nil, catcher.Error("cannot convert to string", errors.New("object is a nil pointer"), nil)
+		return nil, fmt.Errorf("cannot convert to string: object is a nil pointer")
 	}
 
 	objectBytes, err := protojson.Marshal(object)
 	if err != nil {
-		return nil, catcher.Error("cannot convert to string", err, nil)
+		return nil, fmt.Errorf("cannot convert to string: %w", err)
 	}
 
 	objectString := string(objectBytes)
@@ -44,24 +42,18 @@ func ToString(object protoreflect.ProtoMessage) (*string, error) {
 //   - error: An error object if the unmarshalling fails, otherwise nil.
 func ToObject(str *string, object protoreflect.ProtoMessage) error {
 	if str == nil || object == nil {
-		return catcher.Error("cannot convert to object", errors.New("object or string is a nil pointer"), map[string]any{
-			"nilStr":    str == nil,
-			"nilObject": object == nil,
-		})
+		return fmt.Errorf("cannot convert to object: object or string is a nil pointer (nilStr=%v, nilObject=%v)", str == nil, object == nil)
 	}
 
 	if len(*str) > maxMessageSize {
-		return catcher.Error("cannot convert to object", errors.New("message size exceeds limit"), map[string]any{
-			"size":  fmt.Sprintf("%d bytes", len(*str)),
-			"limit": fmt.Sprintf("%d bytes", maxMessageSize),
-		})
+		return fmt.Errorf("cannot convert to object: message size exceeds limit (size=%d bytes, limit=%d bytes)", len(*str), maxMessageSize)
 	}
 
 	unmarshaler := protojson.UnmarshalOptions{DiscardUnknown: true}
 
 	err := unmarshaler.Unmarshal([]byte(*str), object)
 	if err != nil {
-		return catcher.Error("failed to parse object", err, nil)
+		return fmt.Errorf("failed to parse object: %w", err)
 	}
 
 	return nil

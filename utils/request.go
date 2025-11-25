@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/threatwinds/go-sdk/catcher"
 	"io"
 	"net/http"
 	"os"
@@ -38,16 +36,12 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 	var result response
 
 	if len(data) > maxMessageSize {
-		return result, http.StatusBadRequest, catcher.Error("cannot convert to object",
-			errors.New("data size exceeds limit"), map[string]any{
-				"size":  fmt.Sprintf("%d bytes", len(data)),
-				"limit": fmt.Sprintf("%d bytes", maxMessageSize),
-			})
+		return result, http.StatusBadRequest, fmt.Errorf("cannot convert to object: data size exceeds limit (size=%d bytes, limit=%d bytes)", len(data), maxMessageSize)
 	}
 
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(data))
 	if err != nil {
-		return result, http.StatusInternalServerError, catcher.Error("error creating request", err, nil)
+		return result, http.StatusInternalServerError, fmt.Errorf("error creating request: %w", err)
 	}
 
 	for k, v := range headers {
@@ -67,21 +61,18 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return result, http.StatusInternalServerError, catcher.Error("error doing request", err, nil)
+		return result, http.StatusInternalServerError, fmt.Errorf("error doing request: %w", err)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return result, http.StatusInternalServerError, catcher.Error("error reading response body", err, nil)
+		return result, http.StatusInternalServerError, fmt.Errorf("error reading response body: %w", err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return result, resp.StatusCode, catcher.Error("error response", nil, map[string]interface{}{
-			"response": string(body),
-			"status":   resp.StatusCode,
-		})
+		return result, resp.StatusCode, fmt.Errorf("error response (status=%d): %s", resp.StatusCode, string(body))
 	}
 
 	if resp.StatusCode == http.StatusNoContent {
@@ -90,7 +81,7 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return result, resp.StatusCode, catcher.Error("error parsing response", err, nil)
+		return result, resp.StatusCode, fmt.Errorf("error parsing response: %w", err)
 	}
 
 	return result, resp.StatusCode, nil
@@ -108,7 +99,7 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 func Download(url, file string) error {
 	out, err := os.Create(file)
 	if err != nil {
-		return catcher.Error("error creating file", err, map[string]interface{}{"file": file})
+		return fmt.Errorf("error creating file %s: %w", file, err)
 	}
 
 	defer func() { _ = out.Close() }()
@@ -125,14 +116,14 @@ func Download(url, file string) error {
 
 	resp, err := client.Get(url)
 	if err != nil {
-		return catcher.Error("error downloading file", err, map[string]any{"url": url})
+		return fmt.Errorf("error downloading file from %s: %w", url, err)
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return catcher.Error("error saving file", err, map[string]any{"file": file})
+		return fmt.Errorf("error saving file %s: %w", file, err)
 	}
 
 	return nil

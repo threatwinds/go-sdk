@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"github.com/threatwinds/go-sdk/catcher"
+	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -20,12 +20,12 @@ import (
 func ReadPbYaml(f string) ([]byte, error) {
 	content, err := os.ReadFile(f)
 	if err != nil {
-		return nil, catcher.Error("error opening file", err, map[string]interface{}{"file": f})
+		return nil, fmt.Errorf("error opening file %s: %w", f, err)
 	}
 
 	bytes, err := k8syaml.YAMLToJSON(content)
 	if err != nil {
-		return nil, catcher.Error("error converting YAML to JSON", err, map[string]interface{}{"file": f})
+		return nil, fmt.Errorf("error converting YAML to JSON for file %s: %w", f, err)
 	}
 
 	return bytes, nil
@@ -50,19 +50,19 @@ func ReadPbYaml(f string) ([]byte, error) {
 func ReadYaml[t any](f string, jsonMode bool) (*t, error) {
 	content, err := os.ReadFile(f)
 	if err != nil {
-		return nil, catcher.Error("error opening file", err, map[string]any{"file": f})
+		return nil, fmt.Errorf("error opening file %s: %w", f, err)
 	}
 
 	var value = new(t)
 	if jsonMode {
 		err = k8syaml.Unmarshal(content, value)
 		if err != nil {
-			return nil, catcher.Error("error decoding file", err, map[string]any{"file": f})
+			return nil, fmt.Errorf("error decoding file %s: %w", f, err)
 		}
 	} else {
 		err = yaml.Unmarshal(content, value)
 		if err != nil {
-			return nil, catcher.Error("error decoding file", err, map[string]any{"file": f})
+			return nil, fmt.Errorf("error decoding file %s: %w", f, err)
 		}
 	}
 
