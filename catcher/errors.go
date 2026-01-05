@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/gin-gonic/gin"
 
 	"net/http"
@@ -27,12 +28,22 @@ type SdkError struct {
 
 // Error returns the error message.
 func (e SdkError) Error() string {
-	a, err := json.Marshal(e)
-	if err != nil {
-		Error("failed to marshal SdkError", err, nil)
-		return ""
+	status, ok := e.Args["status"]
+	if ok {
+		if castInt(status) >= 500 {
+			return e.Msg
+		} else {
+			cause := "unknown cause"
+			if e.Cause != nil {
+				cause = *e.Cause
+			}
+			args, _ := json.Marshal(e.Args)
+			msg := fmt.Sprintf("%s: %s. Args: %s", e.Msg, cause, args)
+			return msg
+		}
 	}
-	return string(a)
+
+	return e.Msg
 }
 
 // Error tries to cast the cause as an SdkError, if it is not an SdkError, it creates a new SdkError with the given parameters.
@@ -137,12 +148,13 @@ func ToSdkError(err error) *SdkError {
 // It sets the headers x-error and x-error-id with the error message and UUID respectively and sets the status code.
 func (e SdkError) GinError(c *gin.Context) {
 	c.Header("x-error-id", e.Code)
-	c.Header("x-error", e.Msg)
 
 	status, ok := e.Args["status"]
 	if !ok {
+		c.Header("x-error", e.Msg)
 		c.AbortWithStatus(http.StatusInternalServerError)
 	} else {
+		c.Header("x-error", e.Error())
 		c.AbortWithStatus(castInt(status))
 	}
 }
