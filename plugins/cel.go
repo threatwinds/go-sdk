@@ -391,12 +391,26 @@ func endWithList(s *string) cel.EnvOption {
 	))
 }
 
+var rCache = make(map[string]*regexp.Regexp)
+
+func GetCompiledRegex(pattern string) (*regexp.Regexp, error) {
+	if r, ok := rCache[pattern]; ok {
+		return r, nil
+	}
+	r, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	rCache[pattern] = r
+	return r, nil
+}
+
 func regexMatch(s *string) cel.EnvOption {
 	return cel.Function("regexMatch", cel.Overload("string_string_regexMatch_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
 		cel.BinaryBinding(func(key ref.Val, pattern ref.Val) ref.Val {
 			v := gjson.Get(*s, key.Value().(string))
 			if v.Exists() && v.Type == gjson.String {
-				re, err := regexp.Compile(pattern.Value().(string))
+				re, err := GetCompiledRegex(pattern.Value().(string))
 				if err != nil {
 					return types.False
 				}
