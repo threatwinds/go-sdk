@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // ValidateReservedField validates a field to ensure it is not empty or a reserved field.
@@ -26,17 +27,22 @@ func ValidateReservedField(f string, allowEmpty bool) error {
 	return nil
 }
 
+var compiledPattern *regexp.Regexp
+var compiledPatternOnce sync.Once
+
+// SanitizeField removes all non-alphanumeric characters from a string
 func SanitizeField(s *string) {
 	const exp string = "[^a-zA-Z0-9.]"
 
 	m := NewMeter("SanitizeField")
 	defer m.Elapsed("finished")
 
-	// compile the pattern
-	compiledPattern, err := regexp.Compile(exp)
-	if err != nil {
-		return
-	}
+	compiledPatternOnce.Do(func() {
+		compiledPattern, _ = regexp.Compile(exp)
+		if compiledPattern == nil {
+			panic("failed to compile pattern")
+		}
+	})
 
 	// find the first match
 	match := compiledPattern.FindAllString(*s, -1)
