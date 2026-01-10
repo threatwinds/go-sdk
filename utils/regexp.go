@@ -8,6 +8,7 @@ import (
 type RegexpCache struct {
 	cache map[string]*regexp.Regexp
 	mutex sync.RWMutex
+	once  sync.Once
 }
 
 func (c *RegexpCache) Get(pattern string) (*regexp.Regexp, error) {
@@ -30,6 +31,8 @@ func (c *RegexpCache) Get(pattern string) (*regexp.Regexp, error) {
 func (c *RegexpCache) set(pattern string, compiledPattern *regexp.Regexp) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+
+	c.once.Do(func() { c.cache = make(map[string]*regexp.Regexp) })
 
 	c.cache[pattern] = compiledPattern
 }
