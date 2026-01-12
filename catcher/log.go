@@ -63,7 +63,7 @@ func Info(msg string, args map[string]any) {
 func (e SdkLog) String() string {
 	a, err := json.Marshal(e)
 	if err != nil {
-		Error("failed to marshal SdkLog", err, nil)
+		_ = Error("failed to marshal SdkLog", err, nil)
 		return ""
 	}
 	return string(a)
