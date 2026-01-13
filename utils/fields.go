@@ -34,9 +34,6 @@ var compiledPatternOnce sync.Once
 func SanitizeField(s *string) {
 	const exp string = "[^a-zA-Z0-9.]"
 
-	m := NewMeter("SanitizeField")
-	defer m.Elapsed("finished")
-
 	compiledPatternOnce.Do(func() {
 		compiledPattern, _ = regexp.Compile(exp)
 		if compiledPattern == nil {
