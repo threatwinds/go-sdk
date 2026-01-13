@@ -195,6 +195,13 @@ func buildBulkAction(item BulkItem) (map[string]any, error) {
 
 // marshalDocument marshals the document for a bulk item.
 func marshalDocument(item BulkItem) ([]byte, error) {
+	switch d := item.Document.(type) {
+	case []byte:
+		return d, nil
+	case string:
+		return []byte(d), nil
+	}
+
 	// For update operations, wrap in "doc" if not already wrapped
 	if item.Operation == BulkOperationUpdate {
 		if m, ok := item.Document.(map[string]any); ok {

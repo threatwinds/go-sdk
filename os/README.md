@@ -1,6 +1,6 @@
-# OpenSearch Go Wrapper
+# ThreatWinds OpenSearch Wrapper
 
-A simplified Go client wrapper for OpenSearch with fluent query builders, automatic field mapping resolution, and group-based access control filtering.
+A simplified Go client wrapper for OpenSearch integrated into the ThreatWinds SDK. It provides fluent query builders, automatic field mapping resolution, and group-based access control filtering.
 
 ## Features
 
@@ -8,13 +8,14 @@ A simplified Go client wrapper for OpenSearch with fluent query builders, automa
 - **Field Mapping Resolution**: Automatic detection of field types with LRU caching
 - **Group-Based Access Control**: Built-in `visibleBy` filtering for multi-tenant applications
 - **Bool Query Builder**: Nested boolean queries with field resolution at all levels
+- **ML Inference**: Support for generating text embeddings using OpenSearch ML Commons
+- **Bulk Operations**: High-performance bulk indexing queue with automatic flushing
 - **Index Helpers**: Time-based index naming and pattern generation
-- **CRUD Operations**: Simple document indexing, updating, and deletion
 
 ## Installation
 
 ```bash
-go get github.com/threatwinds/opensearch-go-wrapper
+go get github.com/threatwinds/go-sdk/os
 ```
 
 ## Quick Start
@@ -28,7 +29,7 @@ import (
     "context"
     "log"
 
-    twos "github.com/threatwinds/opensearch-go-wrapper"
+    twos "github.com/threatwinds/go-sdk/os"
 )
 
 func main() {
@@ -473,6 +474,48 @@ twos.BuildCurrentIndex(twos.CommentPrefix)
 date := time.Date(2023, 10, 21, 0, 0, 0, 0, time.UTC)
 twos.BuildIndex(date, twos.RelationPrefix, twos.HistoryPrefix)
 // → "relation-history-2023-10"
+```
+
+### ML Inference
+
+Support for OpenSearch ML Commons text embedding models.
+
+#### Generate Embeddings
+
+```go
+// Single text
+embedding, err := twos.MLPredictSingle(ctx, "model_id", "text to embed")
+
+// Batch of texts
+embeddings, err := twos.MLPredict(ctx, "model_id", []string{"text1", "text2"})
+
+// Large batch with automatic chunking
+embeddings, err := twos.MLPredictBatch(ctx, "model_id", manyTexts, 10)
+```
+
+### Bulk Operations
+
+The `BulkQueue` provides a thread-safe way to accumulate and process documents in batches.
+
+#### Using BulkQueue
+
+```go
+// Create a new queue
+config := twos.BulkQueueConfig{
+    FlushThreshold: 100,
+    FlushInterval:  5 * time.Second,
+}
+queue := twos.NewBulkQueue(config)
+
+// Add documents
+queue.Add("index-name", document)
+queue.AddWithID("index-name", "doc-id", document)
+
+// Force flush
+err := queue.Flush()
+
+// Stop the queue (gracefully flushes remaining items)
+queue.Stop()
 ```
 
 ### Document Operations
