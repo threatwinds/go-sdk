@@ -15,17 +15,17 @@ import (
 
 type analysisServer struct {
 	UnimplementedAnalysisServer
-	analysisFunction func(*Event, grpc.ServerStreamingServer[Alert]) error
+	analysisFunction func(*Event, Analysis_AnalyzeServer) error
 }
 
-func (p *analysisServer) Analyze(event *Event, srv grpc.ServerStreamingServer[Alert]) error {
+func (p *analysisServer) Analyze(event *Event, srv Analysis_AnalyzeServer) error {
 	return p.analysisFunction(event, srv)
 }
 
 // InitAnalysisPlugin initializes a gRPC-based analysis plugin with a specified name and analysis function.
 // It sets up a UNIX socket, handles lifecycle events, and manages graceful shutdowns upon termination signals.
 // Locks until shutdown is complete or an error occurs.
-func InitAnalysisPlugin(name string, analysisFunction func(*Event, grpc.ServerStreamingServer[Alert]) error) error {
+func InitAnalysisPlugin(name string, analysisFunction func(*Event, Analysis_AnalyzeServer) error) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
