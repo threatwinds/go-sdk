@@ -194,10 +194,9 @@ message Log {
 
 message Draft {
   string log = 1;
-  repeated string logs = 2;
-  uint32 step = 3;
-  uint32 pipeline = 4;
-  repeated string errors = 5;
+  uint32 step = 2;
+  uint32 pipeline = 3;
+  repeated string errors = 4;
 }
 
 service Engine{
@@ -248,7 +247,6 @@ message Step {
   Drop drop = 10;
   Add add = 11;
   Dynamic dynamic = 12;
-  Expand expand = 13;
 }
 
 message Dynamic {
