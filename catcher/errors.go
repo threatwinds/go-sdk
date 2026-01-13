@@ -19,7 +19,7 @@ import (
 type SdkError struct {
 	Timestamp string         `json:"timestamp"`
 	Code      string         `json:"code"`
-	Trace     []string       `json:"trace"`
+	Trace     []string       `json:"trace,omitempty"`
 	Msg       string         `json:"msg"`
 	Cause     *string        `json:"cause,omitempty"`
 	Args      map[string]any `json:"args,omitempty"`
@@ -28,22 +28,25 @@ type SdkError struct {
 
 // Error returns the error message.
 func (e SdkError) Error() string {
+	args, _ := json.Marshal(e.Args)
+
+	return fmt.Sprintf("%s: %s. Args: %s", e.Msg, *e.Cause, args)
+}
+
+func (e SdkError) JSON() string {
+	jLog, _ := json.Marshal(e)
+	return string(jLog)
+}
+
+func (e SdkError) SecureString() string {
 	status, ok := e.Args["status"]
 	if ok {
 		if castInt(status) >= 500 {
 			return e.Msg
-		} else {
-			cause := "unknown cause"
-			if e.Cause != nil {
-				cause = *e.Cause
-			}
-			args, _ := json.Marshal(e.Args)
-			msg := fmt.Sprintf("%s: %s. Args: %s", e.Msg, cause, args)
-			return msg
 		}
 	}
 
-	return e.Msg
+	return e.Error()
 }
 
 // Error tries to cast the cause as an SdkError, if it is not an SdkError, it creates a new SdkError with the given parameters.
@@ -57,22 +60,24 @@ func (e SdkError) Error() string {
 // Returns:
 // *SdkError: the error. This type implements the Go error interface.
 func Error(msg string, cause error, args map[string]any) *SdkError {
-	pc := make([]uintptr, 25)
-	n := runtime.Callers(2, pc)
-	frames := runtime.CallersFrames(pc[:n])
-
-	var trace = make([]string, 0, 10)
-	for {
-		frame, more := frames.Next()
-
-		trace = append(trace, fmt.Sprint(frame.Function, " ", frame.Line))
-		if !more {
-			break
-		}
-	}
-
 	var err *SdkError
 	if err = ToSdkError(cause); err == nil {
+		var trace []string
+		if !noTrace {
+			pc := make([]uintptr, 25)
+			n := runtime.Callers(2, pc)
+			frames := runtime.CallersFrames(pc[:n])
+
+			trace = make([]string, 0, 10)
+			for {
+				frame, more := frames.Next()
+
+				trace = append(trace, fmt.Sprint(frame.Function, " ", frame.Line))
+				if !more {
+					break
+				}
+			}
+		}
 		sum := md5.Sum([]byte(msg))
 		err = &SdkError{
 			Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
@@ -83,9 +88,8 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 			Cause: func() *string {
 				if cause != nil {
 					return pointerOf(cause.Error())
-				} else {
-					return nil
 				}
+				return pointerOf("unknown cause")
 			}(),
 		}
 
@@ -97,9 +101,9 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 		}
 
 		if beauty {
-			fmt.Println(GetSeverityIcon(err.Severity), err.Error())
+			printLog(fmt.Sprint(GetSeverityIcon(err.Severity), " ", err.JSON()))
 		} else {
-			fmt.Println(err.Error())
+			printLog(err.JSON())
 		}
 	}
 
@@ -123,9 +127,9 @@ func calculateSeverity(value interface{}) string {
 		return "CRITICAL"
 	} else if statusCode >= 509 && statusCode < 511 {
 		return "ALERT"
-	} else {
-		return "ERROR"
 	}
+
+	return "ERROR"
 }
 
 // ToSdkError tries to cast an error to a SdkError.
@@ -151,10 +155,10 @@ func (e SdkError) GinError(c *gin.Context) {
 
 	status, ok := e.Args["status"]
 	if !ok {
-		c.Header("x-error", e.Msg)
+		c.Header("x-error", e.SecureString())
 		c.AbortWithStatus(http.StatusInternalServerError)
 	} else {
-		c.Header("x-error", e.Error())
+		c.Header("x-error", e.SecureString())
 		c.AbortWithStatus(castInt(status))
 	}
 }

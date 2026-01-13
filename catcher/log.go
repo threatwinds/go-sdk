@@ -13,7 +13,7 @@ import (
 type SdkLog struct {
 	Timestamp string         `json:"timestamp"`
 	Code      string         `json:"code"`
-	Trace     []string       `json:"trace"`
+	Trace     []string       `json:"trace,omitempty"`
 	Msg       string         `json:"msg"`
 	Args      map[string]any `json:"args,omitempty"`
 	Severity  string         `json:"severity"`
@@ -21,17 +21,30 @@ type SdkLog struct {
 
 // Info logs a message with a unique code, stack trace, and optional contextual arguments in a structured format.
 func Info(msg string, args map[string]any) {
-	pc := make([]uintptr, 25)
-	n := runtime.Callers(2, pc)
-	frames := runtime.CallersFrames(pc[:n])
+	Log(msg, args)
+}
 
-	var trace = make([]string, 0, 10)
-	for {
-		frame, more := frames.Next()
+// Log logs a message with a unique code, stack trace, and optional contextual arguments in a structured format.
+func Log(msg string, args map[string]any) {
+	mu.Lock()
+	nt := noTrace
+	b := beauty
+	mu.Unlock()
 
-		trace = append(trace, fmt.Sprint(frame.Function, " ", frame.Line))
-		if !more {
-			break
+	var trace []string
+	if !nt {
+		pc := make([]uintptr, 25)
+		n := runtime.Callers(2, pc)
+		frames := runtime.CallersFrames(pc[:n])
+
+		trace = make([]string, 0, 10)
+		for {
+			frame, more := frames.Next()
+
+			trace = append(trace, fmt.Sprint(frame.Function, " ", frame.Line))
+			if !more {
+				break
+			}
 		}
 	}
 
@@ -52,19 +65,35 @@ func Info(msg string, args map[string]any) {
 		sdkLog.Severity = calculateSeverity(statusCode)
 	}
 
-	if beauty {
-		fmt.Println(GetSeverityIcon(sdkLog.Severity), sdkLog.String())
+	if b {
+		printLog(fmt.Sprint(GetSeverityIcon(sdkLog.Severity), " ", sdkLog.JSON()))
 	} else {
-		fmt.Println(sdkLog.String())
+		printLog(sdkLog.JSON())
 	}
 }
 
-// String returns the JSON-encoded string representation of the SdkLog instance.
-func (e SdkLog) String() string {
-	a, err := json.Marshal(e)
-	if err != nil {
-		_ = Error("failed to marshal SdkLog", err, nil)
-		return ""
+func printLog(msg string) {
+	mu.Lock()
+	isAsync := async
+	ch := logChan
+	mu.Unlock()
+
+	if isAsync && ch != nil {
+		select {
+		case ch <- msg:
+		default:
+			// Si el canal está lleno, imprimir directamente para no perder logs críticos
+			// aunque esto cause latencia temporalmente.
+			fmt.Println(msg)
+		}
+	} else {
+		fmt.Println(msg)
 	}
+}
+
+// JSON returns the JSON-encoded string representation of the SdkLog instance.
+func (e SdkLog) JSON() string {
+	a, _ := json.Marshal(e)
+
 	return string(a)
 }

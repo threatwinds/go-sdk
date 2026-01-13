@@ -21,7 +21,7 @@ func TestSdkLog(t *testing.T) {
 			Severity:  "INFO",
 		}
 
-		result := sdkLog.String()
+		result := sdkLog.JSON()
 
 		// Should be valid JSON
 		var parsed map[string]any
@@ -347,7 +347,7 @@ func BenchmarkSdkLogString(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = sdkLog.String()
+		_ = sdkLog.JSON()
 	}
 }
 
