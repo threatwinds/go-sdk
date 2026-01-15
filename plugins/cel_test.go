@@ -29,7 +29,7 @@ type TestData struct {
 	IP       *string        `json:"ip"`
 }
 
-var cCache = new(CELCache)
+var cCache = NewCELCache("cel_test")
 
 func TestEvaluate(t *testing.T) {
 	name := "Alice"

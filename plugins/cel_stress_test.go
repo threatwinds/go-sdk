@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-var sCache = new(CELCache)
+var sCache = NewCELCache("cel_stress_test")
 
 func TestEvaluateStress(t *testing.T) {
 	data := `{"field1": "value1", "field2": 123, "field3": true}`
