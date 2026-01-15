@@ -1,7 +1,7 @@
 package plugins
 
 import (
-	"github.com/threatwinds/go-sdk/catcher"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -25,10 +25,10 @@ func getEnvStr(name, def string, required bool) (string, error) {
 
 	if val == "" {
 		if required {
-			return "", catcher.Error("missing required environment variable", nil, map[string]any{"name": name})
-		} else {
-			return def, nil
+			return "", fmt.Errorf("missing required environment variable: %s", name)
 		}
+
+		return def, nil
 	}
 
 	return val, nil
@@ -52,11 +52,7 @@ func getEnvUInt32(name string, def string, required bool) (uint32, error) {
 
 	val, err := strconv.ParseInt(str, 10, 64)
 	if err != nil {
-		err = catcher.Error("invalid environment variable", err, map[string]interface{}{
-			"name":  name,
-			"value": str,
-		})
-		return 0, err
+		return 0, fmt.Errorf("failed to parse UInt32 from %s: %w", name, err)
 	}
 
 	return uint32(val), nil
@@ -108,7 +104,7 @@ func getEnv() *Env {
 	if env.NodeName == "" {
 		env.NodeName, err = os.Hostname()
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("failed to get hostname: %v", err))
 		}
 	}
 

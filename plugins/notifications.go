@@ -48,10 +48,14 @@ const (
 // to the engine server via gRPC. It logs an error if the connection to the engine server fails,
 // if sending a notification fails, or if receiving an acknowledgment fails. It runs indefinitely
 // and should be run as a goroutine.
-func SendNotificationsFromChannel() {
+func SendNotificationsFromChannel(pluginName string) {
+	processName := fmt.Sprintf("plugin_%s", pluginName)
+
 	socketDir, err := utils.MkdirJoin(WorkDir, "sockets")
 	if err != nil {
-		_ = catcher.Error("failed to create socket directory", err, nil)
+		_ = catcher.Error("failed to create socket directory", err, map[string]any{
+			"process": processName,
+		})
 		os.Exit(1)
 	}
 	socketFile := socketDir.FileJoin("engine_server.sock")
@@ -59,7 +63,10 @@ func SendNotificationsFromChannel() {
 	conn, err := grpc.NewClient(fmt.Sprintf("unix://%s", socketFile),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		_ = catcher.Error("failed to connect to engine server", err, nil)
+		_ = catcher.Error("failed to connect to engine server", err, map[string]any{
+			"socket":  socketFile,
+			"process": processName,
+		})
 		os.Exit(1)
 	}
 
@@ -67,7 +74,10 @@ func SendNotificationsFromChannel() {
 
 	notifyClient, err := client.Notify(context.Background())
 	if err != nil {
-		_ = catcher.Error("failed to create notify client", err, nil)
+		_ = catcher.Error("failed to create notify client", err, map[string]any{
+			"socket":  socketFile,
+			"process": processName,
+		})
 		os.Exit(1)
 	}
 
@@ -81,7 +91,9 @@ func SendNotificationsFromChannel() {
 
 			err = notifyClient.Send(msg)
 			if err != nil {
-				_ = catcher.Error("failed to send notification", err, nil)
+				_ = catcher.Error("failed to send notification", err, map[string]any{
+					"process": processName,
+				})
 				os.Exit(1)
 			}
 		}
@@ -90,7 +102,9 @@ func SendNotificationsFromChannel() {
 	for {
 		_, err := notifyClient.Recv()
 		if err != nil {
-			_ = catcher.Error("failed to receive notification ack", err, nil)
+			_ = catcher.Error("failed to receive notification ack", err, map[string]any{
+				"process": processName,
+			})
 			os.Exit(1)
 		}
 	}
@@ -105,10 +119,14 @@ func SendNotificationsFromChannel() {
 //
 // Returns:
 //   - error: Returns an error if the message marshaling fails, otherwise returns nil.
-func EnqueueNotification[T any](topic Topic, message T) error {
+func EnqueueNotification[T any](topic Topic, message T, pluginName string) error {
+	processName := fmt.Sprintf("plugin_%s", pluginName)
+
 	mBytes, err := json.Marshal(message)
 	if err != nil {
-		return catcher.Error("failed to marshal notification body", err, nil)
+		return catcher.Error("failed to marshal notification body", err, map[string]any{
+			"process": processName,
+		})
 	}
 
 	msg := &Message{
@@ -123,8 +141,8 @@ func EnqueueNotification[T any](topic Topic, message T) error {
 		return nil
 	case <-time.After(1 * time.Second):
 		return catcher.Error("cannot enqueue message", errors.New("queue is full"), map[string]any{
-			"advise": "please consider to increase resources",
-			"queue":  "notificationsChannel",
+			"advise":  "please consider to increase resources",
+			"process": processName,
 		})
 	}
 }
@@ -142,40 +160,57 @@ func InitNotificationPlugin(name string, notificationFunction func(ctx context.C
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
+	processName := fmt.Sprintf("plugin_%s", name)
+
 	// Create sockets folder
 	socketsFolder, err := utils.MkdirJoin(WorkDir, "sockets")
 	if err != nil {
-		return catcher.Error("cannot create sockets folder", err, nil)
+		return catcher.Error("cannot create sockets folder", err, map[string]any{
+			"process": processName,
+		})
 	}
 
-	socket := socketsFolder.FileJoin(fmt.Sprintf("%s_notification.sock", name))
+	socketFile := socketsFolder.FileJoin(fmt.Sprintf("%s_notification.sock", name))
 
 	// Clean up any existing socket file
-	err = os.Remove(socket)
+	err = os.Remove(socketFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return catcher.Error("cannot remove socket", err, nil)
+			return catcher.Error("cannot remove socket", err, map[string]any{
+				"socket":  socketFile,
+				"process": processName,
+			})
 		}
 	}
 
 	// Set up a deferred cleanup function to ensure the socket is removed on exit
 	defer func() {
-		err := os.Remove(socket)
+		err := os.Remove(socketFile)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				_ = catcher.Error("cannot remove socket", err, nil)
+				_ = catcher.Error("cannot remove socket", err, map[string]any{
+					"socket":  socketFile,
+					"process": processName,
+				})
 			}
 		}
 	}()
 
-	unixAddress, err := net.ResolveUnixAddr("unix", socket)
+	unixAddress, err := net.ResolveUnixAddr("unix", socketFile)
 	if err != nil {
-		return catcher.Error("cannot resolve unix socket", err, map[string]any{})
+		return catcher.Error("cannot resolve unix socket", err, map[string]any{
+			"socket":  socketFile,
+			"process": processName,
+		})
 	}
 
 	listener, err := net.ListenUnix("unix", unixAddress)
 	if err != nil {
-		return catcher.Error("cannot listen to unix socket", err, map[string]any{})
+		return catcher.Error("cannot listen to unix socket", err, map[string]any{
+			"socket":      socketFile,
+			"unixAddress": unixAddress.String(),
+			"process":     processName,
+		})
 	}
 
 	defer func(listener *net.UnixListener) {
@@ -195,7 +230,11 @@ func InitNotificationPlugin(name string, notificationFunction func(ctx context.C
 	serverErrors := make(chan error, 1)
 	go func() {
 		if err := grpcServer.Serve(listener); err != nil {
-			_ = catcher.Error("cannot serve grpc", err, map[string]any{})
+			_ = catcher.Error("cannot serve grpc", err, map[string]any{
+				"socket":      socketFile,
+				"unixAddress": unixAddress.String(),
+				"process":     processName,
+			})
 			serverErrors <- err
 		}
 	}()
@@ -203,9 +242,15 @@ func InitNotificationPlugin(name string, notificationFunction func(ctx context.C
 	// Wait for a shutdown signal or server error
 	select {
 	case <-sigChan:
-		catcher.Info("shutdown signal received, stopping server", nil)
+		catcher.Info("shutdown signal received, stopping server", map[string]any{
+			"socket":  socketFile,
+			"process": processName,
+		})
 	case err := <-serverErrors:
-		return catcher.Error("server error, shutting down", err, nil)
+		return catcher.Error("server error, shutting down", err, map[string]any{
+			"socket":  socketFile,
+			"process": processName,
+		})
 	}
 
 	// Graceful shutdown

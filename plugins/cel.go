@@ -22,9 +22,16 @@ import (
 )
 
 type CELCache struct {
-	cache *expirable.LRU[string, *cachedProgram]
-	once  sync.Once
-	locks [1024]sync.Mutex
+	cache       *expirable.LRU[string, *cachedProgram]
+	once        sync.Once
+	locks       [1024]sync.Mutex
+	processName string
+}
+
+func NewCELCache(processName string) *CELCache {
+	return &CELCache{
+		processName: processName,
+	}
 }
 
 func (c *CELCache) getLock(key string) *sync.Mutex {
@@ -99,16 +106,15 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 	ast, issues := celEnv.Compile(transformedExpr)
 	if issues != nil && issues.Err() != nil {
 		return false, catcher.Error("failed to compile expression", errors.New("consult issues list for more information"), map[string]any{
-			"expression":  expression,
-			"transformed": transformedExpr,
-			"issues":      issues.Errors(),
+			"issues":  issues.Errors(),
+			"process": c.processName,
 		})
 	}
 
 	prg, err := celEnv.Program(ast)
 	if err != nil {
 		return false, catcher.Error("failed to create program", err, map[string]any{
-			"expression": expression,
+			"process": c.processName,
 		})
 	}
 
@@ -162,16 +168,24 @@ func (c *CELCache) transformExpression(expression string) string {
 // Returns true/false or an error in case of failure during evaluation or invalid output type.
 func (c *CELCache) Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool, error) {
 	if data == nil {
-		return false, catcher.Error("data is nil", nil, map[string]any{})
+		return false, catcher.Error("failed to evaluate CEL expression", errors.New("required parameter 'data' is nil"), map[string]any{
+			"process": c.processName,
+		})
+	}
+
+	if *data == "" {
+		return false, catcher.Error("failed to evaluate CEL expression", errors.New("required parameter 'data' is empty"), map[string]any{
+			"process": c.processName,
+		})
 	}
 
 	var valuesMap map[string]interface{}
 
-	if *data != "" {
-		err := json.Unmarshal([]byte(*data), &valuesMap)
-		if err != nil {
-			return false, catcher.Error("cannot unmarshal data", err, map[string]any{})
-		}
+	err := json.Unmarshal([]byte(*data), &valuesMap)
+	if err != nil {
+		return false, catcher.Error("failed to evaluate CEL expression", err, map[string]any{
+			"process": c.processName,
+		})
 	}
 
 	if valuesMap == nil {
@@ -186,10 +200,11 @@ func (c *CELCache) Evaluate(data *string, expression string, envOption ...cel.En
 }
 
 func (c *CELCache) eval(prg cel.Program, valuesMap map[string]interface{}, expression string) (bool, error) {
-	out, _, err := prg.Eval(valuesMap)
+	out, details, err := prg.Eval(valuesMap)
 	if err != nil {
 		return false, catcher.Error("failed to evaluate program", err, map[string]any{
-			"expression": expression,
+			"details": details,
+			"process": c.processName,
 		})
 	}
 
@@ -197,9 +212,7 @@ func (c *CELCache) eval(prg cel.Program, valuesMap map[string]interface{}, expre
 		return out.Value().(bool), nil
 	}
 
-	return false, catcher.Error("output type is not boolean", nil, map[string]any{
-		"expression": expression,
-	})
+	return false, nil
 }
 
 func (c *CELCache) valueToCelType(value interface{}) *cel.Type {

@@ -169,7 +169,6 @@ func TestCastInt(t *testing.T) {
 func TestSdkErrorTimestamp(t *testing.T) {
 	t.Run("timestamp format", func(t *testing.T) {
 		err := Error("test message", nil, nil)
-
 		// Verify timestamp is in RFC3339Nano format
 		_, parseErr := time.Parse(time.RFC3339Nano, err.Timestamp)
 		if parseErr != nil {

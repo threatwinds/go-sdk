@@ -2,13 +2,14 @@ package plugins
 
 import (
 	"fmt"
-	"github.com/threatwinds/go-sdk/catcher"
-	"github.com/threatwinds/go-sdk/utils"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/threatwinds/go-sdk/catcher"
+	"github.com/threatwinds/go-sdk/utils"
 
 	"github.com/tidwall/gjson"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -21,11 +22,13 @@ var cfgMutex sync.RWMutex
 // AcquireLock tries to acquire the lock file to prevent race conditions
 // when loading or modifying configurations. It returns true if the lock
 // was acquired successfully, false otherwise.
-func AcquireLock() (bool, error) {
+func AcquireLock(processName string) (bool, error) {
 	pipelinePath, err := utils.MkdirJoin(WorkDir, "pipeline")
 
 	if err != nil {
-		return false, fmt.Errorf("error creating lock file: %v", err)
+		return false, catcher.Error("failed to create pipeline folder", err, map[string]any{
+			"process": processName,
+		})
 	}
 
 	lockPath := pipelinePath.FileJoin(lockFile)
@@ -36,13 +39,19 @@ func AcquireLock() (bool, error) {
 		return false, nil
 	} else if !os.IsNotExist(err) {
 		// Error checking lock file
-		return false, fmt.Errorf("error checking lock file: %v", err)
+		return false, catcher.Error("failed to check lock file status", err, map[string]any{
+			"lockPath": lockPath,
+			"process":  processName,
+		})
 	}
 
 	// Create lock file
 	file, err := os.Create(lockPath)
 	if err != nil {
-		return false, fmt.Errorf("error creating lock file: %v", err)
+		return false, catcher.Error("failed to create lock file", err, map[string]any{
+			"lockPath": lockPath,
+			"process":  processName,
+		})
 	}
 	defer func() {
 		_ = file.Close()
@@ -53,7 +62,10 @@ func AcquireLock() (bool, error) {
 	if err != nil {
 		// Try to remove the lock file if we couldn't write to it
 		_ = os.Remove(lockPath)
-		return false, fmt.Errorf("error writing to lock file: %v", err)
+		return false, catcher.Error("failed to write lock file", err, map[string]any{
+			"lockPath": lockPath,
+			"process":  processName,
+		})
 	}
 
 	return true, nil
@@ -67,7 +79,7 @@ func ReleaseLock() error {
 
 // checkLockTimeout monitors the lock file and removes it if it has been locked
 // for more than 1 minute, assuming it's a stale lock from a dead process
-func checkLockTimeout() {
+func checkLockTimeout(processName string) {
 	lockPath := filepath.Join(WorkDir, "pipeline", lockFile)
 
 	// Check if lock file exists
@@ -77,7 +89,10 @@ func checkLockTimeout() {
 		return
 	}
 	if err != nil {
-		_ = catcher.Error("error checking lock file stat", err, map[string]interface{}{"lockPath": lockPath})
+		_ = catcher.Error("failed to check lock file status", err, map[string]any{
+			"lockPath": lockPath,
+			"process":  processName,
+		})
 		return
 	}
 
@@ -92,19 +107,23 @@ func checkLockTimeout() {
 	err = os.Remove(lockPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			_ = catcher.Error("error removing stale lock file", err, map[string]interface{}{"lockPath": lockPath, "lockAge": lockAge.String()})
+			_ = catcher.Error("failed to remove stale lock file", err, map[string]any{
+				"lockPath": lockPath,
+				"lockAge":  lockAge.String(),
+				"process":  processName,
+			})
 		}
 	}
 }
 
 // startLockMonitor starts a goroutine that periodically checks for stale lock files
-func startLockMonitor() {
+func startLockMonitor(processName string) {
 	go func() {
 		ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
 		defer ticker.Stop()
 
 		for range ticker.C {
-			checkLockTimeout()
+			checkLockTimeout(processName)
 		}
 	}()
 }
@@ -113,10 +132,13 @@ func startLockMonitor() {
 // It reads all YAML files, decodes them into Config objects, and merges their contents into the receiver Config object.
 // The function updates the Pipeline, DisabledRules, Tenants, Patterns, and Plugins fields of the receiver Config object.
 // If an error occurs while reading or unmarshalling a file, the function logs the error and continues with the next file.
-func (c *Config) loadCfg() {
+func (c *Config) loadCfg(processName string) {
 	pipelineFolder, err := utils.MkdirJoin(WorkDir, "pipeline")
 	if err != nil {
-		_ = catcher.Error("failed to create pipeline folder", err, map[string]interface{}{"dir": pipelineFolder})
+		_ = catcher.Error("failed to create pipeline folder", err, map[string]any{
+			"dir":     pipelineFolder,
+			"process": processName,
+		})
 		os.Exit(1)
 	}
 
@@ -125,13 +147,19 @@ func (c *Config) loadCfg() {
 		var nCfg = new(Config)
 		b, err := utils.ReadPbYaml(cFile)
 		if err != nil {
-			_ = catcher.Error("error reading YAML file", err, map[string]interface{}{"file": cFile})
+			_ = catcher.Error("failed to read YAML file", err, map[string]any{
+				"file":    cFile,
+				"process": processName,
+			})
 			continue
 		}
 
 		err = protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, nCfg)
 		if err != nil {
-			_ = catcher.Error("error reading YAML file", err, map[string]interface{}{"file": cFile})
+			_ = catcher.Error("failed to read YAML file", err, map[string]any{
+				"file":    cFile,
+				"process": processName,
+			})
 			continue
 		}
 
@@ -172,12 +200,12 @@ func RandomDuration(min, max int) time.Duration {
 // configuration with the new one. It ensures thread safety by using
 // a mutex lock and a lockfile mechanism to prevent race conditions
 // with other components that might modify the configuration.
-func updateCfg() {
+func updateCfg(processName string) {
 	// Try to acquire the lock
 	maxRetries := 5
 
 	for i := 0; i < maxRetries; i++ {
-		acquired, err := AcquireLock()
+		acquired, err := AcquireLock(processName)
 
 		if acquired {
 			break
@@ -185,10 +213,15 @@ func updateCfg() {
 
 		// Lock not acquired, wait and retry
 		if i < maxRetries-1 {
-			_ = catcher.Error("failed to acquire lock", err, map[string]interface{}{"retry": i + 1, "maxRetries": maxRetries})
+			_ = catcher.Error("failed to acquire lock", err, map[string]any{
+				"retry": i + 1, "maxRetries": maxRetries,
+				"process": processName,
+			})
 			time.Sleep(RandomDuration(10, 60))
 		} else {
-			_ = catcher.Error("failed to acquire lock after multiple retries", nil, nil)
+			_ = catcher.Error("failed to acquire lock after multiple retries", err, map[string]any{
+				"process": processName,
+			})
 			return
 		}
 	}
@@ -196,7 +229,9 @@ func updateCfg() {
 	defer func() {
 		// Release the lock when done
 		if err := ReleaseLock(); err != nil {
-			_ = catcher.Error("failed to release lock", err, nil)
+			_ = catcher.Error("failed to release lock", err, map[string]any{
+				"process": processName,
+			})
 		}
 	}()
 
@@ -205,7 +240,7 @@ func updateCfg() {
 	tmpCfg := new(Config)
 	tmpCfg.Plugins = make(map[string]*Value)
 	tmpCfg.Patterns = make(map[string]string)
-	tmpCfg.loadCfg()
+	tmpCfg.loadCfg(processName)
 
 	*cfg = *tmpCfg
 
@@ -216,16 +251,16 @@ func updateCfg() {
 // and starts a goroutine to periodically update the configuration every 60 seconds.
 // It waits for the initial configuration to be set before returning it.
 // The function returns a pointer to the Config struct.
-func GetCfg() *Config {
+func GetCfg(processName string) *Config {
 	cfgOnce.Do(func() {
 		cfg = new(Config)
 
 		// Start the lock monitor goroutine
-		startLockMonitor()
+		startLockMonitor(processName)
 
 		go func() {
 			for {
-				updateCfg()
+				updateCfg(processName)
 				time.Sleep(60 * time.Second)
 			}
 		}()
@@ -254,7 +289,7 @@ func GetCfg() *Config {
 //	gjson.Result: An object containing the configuration of the specified plugin.
 func PluginCfg(pluginName string, wait bool) gjson.Result {
 	for {
-		cfg := GetCfg()
+		cfg := GetCfg(fmt.Sprintf("plugin_%s", pluginName))
 
 		pConfig, ok := cfg.Plugins[pluginName]
 		if !ok {
@@ -263,7 +298,7 @@ func PluginCfg(pluginName string, wait bool) gjson.Result {
 				continue
 			}
 
-			panic("plugin config not found")
+			panic(fmt.Sprintf("plugin config not found for plugin: %s", pluginName))
 		}
 
 		bJson, err := protojson.Marshal(pConfig)
@@ -273,7 +308,7 @@ func PluginCfg(pluginName string, wait bool) gjson.Result {
 				continue
 			}
 
-			panic(err)
+			panic(fmt.Sprintf("failed to decode the configuration for plugin %s: %v", pluginName, err))
 		}
 
 		pJson := gjson.ParseBytes(bJson)

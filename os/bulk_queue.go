@@ -7,7 +7,7 @@ import (
 // NewBulkQueue creates a new BulkQueue that uses the existing singleton connection.
 // The singleton must be initialized with Connect() before calling this function.
 // Returns nil if the connection hasn't been established.
-func NewBulkQueue(config BulkQueueConfig) *BulkQueue {
+func NewBulkQueue(processName string, config BulkQueueConfig) *BulkQueue {
 	if apiClient == nil {
 		return nil
 	}
@@ -20,11 +20,12 @@ func NewBulkQueue(config BulkQueueConfig) *BulkQueue {
 	}
 
 	bq := &BulkQueue{
-		client: apiClient,
-		config: config,
-		queue:  make([]BulkItem, 0),
-		ticker: time.NewTicker(config.FlushInterval),
-		stopCh: make(chan struct{}),
+		client:      apiClient,
+		config:      config,
+		queue:       make([]BulkItem, 0),
+		ticker:      time.NewTicker(config.FlushInterval),
+		stopCh:      make(chan struct{}),
+		processName: processName,
 	}
 
 	bq.wg.Add(1)
@@ -36,8 +37,8 @@ func NewBulkQueue(config BulkQueueConfig) *BulkQueue {
 // NewBulkQueueWithDefaults creates a new BulkQueue with default configuration.
 // The singleton must be initialized with Connect() before calling this function.
 // Returns nil if the connection hasn't been established.
-func NewBulkQueueWithDefaults() *BulkQueue {
-	return NewBulkQueue(DefaultBulkQueueConfig())
+func NewBulkQueueWithDefaults(processName string) *BulkQueue {
+	return NewBulkQueue(processName, DefaultBulkQueueConfig())
 }
 
 // Config returns the current configuration (read-only copy).

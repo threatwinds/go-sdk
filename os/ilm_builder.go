@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/threatwinds/go-sdk/catcher"
 )
 
 // ISMPolicy represents an OpenSearch Index State Management policy
@@ -208,15 +211,20 @@ func (b *ISMPolicyBuilder) AddState(name string) *ISMStateBuilder {
 // Build returns the ISM policy
 func (b *ISMPolicyBuilder) Build() (ISMPolicy, error) {
 	if len(b.errors) > 0 {
-		return ISMPolicy{}, fmt.Errorf("policy builder has %d errors: %v", len(b.errors), b.errors)
+		return ISMPolicy{}, catcher.Error("failed to build ISM policy", errors.New("please see the errors list in the arguments"), map[string]any{
+			"errors": b.errors,
+			"policy": b.name,
+		})
 	}
 
 	if b.name == "" {
-		return ISMPolicy{}, fmt.Errorf("policy name is required")
+		return ISMPolicy{}, catcher.Error("failed to build ISM policy", errors.New("policy name is required"), nil)
 	}
 
 	if len(b.states) == 0 {
-		return ISMPolicy{}, fmt.Errorf("at least one state is required")
+		return ISMPolicy{}, catcher.Error("failed to build ISM policy", errors.New("at least one state is required"), map[string]any{
+			"policy": b.name,
+		})
 	}
 
 	if b.defaultState == "" {
@@ -236,10 +244,12 @@ func (b *ISMPolicyBuilder) Build() (ISMPolicy, error) {
 // BuildWithErrors returns the policy and any accumulated errors
 func (b *ISMPolicyBuilder) BuildWithErrors() (ISMPolicy, []error) {
 	if b.name == "" {
-		b.errors = append(b.errors, fmt.Errorf("policy name is required"))
+		b.errors = append(b.errors, catcher.Error("failed to build ISM policy", errors.New("policy name is required"), nil))
 	}
 	if len(b.states) == 0 {
-		b.errors = append(b.errors, fmt.Errorf("at least one state is required"))
+		b.errors = append(b.errors, catcher.Error("failed to build ISM policy", errors.New("at least one state is required"), map[string]any{
+			"policy": b.name,
+		}))
 	}
 
 	if b.defaultState == "" && len(b.states) > 0 {
@@ -265,7 +275,9 @@ func (b *ISMPolicyBuilder) Ensure() error {
 	// Check if policy exists
 	exists, _, err := getISMPolicyWithSeqNo(b.ctx, b.name)
 	if err != nil {
-		return fmt.Errorf("failed to check policy existence: %w", err)
+		return catcher.Error("failed to ensure ISM policy", fmt.Errorf("failed to check policy existence: %w", err), map[string]any{
+			"policy": b.name,
+		})
 	}
 
 	body := map[string]interface{}{
@@ -282,7 +294,9 @@ func (b *ISMPolicyBuilder) Ensure() error {
 
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
-		return fmt.Errorf("failed to marshal policy: %w", err)
+		return catcher.Error("failed to ensure ISM policy", fmt.Errorf("failed to marshal policy: %w", err), map[string]any{
+			"policy": b.name,
+		})
 	}
 
 	var path string
@@ -299,19 +313,26 @@ func (b *ISMPolicyBuilder) Ensure() error {
 
 	req, err := http.NewRequestWithContext(b.ctx, method, path, bytes.NewReader(bodyJSON))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return catcher.Error("failed to ensure ISM policy", fmt.Errorf("failed to create request: %w", err), map[string]any{
+			"policy": b.name,
+		})
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Perform(req)
 	if err != nil {
-		return fmt.Errorf("failed to create/update policy: %w", err)
+		return catcher.Error("failed to ensure ISM policy", fmt.Errorf("failed to create/update policy: %w", err), map[string]any{
+			"policy": b.name,
+		})
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to create/update policy: %s", string(bodyBytes))
+		return catcher.Error("failed to ensure ISM policy", errors.New(string(bodyBytes)), map[string]any{
+			"policy":      b.name,
+			"status_code": resp.StatusCode,
+		})
 	}
 
 	return nil
@@ -551,12 +572,16 @@ func GetISMPolicy(ctx context.Context, name string) (*ISMPolicy, error) {
 	path := fmt.Sprintf("/_plugins/_ism/policies/%s", name)
 	req, err := http.NewRequestWithContext(ctx, "GET", path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, catcher.Error("failed to get ISM policy", fmt.Errorf("failed to create request: %w", err), map[string]any{
+			"policy": name,
+		})
 	}
 
 	resp, err := client.Perform(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get policy: %w", err)
+		return nil, catcher.Error("failed to get ISM policy", fmt.Errorf("failed to get policy: %w", err), map[string]any{
+			"policy": name,
+		})
 	}
 	defer resp.Body.Close()
 
@@ -566,7 +591,10 @@ func GetISMPolicy(ctx context.Context, name string) (*ISMPolicy, error) {
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get policy: %s", string(bodyBytes))
+		return nil, catcher.Error("failed to get ISM policy", errors.New(string(bodyBytes)), map[string]any{
+			"policy":      name,
+			"status_code": resp.StatusCode,
+		})
 	}
 
 	var result struct {
@@ -574,7 +602,9 @@ func GetISMPolicy(ctx context.Context, name string) (*ISMPolicy, error) {
 		Policy ISMPolicy `json:"policy"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, catcher.Error("failed to get ISM policy", fmt.Errorf("failed to decode response: %w", err), map[string]any{
+			"policy": name,
+		})
 	}
 
 	result.Policy.PolicyID = result.ID

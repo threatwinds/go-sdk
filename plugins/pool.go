@@ -37,7 +37,7 @@ func (p *Pool[T]) Get() T {
 }
 
 // Put returns an object to the pool after resetting it
-func (p *Pool[T]) Put(obj T) {
+func (p *Pool[T]) Put(obj T) error {
 	defer func() {
 		if r := recover(); r != nil {
 			_ = catcher.Error("panic in pool Put operation", fmt.Errorf("%v", r), map[string]any{
@@ -50,10 +50,11 @@ func (p *Pool[T]) Put(obj T) {
 	// Check if obj is nil using reflection for generic types
 	objValue := reflect.ValueOf(obj)
 	if !objValue.IsValid() || (objValue.Kind() == reflect.Ptr && objValue.IsNil()) {
-		_ = catcher.Error("cannot put nil object to pool", nil, nil)
-		return
+		return fmt.Errorf("failed to put object to pull, object is nil")
 	}
 
 	p.reset(obj)
 	p.pool.Put(obj)
+
+	return nil
 }

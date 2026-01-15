@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/threatwinds/go-sdk/catcher"
 )
 
 // AliasConfig represents a configuration for an alias
@@ -40,17 +43,19 @@ type AliasInfo struct {
 
 // AliasBuilder provides a fluent API for alias operations
 type AliasBuilder struct {
-	ctx     context.Context
-	actions []AliasAction
-	errors  []error
+	ctx         context.Context
+	actions     []AliasAction
+	errors      []error
+	processName string
 }
 
 // NewAliasBuilder creates a new alias builder
-func NewAliasBuilder(ctx context.Context) *AliasBuilder {
+func NewAliasBuilder(ctx context.Context, processName string) *AliasBuilder {
 	return &AliasBuilder{
-		ctx:     ctx,
-		actions: []AliasAction{},
-		errors:  []error{},
+		ctx:         ctx,
+		actions:     []AliasAction{},
+		errors:      []error{},
+		processName: processName,
 	}
 }
 
@@ -146,13 +151,13 @@ func (b *AliasBuilder) RemoveIndex(index string) *AliasBuilder {
 
 // Switch atomically switches an alias from one index to another
 func (b *AliasBuilder) Switch(alias, fromIndex, toIndex string) *AliasBuilder {
-	// Remove from old index, add to new index
+	// Remove from the old index, add to the new index
 	b.Remove(fromIndex, alias)
 	b.Add(toIndex, alias)
 	return b
 }
 
-// SwitchWriteIndex atomically switches the write index for an alias
+// SwitchWriteIndex atomically switches the writing index for an alias
 func (b *AliasBuilder) SwitchWriteIndex(alias, fromIndex, toIndex string) *AliasBuilder {
 	isWriteIndexFalse := false
 	isWriteIndexTrue := true
@@ -176,11 +181,16 @@ func (b *AliasBuilder) SwitchWriteIndex(alias, fromIndex, toIndex string) *Alias
 // Build returns the alias update request body
 func (b *AliasBuilder) Build() (map[string]interface{}, error) {
 	if len(b.errors) > 0 {
-		return nil, fmt.Errorf("alias builder has %d errors: %v", len(b.errors), b.errors)
+		return nil, catcher.Error("failed to build alias update request", errors.New("please see the errors list in the arguments"), map[string]any{
+			"errors":  b.errors,
+			"process": b.processName,
+		})
 	}
 
 	if len(b.actions) == 0 {
-		return nil, fmt.Errorf("no actions defined")
+		return nil, catcher.Error("failed to build alias update request", errors.New("no actions defined"), map[string]any{
+			"process": b.processName,
+		})
 	}
 
 	actions := make([]map[string]interface{}, 0, len(b.actions))
@@ -268,41 +278,56 @@ func (b *AliasBuilder) Ensure() error {
 
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
-		return fmt.Errorf("failed to marshal alias actions: %w", err)
+		return catcher.Error("failed to update aliases", fmt.Errorf("failed to marshal alias actions: %w", err), map[string]any{
+			"process": b.processName,
+		})
 	}
 
 	// Use a low-level client for alias update
 	req, err := http.NewRequestWithContext(b.ctx, "POST", "/_aliases", bytes.NewReader(bodyJSON))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return catcher.Error("failed to update aliases", fmt.Errorf("failed to create request: %w", err), map[string]any{
+			"process": b.processName,
+		})
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Perform(req)
 	if err != nil {
-		return fmt.Errorf("failed to update aliases: %w", err)
+		return catcher.Error("failed to update aliases", fmt.Errorf("failed to update aliases: %w", err), map[string]any{
+			"process": b.processName,
+		})
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to update aliases: %s", string(bodyBytes))
+		return catcher.Error("failed to update aliases", errors.New(string(bodyBytes)), map[string]any{
+			"process":     b.processName,
+			"status_code": resp.StatusCode,
+		})
 	}
 
 	return nil
 }
 
 // GetAliases retrieves aliases for the given index pattern
-func GetAliases(ctx context.Context, indexPattern string) ([]AliasInfo, error) {
+func GetAliases(ctx context.Context, indexPattern string, processName string) ([]AliasInfo, error) {
 	path := fmt.Sprintf("/%s/_alias", indexPattern)
 	req, err := http.NewRequestWithContext(ctx, "GET", path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, catcher.Error("failed to get aliases", fmt.Errorf("failed to create request: %w", err), map[string]any{
+			"index_pattern": indexPattern,
+			"process":       processName,
+		})
 	}
 
 	resp, err := client.Perform(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get aliases: %w", err)
+		return nil, catcher.Error("failed to get aliases", fmt.Errorf("failed to get aliases: %w", err), map[string]any{
+			"index_pattern": indexPattern,
+			"process":       processName,
+		})
 	}
 	defer resp.Body.Close()
 
@@ -312,14 +337,21 @@ func GetAliases(ctx context.Context, indexPattern string) ([]AliasInfo, error) {
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get aliases: %s", string(bodyBytes))
+		return nil, catcher.Error("failed to get aliases", errors.New(string(bodyBytes)), map[string]any{
+			"index_pattern": indexPattern,
+			"status_code":   resp.StatusCode,
+			"process":       processName,
+		})
 	}
 
 	var result map[string]struct {
 		Aliases map[string]AliasConfig `json:"aliases"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, catcher.Error("failed to get aliases", fmt.Errorf("failed to decode response: %w", err), map[string]any{
+			"index_pattern": indexPattern,
+			"process":       processName,
+		})
 	}
 
 	var aliases []AliasInfo
@@ -337,16 +369,22 @@ func GetAliases(ctx context.Context, indexPattern string) ([]AliasInfo, error) {
 }
 
 // AliasExists checks if an alias exists
-func AliasExists(ctx context.Context, alias string) (bool, error) {
+func AliasExists(ctx context.Context, alias string, processName string) (bool, error) {
 	path := fmt.Sprintf("/_alias/%s", alias)
 	req, err := http.NewRequestWithContext(ctx, "HEAD", path, nil)
 	if err != nil {
-		return false, fmt.Errorf("failed to create request: %w", err)
+		return false, catcher.Error("failed to check alias existence", fmt.Errorf("failed to create request: %w", err), map[string]any{
+			"alias":   alias,
+			"process": processName,
+		})
 	}
 
 	resp, err := client.Perform(req)
 	if err != nil {
-		return false, fmt.Errorf("failed to check alias: %w", err)
+		return false, catcher.Error("failed to check alias existence", fmt.Errorf("failed to check alias: %w", err), map[string]any{
+			"alias":   alias,
+			"process": processName,
+		})
 	}
 	defer resp.Body.Close()
 
@@ -354,16 +392,22 @@ func AliasExists(ctx context.Context, alias string) (bool, error) {
 }
 
 // GetIndicesForAlias returns all indices that have the given alias
-func GetIndicesForAlias(ctx context.Context, alias string) ([]string, error) {
+func GetIndicesForAlias(ctx context.Context, alias string, processName string) ([]string, error) {
 	path := fmt.Sprintf("/_alias/%s", alias)
 	req, err := http.NewRequestWithContext(ctx, "GET", path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, catcher.Error("failed to get indices for alias", fmt.Errorf("failed to create request: %w", err), map[string]any{
+			"alias":   alias,
+			"process": processName,
+		})
 	}
 
 	resp, err := client.Perform(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get indices for alias: %w", err)
+		return nil, catcher.Error("failed to get indices for alias", fmt.Errorf("failed to get indices for alias: %w", err), map[string]any{
+			"alias":   alias,
+			"process": processName,
+		})
 	}
 	defer resp.Body.Close()
 
@@ -373,12 +417,19 @@ func GetIndicesForAlias(ctx context.Context, alias string) ([]string, error) {
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get indices for alias: %s", string(bodyBytes))
+		return nil, catcher.Error("failed to get indices for alias", errors.New(string(bodyBytes)), map[string]any{
+			"alias":       alias,
+			"status_code": resp.StatusCode,
+			"process":     processName,
+		})
 	}
 
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, catcher.Error("failed to get indices for alias", err, map[string]any{
+			"alias":   alias,
+			"process": processName,
+		})
 	}
 
 	indices := make([]string, 0, len(result))
@@ -390,15 +441,17 @@ func GetIndicesForAlias(ctx context.Context, alias string) ([]string, error) {
 }
 
 // DeleteAlias removes an alias from an index
-func DeleteAlias(ctx context.Context, index, alias string) error {
-	return NewAliasBuilder(ctx).Remove(index, alias).Ensure()
+func DeleteAlias(ctx context.Context, index, alias, processName string) error {
+	return NewAliasBuilder(ctx, processName).Remove(index, alias).Ensure()
 }
 
 // GetWriteIndex returns the write index for an alias
-func GetWriteIndex(ctx context.Context, alias string) (string, error) {
-	aliases, err := GetAliases(ctx, "*")
+func GetWriteIndex(ctx context.Context, alias, processName string) (string, error) {
+	aliases, err := GetAliases(ctx, "*", processName)
 	if err != nil {
-		return "", err
+		return "", catcher.Error("failed to get write index", err, map[string]any{
+			"process": processName,
+		})
 	}
 
 	for _, info := range aliases {
@@ -408,14 +461,20 @@ func GetWriteIndex(ctx context.Context, alias string) (string, error) {
 	}
 
 	// If no explicit write index, check if alias points to single index
-	indices, err := GetIndicesForAlias(ctx, alias)
+	indices, err := GetIndicesForAlias(ctx, alias, processName)
 	if err != nil {
-		return "", err
+		return "", catcher.Error("failed to get write index", err, map[string]any{
+			"alias":   alias,
+			"process": processName,
+		})
 	}
 
 	if len(indices) == 1 {
 		return indices[0], nil
 	}
 
-	return "", fmt.Errorf("no write index found for alias: %s", alias)
+	return "", catcher.Error("failed to get write index", fmt.Errorf("no write index found"), map[string]any{
+		"alias":   alias,
+		"process": processName,
+	})
 }

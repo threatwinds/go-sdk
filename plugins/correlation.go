@@ -31,40 +31,57 @@ func InitCorrelationPlugin(name string, correlationFunction func(ctx context.Con
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
+	processName := fmt.Sprintf("plugin_%s", name)
+
 	// Create sockets folder
 	socketsFolder, err := utils.MkdirJoin(WorkDir, "sockets")
 	if err != nil {
-		return catcher.Error("cannot create sockets folder", err, nil)
+		return catcher.Error("cannot create sockets folder", err, map[string]any{
+			"process": processName,
+		})
 	}
 
-	socket := socketsFolder.FileJoin(fmt.Sprintf("%s_correlation.sock", name))
+	socketFile := socketsFolder.FileJoin(fmt.Sprintf("%s_correlation.sock", name))
 
 	// Clean up any existing socket file
-	err = os.Remove(socket)
+	err = os.Remove(socketFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return catcher.Error("cannot remove socket", err, nil)
+			return catcher.Error("cannot remove socket", err, map[string]any{
+				"socket":  socketFile,
+				"process": processName,
+			})
 		}
 	}
 
 	// Set up a deferred cleanup function to ensure the socket is removed on exit
 	defer func() {
-		err := os.Remove(socket)
+		err := os.Remove(socketFile)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				_ = catcher.Error("cannot remove socket", err, nil)
+				_ = catcher.Error("cannot remove socket", err, map[string]any{
+					"socket":  socketFile,
+					"process": processName,
+				})
 			}
 		}
 	}()
 
-	unixAddress, err := net.ResolveUnixAddr("unix", socket)
+	unixAddress, err := net.ResolveUnixAddr("unix", socketFile)
 	if err != nil {
-		return catcher.Error("cannot resolve unix socket", err, map[string]any{})
+		return catcher.Error("cannot resolve unix socket", err, map[string]any{
+			"socket":  socketFile,
+			"process": processName,
+		})
 	}
 
 	listener, err := net.ListenUnix("unix", unixAddress)
 	if err != nil {
-		return catcher.Error("cannot listen to unix socket", err, map[string]any{})
+		return catcher.Error("cannot listen to unix socket", err, map[string]any{
+			"socket":      socketFile,
+			"unixAddress": unixAddress.String(),
+			"process":     processName,
+		})
 	}
 
 	defer func(listener *net.UnixListener) {
@@ -84,7 +101,11 @@ func InitCorrelationPlugin(name string, correlationFunction func(ctx context.Con
 	serverErrors := make(chan error, 1)
 	go func() {
 		if err := grpcServer.Serve(listener); err != nil {
-			_ = catcher.Error("cannot serve grpc", err, map[string]any{})
+			_ = catcher.Error("cannot serve grpc", err, map[string]any{
+				"socket":      socketFile,
+				"unixAddress": unixAddress.String(),
+				"process":     processName,
+			})
 			serverErrors <- err
 		}
 	}()
@@ -92,9 +113,17 @@ func InitCorrelationPlugin(name string, correlationFunction func(ctx context.Con
 	// Wait for a shutdown signal or server error
 	select {
 	case <-sigChan:
-		catcher.Info("shutdown signal received, stopping server", nil)
+		catcher.Info("shutdown signal received, stopping server", map[string]any{
+			"socket":      socketFile,
+			"unixAddress": unixAddress.String(),
+			"process":     processName,
+		})
 	case err := <-serverErrors:
-		return catcher.Error("server error, shutting down", err, nil)
+		return catcher.Error("server error, shutting down", err, map[string]any{
+			"socket":      socketFile,
+			"unixAddress": unixAddress.String(),
+			"process":     processName,
+		})
 	}
 
 	// Graceful shutdown

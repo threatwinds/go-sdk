@@ -8,20 +8,21 @@ import (
 
 // BoolBuilder builds bool queries with field resolution at all nesting levels
 type BoolBuilder struct {
-	ctx     context.Context
-	mapper  *FieldMapper
-	indices []string
-	query   Bool
-	errors  []error
+	ctx         context.Context
+	mapper      *FieldMapper
+	indices     []string
+	query       Bool
+	errors      []error
+	processName string
 }
 
 // NewBoolBuilder creates a bool builder with field resolution using default mapper
-func NewBoolBuilder(ctx context.Context, indices []string) *BoolBuilder {
-	return NewBoolBuilderWithMapper(ctx, indices, defaultMapper)
+func NewBoolBuilder(ctx context.Context, indices []string, processName string) *BoolBuilder {
+	return NewBoolBuilderWithMapper(ctx, indices, defaultMapper, processName)
 }
 
 // NewBoolBuilderWithMapper creates a bool builder with custom mapper
-func NewBoolBuilderWithMapper(ctx context.Context, indices []string, mapper *FieldMapper) *BoolBuilder {
+func NewBoolBuilderWithMapper(ctx context.Context, indices []string, mapper *FieldMapper, processName string) *BoolBuilder {
 	return &BoolBuilder{
 		ctx:     ctx,
 		mapper:  mapper,
@@ -32,7 +33,8 @@ func NewBoolBuilderWithMapper(ctx context.Context, indices []string, mapper *Fie
 			Filter:  []Query{},
 			MustNot: []Query{},
 		},
-		errors: []error{},
+		errors:      []error{},
+		processName: processName,
 	}
 }
 

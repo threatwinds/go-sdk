@@ -31,10 +31,14 @@ func InitParsingPlugin(name string, parsingFunction func(context.Context, *Trans
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
+	processName := fmt.Sprintf("plugin_%s", name)
+
 	// Create sockets folder
 	socketsFolder, err := utils.MkdirJoin(WorkDir, "sockets")
 	if err != nil {
-		return catcher.Error("cannot create sockets folder", err, nil)
+		return catcher.Error("cannot create sockets folder", err, map[string]any{
+			"process": processName,
+		})
 	}
 
 	socket := socketsFolder.FileJoin(fmt.Sprintf("%s_parsing.sock", name))
@@ -43,7 +47,10 @@ func InitParsingPlugin(name string, parsingFunction func(context.Context, *Trans
 	err = os.Remove(socket)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return catcher.Error("cannot remove socket", err, nil)
+			return catcher.Error("cannot remove socket", err, map[string]any{
+				"socket":  socket,
+				"process": processName,
+			})
 		}
 	}
 
@@ -52,19 +59,27 @@ func InitParsingPlugin(name string, parsingFunction func(context.Context, *Trans
 		err := os.Remove(socket)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				_ = catcher.Error("cannot remove socket", err, nil)
+				_ = catcher.Error("cannot remove socket", err, map[string]any{
+					"socket":  socket,
+					"process": processName,
+				})
 			}
 		}
 	}()
 
 	unixAddress, err := net.ResolveUnixAddr("unix", socket)
 	if err != nil {
-		return catcher.Error("cannot resolve unix address", err, map[string]any{})
+		return catcher.Error("cannot resolve unix address", err, map[string]any{
+			"socket":  socket,
+			"process": processName,
+		})
 	}
 
 	listener, err := net.ListenUnix("unix", unixAddress)
 	if err != nil {
-		return catcher.Error("cannot listen to unix socket", err, map[string]any{})
+		return catcher.Error("cannot listen to unix socket", err, map[string]any{
+			"process": processName,
+		})
 	}
 
 	defer func(listener *net.UnixListener) {
@@ -84,16 +99,22 @@ func InitParsingPlugin(name string, parsingFunction func(context.Context, *Trans
 	serverErrors := make(chan error, 1)
 	go func() {
 		if err := grpcServer.Serve(listener); err != nil {
-			serverErrors <- catcher.Error("cannot serve grpc", err, map[string]any{})
+			serverErrors <- catcher.Error("cannot serve grpc", err, map[string]any{
+				"process": processName,
+			})
 		}
 	}()
 
 	// Wait for a shutdown signal or server error
 	select {
 	case <-sigChan:
-		catcher.Info("shutdown signal received, stopping server", nil)
+		catcher.Info("shutdown signal received, stopping server", map[string]any{
+			"process": processName,
+		})
 	case err := <-serverErrors:
-		return catcher.Error("server error, shutting down", err, nil)
+		return catcher.Error("server error, shutting down", err, map[string]any{
+			"process": processName,
+		})
 	}
 
 	// Graceful shutdown

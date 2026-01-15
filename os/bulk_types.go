@@ -63,13 +63,14 @@ func DefaultBulkQueueConfig() BulkQueueConfig {
 
 // BulkQueue handles bulk operations with automatic batching and flushing.
 type BulkQueue struct {
-	client *opensearchapi.Client
-	config BulkQueueConfig
-	queue  []BulkItem
-	mutex  sync.RWMutex
-	ticker *time.Ticker
-	stopCh chan struct{}
-	wg     sync.WaitGroup
+	client      *opensearchapi.Client
+	config      BulkQueueConfig
+	queue       []BulkItem
+	mutex       sync.RWMutex
+	ticker      *time.Ticker
+	stopCh      chan struct{}
+	wg          sync.WaitGroup
+	processName string
 }
 
 // BulkResponse contains the result of a bulk operation.

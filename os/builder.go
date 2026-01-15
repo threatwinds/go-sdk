@@ -2,8 +2,11 @@ package os
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
+	"net/http"
+
+	"github.com/threatwinds/go-sdk/catcher"
 )
 
 // QueryBuilder provides a fluent API for building OpenSearch queries
@@ -15,7 +18,8 @@ type QueryBuilder struct {
 	errors  []error
 	// knnQuery stores k-NN query separately for proper OpenSearch 3.x handling.
 	// In OpenSearch 3.x, k-NN queries must be at the top level, not nested in bool.must.
-	knnQuery *knnQueryConfig
+	knnQuery    *knnQueryConfig
+	processName string
 }
 
 // knnQueryConfig stores k-NN query configuration for deferred building.
@@ -31,12 +35,12 @@ func init() {
 }
 
 // NewQueryBuilder creates a new QueryBuilder with default mapper
-func NewQueryBuilder(ctx context.Context, indices []string) *QueryBuilder {
-	return NewQueryBuilderWithMapper(ctx, indices, defaultMapper)
+func NewQueryBuilder(ctx context.Context, indices []string, processName string) *QueryBuilder {
+	return NewQueryBuilderWithMapper(ctx, indices, defaultMapper, processName)
 }
 
 // NewQueryBuilderWithMapper creates a new QueryBuilder with custom mapper
-func NewQueryBuilderWithMapper(ctx context.Context, indices []string, mapper *FieldMapper) *QueryBuilder {
+func NewQueryBuilderWithMapper(ctx context.Context, indices []string, mapper *FieldMapper, processName string) *QueryBuilder {
 	return &QueryBuilder{
 		ctx:     ctx,
 		indices: indices,
@@ -53,7 +57,8 @@ func NewQueryBuilderWithMapper(ctx context.Context, indices []string, mapper *Fi
 				},
 			},
 		},
-		errors: []error{},
+		errors:      []error{},
+		processName: processName,
 	}
 }
 
@@ -119,7 +124,10 @@ func (b *QueryBuilder) ExcludeSource(fields ...string) *QueryBuilder {
 func (b *QueryBuilder) Collapse(field string) *QueryBuilder {
 	resolvedField, err := b.resolveField(field, QueryTypeAggregation)
 	if err != nil {
-		b.errors = append(b.errors, fmt.Errorf("collapse field '%s': %w", field, err))
+		b.errors = append(b.errors, catcher.Error("failed to resolve collapse field", err, map[string]any{
+			"process": b.processName,
+			"field":   field,
+		}))
 		return b
 	}
 
@@ -191,7 +199,11 @@ func (b *QueryBuilder) Term(field string, value interface{}) *QueryBuilder {
 	if err != nil {
 		// Check if this is a text field with no .keyword - try to convert to match
 		if info, ok := b.getFieldInfo(field); ok && info.Type == "text" && len(info.Fields) == 0 {
-			log.Printf("Warning: Field '%s' is text type with no .keyword sub-field, converting Term to Match query", field)
+			catcher.Info("attempting to convert Term query to Match query because the field is of text type without .keyword sub-field", map[string]any{
+				"status":  http.StatusBadRequest,
+				"field":   field,
+				"process": b.processName,
+			})
 			return b.Match(field, fmt.Sprint(value))
 		}
 		b.errors = append(b.errors, fmt.Errorf("term field '%s': %w", field, err))
@@ -324,7 +336,11 @@ func (b *QueryBuilder) Match(field string, value string) *QueryBuilder {
 	if ok {
 		// If it's a keyword field, auto-convert to Term query
 		if info.Type == "keyword" || (info.Type != "text" && info.AllowsTerm) {
-			log.Printf("Warning: Field '%s' is %s type, converting Match to Term query", field, info.Type)
+			catcher.Info("converting Match to Term query because field is a keyword", map[string]any{
+				"field":   field,
+				"status":  http.StatusBadRequest,
+				"process": b.processName,
+			})
 			return b.Term(field, value)
 		}
 	}
@@ -474,7 +490,11 @@ func (b *QueryBuilder) Fuzzy(field string, value string, fuzziness ...string) *Q
 		// Fuzzy works like Match - needs text fields
 		// Check if this is a keyword field and convert to Term
 		if info, ok := b.getFieldInfo(field); ok && info.Type == "keyword" {
-			log.Printf("Warning: Field '%s' is keyword type, fuzzy queries work better on text fields", field)
+			catcher.Info("fuzzy queries work better on text fields", map[string]any{
+				"status":  http.StatusBadRequest,
+				"field":   field,
+				"process": b.processName,
+			})
 		}
 		b.errors = append(b.errors, fmt.Errorf("fuzzy field '%s': %w", field, err))
 		return b
@@ -532,7 +552,7 @@ func (b *QueryBuilder) MatchPhrasePrefix(field string, value string) *QueryBuild
 
 // MatchAll adds a match_all query (matches everything)
 func (b *QueryBuilder) MatchAll() *QueryBuilder {
-	// Simply don't add any conditions - empty bool query matches all
+	// Simply don't add any conditions - an empty bool query matches all
 	return b
 }
 
@@ -1560,10 +1580,10 @@ func (b *QueryBuilder) MustNotBool(nested *BoolBuilder) *QueryBuilder {
 // Build returns the constructed SearchRequest
 func (b *QueryBuilder) Build() SearchRequest {
 	if len(b.errors) > 0 {
-		log.Printf("QueryBuilder has %d errors:", len(b.errors))
-		for _, err := range b.errors {
-			log.Printf("  - %v", err)
-		}
+		_ = catcher.Error("QueryBuilder has errors", errors.New("see the errors list in the arguments"), map[string]any{
+			"errors":  b.errors,
+			"process": b.processName,
+		})
 	}
 
 	// Handle k-NN query placement for OpenSearch 3.x compatibility.
@@ -1631,7 +1651,10 @@ func (b *QueryBuilder) resolveField(field string, queryType QueryType) (string, 
 		merged, err := b.mapper.GetMergedMapping(b.ctx, indexPattern)
 		if err != nil {
 			// If mapping fetch fails, use field as-is
-			log.Printf("Warning: Failed to fetch mapping for '%s': %v", indexPattern, err)
+			_ = catcher.Error("failed to fetch mapping", err, map[string]any{
+				"pattern": indexPattern,
+				"process": b.processName,
+			})
 			continue
 		}
 
@@ -1640,6 +1663,11 @@ func (b *QueryBuilder) resolveField(field string, queryType QueryType) (string, 
 		if err == nil {
 			return resolvedField, nil
 		}
+
+		_ = catcher.Error("failed to resolve field name", err, map[string]any{
+			"field":   field,
+			"process": b.processName,
+		})
 	}
 
 	// If no mapping found or resolution failed, use field as-is
@@ -1650,6 +1678,11 @@ func (b *QueryBuilder) getFieldInfo(field string) (FieldInfo, bool) {
 	for _, indexPattern := range b.indices {
 		merged, err := b.mapper.GetMergedMapping(b.ctx, indexPattern)
 		if err != nil {
+			_ = catcher.Error("failed to get merged mapping", err, map[string]any{
+				"pattern": indexPattern,
+				"process": b.processName,
+				"field":   field,
+			})
 			continue
 		}
 

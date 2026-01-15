@@ -3,10 +3,12 @@ package os
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
+	"github.com/threatwinds/go-sdk/catcher"
 )
 
 // IndexSettings represents OpenSearch index settings
@@ -418,7 +420,10 @@ func (b *IndexBuilder) WriteAlias(alias string) *IndexBuilder {
 // Build returns the IndexCreateRequest without executing
 func (b *IndexBuilder) Build() (IndexCreateRequest, error) {
 	if len(b.errors) > 0 {
-		return IndexCreateRequest{}, fmt.Errorf("builder has %d errors: %v", len(b.errors), b.errors)
+		return IndexCreateRequest{}, catcher.Error("failed to build index request", errors.New("please see the errors list in the arguments"), map[string]any{
+			"errors": b.errors,
+			"index":  b.name,
+		})
 	}
 
 	request := IndexCreateRequest{}
@@ -450,19 +455,24 @@ func (b *IndexBuilder) Build() (IndexCreateRequest, error) {
 // BuildWithErrors returns the IndexCreateRequest and any accumulated errors
 func (b *IndexBuilder) BuildWithErrors() (IndexCreateRequest, []error) {
 	request, _ := b.Build()
+	if len(b.errors) == 0 && b.name == "" {
+		return request, append(b.errors, catcher.Error("failed to build index request", errors.New("index name is required"), nil))
+	}
 	return request, b.errors
 }
 
 // Ensure creates the index if it doesn't exist (idempotent)
 func (b *IndexBuilder) Ensure() error {
 	if b.name == "" {
-		return fmt.Errorf("index name is required")
+		return catcher.Error("failed to ensure index", errors.New("index name is required"), nil)
 	}
 
 	// Check if index already exists
 	exists, err := IndexExists(b.ctx, b.name)
 	if err != nil {
-		return fmt.Errorf("failed to check if index exists: %w", err)
+		return catcher.Error("failed to ensure index", fmt.Errorf("failed to check if index exists: %w", err), map[string]any{
+			"index": b.name,
+		})
 	}
 
 	if exists {
@@ -479,7 +489,9 @@ func (b *IndexBuilder) Ensure() error {
 	// Marshal request body
 	body, err := json.Marshal(request)
 	if err != nil {
-		return fmt.Errorf("failed to marshal index request: %w", err)
+		return catcher.Error("failed to ensure index", fmt.Errorf("failed to marshal index request: %w", err), map[string]any{
+			"index": b.name,
+		})
 	}
 
 	// Create the index
@@ -496,11 +508,15 @@ func (b *IndexBuilder) Ensure() error {
 			strings.Contains(errStr, "already exists") {
 			return nil
 		}
-		return fmt.Errorf("failed to create index: %w", err)
+		return catcher.Error("failed to ensure index", fmt.Errorf("failed to create index: %w", err), map[string]any{
+			"index": b.name,
+		})
 	}
 
 	if !resp.Acknowledged {
-		return fmt.Errorf("index creation not acknowledged")
+		return catcher.Error("failed to ensure index", errors.New("index creation not acknowledged"), map[string]any{
+			"index": b.name,
+		})
 	}
 
 	return nil

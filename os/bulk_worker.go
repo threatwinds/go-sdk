@@ -60,6 +60,7 @@ func (bq *BulkQueue) processBulk() error {
 			lastErr = catcher.Error("bulk request had partial failures", nil, map[string]any{
 				"success_count": response.SuccessCount,
 				"failed_count":  response.FailedCount,
+				"process":       bq.processName,
 			})
 
 			// Extract failed items for callback
@@ -108,6 +109,7 @@ func (bq *BulkQueue) sendBulkRequest(items []BulkItem) (*BulkResponse, error) {
 				"item_index": i,
 				"index":      item.Index,
 				"operation":  item.Operation,
+				"process":    bq.processName,
 			})
 		}
 
@@ -116,6 +118,7 @@ func (bq *BulkQueue) sendBulkRequest(items []BulkItem) (*BulkResponse, error) {
 			return nil, catcher.Error("failed to marshal action", err, map[string]any{
 				"item_index": i,
 				"index":      item.Index,
+				"process":    bq.processName,
 			})
 		}
 		body.WriteString(string(actionBytes) + "\n")
@@ -127,6 +130,7 @@ func (bq *BulkQueue) sendBulkRequest(items []BulkItem) (*BulkResponse, error) {
 				return nil, catcher.Error("failed to marshal document", err, map[string]any{
 					"item_index": i,
 					"index":      item.Index,
+					"process":    bq.processName,
 				})
 			}
 			body.WriteString(string(docBytes) + "\n")
@@ -142,6 +146,7 @@ func (bq *BulkQueue) sendBulkRequest(items []BulkItem) (*BulkResponse, error) {
 		return nil, catcher.Error("bulk request failed", err, map[string]any{
 			"items_count":  len(items),
 			"index_counts": indexCounts,
+			"process":      bq.processName,
 		})
 	}
 
