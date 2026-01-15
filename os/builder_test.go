@@ -7,7 +7,7 @@ import (
 
 func TestQueryBuilder_BasicQuery(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Size(20).
@@ -30,7 +30,7 @@ func TestQueryBuilder_BasicQuery(t *testing.T) {
 
 func TestQueryBuilder_BoolQuery(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Must(
@@ -64,7 +64,7 @@ func TestQueryBuilder_BoolQuery(t *testing.T) {
 
 func TestQueryBuilder_Sort(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Sort("timestamp", "desc").
@@ -78,7 +78,7 @@ func TestQueryBuilder_Sort(t *testing.T) {
 
 func TestQueryBuilder_Aggregations(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		TermsAgg("top_categories", "category", 10).
@@ -105,7 +105,7 @@ func TestQueryBuilder_Aggregations(t *testing.T) {
 
 func TestQueryBuilder_SourceFiltering(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		IncludeSource("id", "title", "price").
@@ -127,7 +127,7 @@ func TestQueryBuilder_SourceFiltering(t *testing.T) {
 
 func TestQueryBuilder_Collapse(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Collapse("user_id").
@@ -144,7 +144,7 @@ func TestQueryBuilder_Collapse(t *testing.T) {
 
 func TestQueryBuilder_DefaultValues(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.Build()
 
@@ -159,7 +159,7 @@ func TestQueryBuilder_DefaultValues(t *testing.T) {
 
 func TestQueryBuilder_RangeQuery(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Range("age", "gte", 18).
@@ -173,7 +173,7 @@ func TestQueryBuilder_RangeQuery(t *testing.T) {
 
 func TestQueryBuilder_WildcardAndPrefix(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Wildcard("name", "test*").
@@ -223,7 +223,7 @@ func TestHelperFunctions_RangeQuery(t *testing.T) {
 
 func TestBoolBuilder_Basic(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustTerm("status", "active").
@@ -257,13 +257,13 @@ func TestBoolBuilder_NestedBool(t *testing.T) {
 	ctx := context.Background()
 
 	// Create inner OR condition: (type=ip OR type=domain)
-	innerOr := NewBoolBuilder(ctx, []string{"test-index"}).
+	innerOr := NewBoolBuilder(ctx, []string{"test-index"}, "testing").
 		ShouldTerm("type", "ip").
 		ShouldTerm("type", "domain").
 		MinimumShouldMatch(1)
 
 	// Create outer query with nested bool
-	query := NewBoolBuilder(ctx, []string{"test-index"}).
+	query := NewBoolBuilder(ctx, []string{"test-index"}, "testing").
 		MustTerm("status", "active").
 		FilterBool(innerOr).
 		Build()
@@ -300,16 +300,16 @@ func TestBoolBuilder_DeeplyNested(t *testing.T) {
 	indices := []string{"test-index"}
 
 	// Level 3: innermost condition
-	level3 := NewBoolBuilder(ctx, indices).
+	level3 := NewBoolBuilder(ctx, indices, "testing").
 		MustTerm("subtype", "malware")
 
 	// Level 2: middle condition with level 3
-	level2 := NewBoolBuilder(ctx, indices).
+	level2 := NewBoolBuilder(ctx, indices, "testing").
 		MustTerm("category", "threat").
 		FilterBool(level3)
 
 	// Level 1: outermost with level 2
-	query := NewBoolBuilder(ctx, indices).
+	query := NewBoolBuilder(ctx, indices, "testing").
 		MustTerm("status", "active").
 		MustBool(level2).
 		Build()
@@ -353,7 +353,7 @@ func TestBoolBuilder_DeeplyNested(t *testing.T) {
 
 func TestBoolBuilder_QueryBuilderIntegration(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	// Create nested bool using builder.Bool()
 	orCondition := builder.Bool().
@@ -387,7 +387,7 @@ func TestBoolBuilder_QueryBuilderIntegration(t *testing.T) {
 
 func TestBoolBuilder_AllClauseTypes(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustTerm("field1", "value1").
@@ -435,7 +435,7 @@ func TestBoolBuilder_AllClauseTypes(t *testing.T) {
 
 func TestBoolBuilder_RawQueryMethods(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustQuery(TermQuery("status", "active")).
@@ -463,7 +463,7 @@ func TestBoolBuilder_RawQueryMethods(t *testing.T) {
 
 func TestBoolBuilder_ErrorHandling(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query, errors := builder.
 		MustTerm("field", "value").
@@ -532,7 +532,7 @@ func TestHelperFunctions_Not(t *testing.T) {
 
 func TestBoolBuilder_NilNestedBool(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	// Should not panic with nil nested bool
 	query := builder.
@@ -656,7 +656,7 @@ func TestHelperFunctions_SimpleQueryString(t *testing.T) {
 
 func TestQueryBuilder_RequestLevelMethods(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Version(true).
@@ -679,7 +679,7 @@ func TestQueryBuilder_RequestLevelMethods(t *testing.T) {
 
 func TestQueryBuilder_SetSource(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	source := &Source{
 		Includes: []string{"field1", "field2"},
@@ -705,7 +705,7 @@ func TestQueryBuilder_SetSource(t *testing.T) {
 
 func TestQueryBuilder_IDs(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		IDs("id1", "id2", "id3").
@@ -722,7 +722,7 @@ func TestQueryBuilder_IDs(t *testing.T) {
 
 func TestQueryBuilder_QueryString(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		QueryString("status:active AND type:threat", "AND").
@@ -743,7 +743,7 @@ func TestQueryBuilder_QueryString(t *testing.T) {
 
 func TestQueryBuilder_SimpleQueryString(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		SimpleQueryString("test query", "title", "description").
@@ -764,7 +764,7 @@ func TestQueryBuilder_SimpleQueryString(t *testing.T) {
 
 func TestQueryBuilder_MultiMatch(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MultiMatch("search text", []string{"title", "description"}, "best_fields").
@@ -785,7 +785,7 @@ func TestQueryBuilder_MultiMatch(t *testing.T) {
 
 func TestQueryBuilder_Fuzzy(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Fuzzy("title", "serch", "AUTO").
@@ -802,7 +802,7 @@ func TestQueryBuilder_Fuzzy(t *testing.T) {
 
 func TestQueryBuilder_Regexp(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Regexp("status", "act.*").
@@ -819,7 +819,7 @@ func TestQueryBuilder_Regexp(t *testing.T) {
 
 func TestQueryBuilder_MatchPhrasePrefix(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MatchPhrasePrefix("title", "quick bro").
@@ -838,7 +838,7 @@ func TestQueryBuilder_MatchPhrasePrefix(t *testing.T) {
 
 func TestQueryBuilder_MetricAggregations(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MinAgg("min_price", "price").
@@ -875,7 +875,7 @@ func TestQueryBuilder_MetricAggregations(t *testing.T) {
 
 func TestQueryBuilder_ExtendedStatsAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		ExtendedStatsAgg("extended_price_stats", "price", 2).
@@ -892,7 +892,7 @@ func TestQueryBuilder_ExtendedStatsAgg(t *testing.T) {
 
 func TestQueryBuilder_PercentileRanksAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		PercentileRanksAgg("price_ranks", "price", []int64{100, 200, 300}).
@@ -909,7 +909,7 @@ func TestQueryBuilder_PercentileRanksAgg(t *testing.T) {
 
 func TestQueryBuilder_MatrixStatsAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MatrixStatsAgg("matrix_stats", []string{"price", "quantity", "rating"}).
@@ -922,7 +922,7 @@ func TestQueryBuilder_MatrixStatsAgg(t *testing.T) {
 
 func TestQueryBuilder_TopHitsAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		TopHitsAgg("top_docs", 5).
@@ -939,7 +939,7 @@ func TestQueryBuilder_TopHitsAgg(t *testing.T) {
 
 func TestQueryBuilder_BucketAggregations(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		HistogramAgg("price_histogram", "price", 100.0).
@@ -961,7 +961,7 @@ func TestQueryBuilder_BucketAggregations(t *testing.T) {
 
 func TestQueryBuilder_RangeAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	ranges := []map[string]interface{}{
 		{"to": 100},
@@ -984,7 +984,7 @@ func TestQueryBuilder_RangeAgg(t *testing.T) {
 
 func TestQueryBuilder_DateRangeAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	ranges := []map[string]interface{}{
 		{"to": "now-1M"},
@@ -1006,7 +1006,7 @@ func TestQueryBuilder_DateRangeAgg(t *testing.T) {
 
 func TestQueryBuilder_IPRangeAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	ranges := []map[string]interface{}{
 		{"to": "10.0.0.100"},
@@ -1024,7 +1024,7 @@ func TestQueryBuilder_IPRangeAgg(t *testing.T) {
 
 func TestQueryBuilder_SignificantTermsAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		SignificantTermsAgg("significant", "category").
@@ -1037,7 +1037,7 @@ func TestQueryBuilder_SignificantTermsAgg(t *testing.T) {
 
 func TestQueryBuilder_FilterAndFiltersAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	filterQuery := Query{
 		Term: map[string]map[string]interface{}{
@@ -1068,7 +1068,7 @@ func TestQueryBuilder_FilterAndFiltersAgg(t *testing.T) {
 
 func TestQueryBuilder_GlobalAndNestedAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		GlobalAgg("all_products").
@@ -1091,7 +1091,7 @@ func TestQueryBuilder_GlobalAndNestedAgg(t *testing.T) {
 
 func TestQueryBuilder_SamplerAggs(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		SamplerAgg("sample", 100).
@@ -1109,7 +1109,7 @@ func TestQueryBuilder_SamplerAggs(t *testing.T) {
 
 func TestQueryBuilder_GeoAggregations(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	ranges := []map[string]interface{}{
 		{"to": 100},
@@ -1138,7 +1138,7 @@ func TestQueryBuilder_GeoAggregations(t *testing.T) {
 
 func TestQueryBuilder_PipelineAggregations(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		DateHistogramAgg("sales_per_month", "@timestamp", "month").
@@ -1168,7 +1168,7 @@ func TestQueryBuilder_PipelineAggregations(t *testing.T) {
 
 func TestQueryBuilder_MorePipelineAggregations(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		StatsBucketAgg("stats", "path>agg").
@@ -1196,7 +1196,7 @@ func TestQueryBuilder_MorePipelineAggregations(t *testing.T) {
 
 func TestQueryBuilder_MovingAvgAndSerialDiff(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MovingAvgAgg("moving_avg", "path>agg", 10, "simple").
@@ -1226,7 +1226,7 @@ func TestQueryBuilder_MovingAvgAndSerialDiff(t *testing.T) {
 
 func TestQueryBuilder_BucketSortAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	sort := []map[string]interface{}{
 		{"total_sales": map[string]interface{}{"order": "desc"}},
@@ -1243,7 +1243,7 @@ func TestQueryBuilder_BucketSortAgg(t *testing.T) {
 
 func TestQueryBuilder_SubAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		TermsAgg("categories", "category", 10).
@@ -1261,7 +1261,7 @@ func TestQueryBuilder_SubAgg(t *testing.T) {
 
 func TestQueryBuilder_Agg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	customAgg := Aggs{
 		Terms: &Terms{Field: "custom_field", Size: 20},
@@ -1284,7 +1284,7 @@ func TestQueryBuilder_Agg(t *testing.T) {
 
 func TestBoolBuilder_PrefixMethods(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustPrefix("code", "ABC").
@@ -1312,7 +1312,7 @@ func TestBoolBuilder_PrefixMethods(t *testing.T) {
 
 func TestBoolBuilder_IDsMethods(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		FilterIDs("id1", "id2").
@@ -1330,7 +1330,7 @@ func TestBoolBuilder_IDsMethods(t *testing.T) {
 
 func TestBoolBuilder_QueryStringMethods(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustQueryString("status:active").
@@ -1358,7 +1358,7 @@ func TestBoolBuilder_QueryStringMethods(t *testing.T) {
 
 func TestBoolBuilder_MultiMatchMethods(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustMultiMatch("search text", []string{"title", "description"}).
@@ -1386,7 +1386,7 @@ func TestBoolBuilder_MultiMatchMethods(t *testing.T) {
 
 func TestBoolBuilder_FuzzyMethods(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustFuzzy("title", "serch").
@@ -1401,7 +1401,7 @@ func TestBoolBuilder_FuzzyMethods(t *testing.T) {
 
 func TestBoolBuilder_RegexpMethods(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustRegexp("status", "act.*").
@@ -1429,7 +1429,7 @@ func TestBoolBuilder_RegexpMethods(t *testing.T) {
 
 func TestBoolBuilder_MatchPhrasePrefixMethods(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustMatchPhrasePrefix("title", "quick bro").
@@ -1444,7 +1444,7 @@ func TestBoolBuilder_MatchPhrasePrefixMethods(t *testing.T) {
 
 func TestBoolBuilder_MatchPhraseMethods(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustMatchPhrase("title", "quick brown fox").
@@ -1461,7 +1461,7 @@ func TestBoolBuilder_MatchPhraseMethods(t *testing.T) {
 
 func TestQueryBuilder_AdjacencyMatrixAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	filters := map[string]interface{}{
 		"filters": map[string]interface{}{
@@ -1481,7 +1481,7 @@ func TestQueryBuilder_AdjacencyMatrixAgg(t *testing.T) {
 
 func TestQueryBuilder_MultiTermsAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	terms := []Agg{
 		{Field: "category"},
@@ -1505,7 +1505,7 @@ func TestQueryBuilder_MultiTermsAgg(t *testing.T) {
 
 func TestQueryBuilder_SignificantTextAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	opts := map[string]interface{}{
 		"min_doc_count": 5,
@@ -1524,7 +1524,7 @@ func TestQueryBuilder_SignificantTextAgg(t *testing.T) {
 
 func TestQueryBuilder_SearchAfter(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		SearchAfter([]int64{1234567890, 42}).
@@ -1541,7 +1541,7 @@ func TestQueryBuilder_SearchAfter(t *testing.T) {
 
 func TestQueryBuilder_MinimumShouldMatch(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Should(MatchQuery("field1", "value1")).
@@ -1556,7 +1556,7 @@ func TestQueryBuilder_MinimumShouldMatch(t *testing.T) {
 
 func TestQueryBuilder_Terms(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Terms("status", []interface{}{"active", "pending", "review"}).
@@ -1573,7 +1573,7 @@ func TestQueryBuilder_Terms(t *testing.T) {
 
 func TestQueryBuilder_MatchPhrase(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MatchPhrase("title", "quick brown fox").
@@ -1590,7 +1590,7 @@ func TestQueryBuilder_MatchPhrase(t *testing.T) {
 
 func TestQueryBuilder_Exists(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		Exists("created_at").
@@ -1607,7 +1607,7 @@ func TestQueryBuilder_Exists(t *testing.T) {
 
 func TestQueryBuilder_MatchAll(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MatchAll().
@@ -1622,7 +1622,7 @@ func TestQueryBuilder_MatchAll(t *testing.T) {
 
 func TestQueryBuilder_CardinalityAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		CardinalityAgg("unique_users", "user_id").
@@ -1635,7 +1635,7 @@ func TestQueryBuilder_CardinalityAgg(t *testing.T) {
 
 func TestQueryBuilder_GeohexGridAgg(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		GeohexGridAgg("geohex", "location", 4).
@@ -1652,7 +1652,7 @@ func TestQueryBuilder_GeohexGridAgg(t *testing.T) {
 
 func TestQueryBuilder_BuildWithErrors(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query, errors := builder.
 		Term("status", "active").
@@ -1668,7 +1668,7 @@ func TestQueryBuilder_BuildWithErrors(t *testing.T) {
 
 func TestQueryBuilder_MustBool(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	nestedBool := builder.Bool().
 		MustTerm("status", "active")
@@ -1688,7 +1688,7 @@ func TestQueryBuilder_MustBool(t *testing.T) {
 
 func TestQueryBuilder_ShouldBool(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	nestedBool := builder.Bool().
 		MustTerm("type", "ip")
@@ -1708,7 +1708,7 @@ func TestQueryBuilder_ShouldBool(t *testing.T) {
 
 func TestQueryBuilder_MustNotBool(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	nestedBool := builder.Bool().
 		MustTerm("deleted", true)
@@ -1728,7 +1728,7 @@ func TestQueryBuilder_MustNotBool(t *testing.T) {
 
 func TestQueryBuilder_NilBoolHandling(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	// All nil Bool methods should not panic and return builder
 	query := builder.
@@ -1874,7 +1874,7 @@ func TestHelperFunctions_ValidateQuery(t *testing.T) {
 
 func TestBoolBuilder_FilterFuzzy(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		FilterFuzzy("title", "serch", "AUTO").
@@ -1888,7 +1888,7 @@ func TestBoolBuilder_FilterFuzzy(t *testing.T) {
 
 func TestBoolBuilder_MustNotFuzzy(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustNotFuzzy("title", "spam").
@@ -1901,7 +1901,7 @@ func TestBoolBuilder_MustNotFuzzy(t *testing.T) {
 
 func TestBoolBuilder_FilterMatchPhrasePrefix(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		FilterMatchPhrasePrefix("title", "quick bro").
@@ -1914,7 +1914,7 @@ func TestBoolBuilder_FilterMatchPhrasePrefix(t *testing.T) {
 
 func TestBoolBuilder_MustNotMatchPhrasePrefix(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustNotMatchPhrasePrefix("title", "bad phrase").
@@ -1927,7 +1927,7 @@ func TestBoolBuilder_MustNotMatchPhrasePrefix(t *testing.T) {
 
 func TestBoolBuilder_Errors(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	// Build a valid query
 	builder.MustTerm("status", "active")
@@ -1944,11 +1944,11 @@ func TestBoolBuilder_MustNotBool_WithErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a nested bool builder
-	nestedBool := NewBoolBuilder(ctx, []string{"test-index"}).
+	nestedBool := NewBoolBuilder(ctx, []string{"test-index"}, "testing").
 		MustTerm("status", "active")
 
 	// Create outer builder with must_not bool
-	query := NewBoolBuilder(ctx, []string{"test-index"}).
+	query := NewBoolBuilder(ctx, []string{"test-index"}, "testing").
 		MustNotBool(nestedBool).
 		Build()
 
@@ -1997,7 +1997,7 @@ func TestHelperFunctions_CIDRsQuery(t *testing.T) {
 
 func TestQueryBuilder_CIDR(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		CIDR("client_ip", "192.168.0.0/16").
@@ -2018,7 +2018,7 @@ func TestQueryBuilder_CIDR(t *testing.T) {
 
 func TestQueryBuilder_CIDRs(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		CIDRs("client_ip", "192.168.0.0/24", "10.0.0.0/8", "172.16.0.0/12").
@@ -2039,7 +2039,7 @@ func TestQueryBuilder_CIDRs(t *testing.T) {
 
 func TestBoolBuilder_MustCIDR(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustCIDR("source_ip", "10.0.0.0/8").
@@ -2056,7 +2056,7 @@ func TestBoolBuilder_MustCIDR(t *testing.T) {
 
 func TestBoolBuilder_ShouldCIDR(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		ShouldCIDR("source_ip", "192.168.0.0/16").
@@ -2071,7 +2071,7 @@ func TestBoolBuilder_ShouldCIDR(t *testing.T) {
 
 func TestBoolBuilder_FilterCIDR(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		FilterCIDR("dest_ip", "172.16.0.0/12").
@@ -2084,7 +2084,7 @@ func TestBoolBuilder_FilterCIDR(t *testing.T) {
 
 func TestBoolBuilder_MustNotCIDR(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustNotCIDR("source_ip", "127.0.0.0/8"). // Exclude localhost
@@ -2097,7 +2097,7 @@ func TestBoolBuilder_MustNotCIDR(t *testing.T) {
 
 func TestBoolBuilder_MustCIDRs(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustCIDRs("client_ip", "192.168.0.0/24", "10.0.0.0/8").
@@ -2118,7 +2118,7 @@ func TestBoolBuilder_MustCIDRs(t *testing.T) {
 
 func TestBoolBuilder_FilterCIDRs(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	// Filter to only private IP ranges
 	query := builder.
@@ -2136,7 +2136,7 @@ func TestBoolBuilder_FilterCIDRs(t *testing.T) {
 
 func TestBoolBuilder_MustNotCIDRs(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	// Exclude private IP ranges
 	query := builder.
@@ -2154,7 +2154,7 @@ func TestBoolBuilder_MustNotCIDRs(t *testing.T) {
 
 func TestBoolBuilder_CombinedIPQuery(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	// Complex query: source from private network, destination NOT localhost
 	query := builder.
@@ -2233,7 +2233,7 @@ func TestHelperFunctions_IPRangeWithinQuery(t *testing.T) {
 
 func TestQueryBuilder_IPRangeContains(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		IPRangeContains("allowed_ips", "192.168.1.50").
@@ -2256,7 +2256,7 @@ func TestQueryBuilder_IPRangeContains(t *testing.T) {
 
 func TestQueryBuilder_IPRangeIntersects(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		IPRangeIntersects("blocked_ranges", "192.168.0.0", "192.168.255.255").
@@ -2279,7 +2279,7 @@ func TestQueryBuilder_IPRangeIntersects(t *testing.T) {
 
 func TestQueryBuilder_IPRangeWithin(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		IPRangeWithin("subnet", "10.0.0.0", "10.255.255.255").
@@ -2302,7 +2302,7 @@ func TestQueryBuilder_IPRangeWithin(t *testing.T) {
 
 func TestBoolBuilder_MustIPRangeContains(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustIPRangeContains("allowed_ips", "192.168.1.50").
@@ -2325,7 +2325,7 @@ func TestBoolBuilder_MustIPRangeContains(t *testing.T) {
 
 func TestBoolBuilder_ShouldIPRangeContains(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		ShouldIPRangeContains("allowed_ips", "192.168.1.50").
@@ -2339,7 +2339,7 @@ func TestBoolBuilder_ShouldIPRangeContains(t *testing.T) {
 
 func TestBoolBuilder_FilterIPRangeContains(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		FilterIPRangeContains("allowed_ips", "10.0.0.1").
@@ -2352,7 +2352,7 @@ func TestBoolBuilder_FilterIPRangeContains(t *testing.T) {
 
 func TestBoolBuilder_MustNotIPRangeContains(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustNotIPRangeContains("blocked_ips", "192.168.1.1").
@@ -2365,7 +2365,7 @@ func TestBoolBuilder_MustNotIPRangeContains(t *testing.T) {
 
 func TestBoolBuilder_MustIPRangeIntersects(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustIPRangeIntersects("network_range", "192.168.0.0", "192.168.255.255").
@@ -2394,7 +2394,7 @@ func TestBoolBuilder_MustIPRangeIntersects(t *testing.T) {
 
 func TestBoolBuilder_FilterIPRangeIntersects(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		FilterIPRangeIntersects("network_range", "10.0.0.0", "10.255.255.255").
@@ -2407,7 +2407,7 @@ func TestBoolBuilder_FilterIPRangeIntersects(t *testing.T) {
 
 func TestBoolBuilder_MustIPRangeWithin(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustIPRangeWithin("subnet", "10.0.0.0", "10.255.255.255").
@@ -2430,7 +2430,7 @@ func TestBoolBuilder_MustIPRangeWithin(t *testing.T) {
 
 func TestBoolBuilder_FilterIPRangeWithin(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		FilterIPRangeWithin("subnet", "172.16.0.0", "172.31.255.255").
@@ -2443,7 +2443,7 @@ func TestBoolBuilder_FilterIPRangeWithin(t *testing.T) {
 
 func TestBoolBuilder_MustNotIPRangeWithin(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
 		MustNotIPRangeWithin("subnet", "192.168.0.0", "192.168.255.255").
@@ -2456,7 +2456,7 @@ func TestBoolBuilder_MustNotIPRangeWithin(t *testing.T) {
 
 func TestBoolBuilder_CombinedIPRangeQuery(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	// Complex query: find ranges that contain a specific IP AND are within a larger network
 	query := builder.
@@ -2480,7 +2480,7 @@ func TestBoolBuilder_CombinedIPRangeQuery(t *testing.T) {
 
 func TestQueryBuilder_CombinedIPAndIPRangeQuery(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	// Mix of ip field queries (CIDR) and ip_range field queries
 	query := builder.
@@ -2645,7 +2645,7 @@ func TestHelperFunctions_KNNQueryWithRescore(t *testing.T) {
 
 func TestQueryBuilder_KNN(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3, 0.4}
 	query := builder.
@@ -2672,7 +2672,7 @@ func TestQueryBuilder_KNN(t *testing.T) {
 
 func TestQueryBuilder_KNNWithFilter(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	filter := TermQuery("status.keyword", "active")
@@ -2700,7 +2700,7 @@ func TestQueryBuilder_KNNWithFilter(t *testing.T) {
 
 func TestQueryBuilder_KNNWithMinScore(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.5, 0.5, 0.5}
 	query := builder.
@@ -2719,7 +2719,7 @@ func TestQueryBuilder_KNNWithMinScore(t *testing.T) {
 
 func TestQueryBuilder_KNNWithMaxDistance(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.5, 0.5, 0.5}
 	query := builder.
@@ -2738,7 +2738,7 @@ func TestQueryBuilder_KNNWithMaxDistance(t *testing.T) {
 
 func TestQueryBuilder_KNNWithOptions(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	opts := KNNQueryOptions{
@@ -2770,7 +2770,7 @@ func TestQueryBuilder_KNNWithOptions(t *testing.T) {
 
 func TestBoolBuilder_MustKNN(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	query := builder.
@@ -2788,7 +2788,7 @@ func TestBoolBuilder_MustKNN(t *testing.T) {
 
 func TestBoolBuilder_ShouldKNN(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector1 := []float32{0.1, 0.2, 0.3}
 	vector2 := []float32{0.4, 0.5, 0.6}
@@ -2805,7 +2805,7 @@ func TestBoolBuilder_ShouldKNN(t *testing.T) {
 
 func TestBoolBuilder_FilterKNN(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	query := builder.
@@ -2823,7 +2823,7 @@ func TestBoolBuilder_FilterKNN(t *testing.T) {
 
 func TestBoolBuilder_MustNotKNN(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	query := builder.
@@ -2841,7 +2841,7 @@ func TestBoolBuilder_MustNotKNN(t *testing.T) {
 
 func TestBoolBuilder_MustKNNWithFilter(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	filter := TermQuery("category.keyword", "tech")
@@ -2861,7 +2861,7 @@ func TestBoolBuilder_MustKNNWithFilter(t *testing.T) {
 
 func TestBoolBuilder_MustKNNWithMinScore(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	query := builder.
@@ -2876,7 +2876,7 @@ func TestBoolBuilder_MustKNNWithMinScore(t *testing.T) {
 
 func TestBoolBuilder_MustKNNWithMaxDistance(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	query := builder.
@@ -2891,7 +2891,7 @@ func TestBoolBuilder_MustKNNWithMaxDistance(t *testing.T) {
 
 func TestBoolBuilder_MustKNNWithOptions(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	opts := KNNQueryOptions{
@@ -2919,7 +2919,7 @@ func TestBoolBuilder_MustKNNWithOptions(t *testing.T) {
 
 func TestBoolBuilder_CombinedKNNAndTermQuery(t *testing.T) {
 	ctx := context.Background()
-	builder := NewBoolBuilder(ctx, []string{"test-index"})
+	builder := NewBoolBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	query := builder.
@@ -2942,7 +2942,7 @@ func TestBoolBuilder_CombinedKNNAndTermQuery(t *testing.T) {
 
 func TestQueryBuilder_CombinedKNNAndMatch(t *testing.T) {
 	ctx := context.Background()
-	builder := NewQueryBuilder(ctx, []string{"test-index"})
+	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	vector := []float32{0.1, 0.2, 0.3}
 	query := builder.

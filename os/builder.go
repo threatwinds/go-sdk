@@ -1534,7 +1534,7 @@ func (b *QueryBuilder) Agg(name string, agg Aggs) *QueryBuilder {
 
 // Bool creates a new BoolBuilder with inherited context from QueryBuilder
 func (b *QueryBuilder) Bool() *BoolBuilder {
-	return NewBoolBuilderWithMapper(b.ctx, b.indices, b.mapper)
+	return NewBoolBuilderWithMapper(b.ctx, b.indices, b.mapper, b.processName)
 }
 
 // MustBool adds a nested bool query to must clause

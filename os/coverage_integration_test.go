@@ -984,7 +984,7 @@ func TestBulkQueuePartialFailure(t *testing.T) {
 	var successCallbackCalled bool
 	var failedItems []BulkItem
 
-	queue := NewBulkQueue(BulkQueueConfig{
+	queue := NewBulkQueue("testing", BulkQueueConfig{
 		FlushInterval: 10 * time.Second,
 		OnSuccess: func(count int, indexCounts map[string]int) {
 			successCallbackCalled = true
@@ -1045,7 +1045,7 @@ func TestBulkQueueCreateExistingDocument(t *testing.T) {
 	var errorCallbackCalled bool
 	var failedItemCount int
 
-	queue := NewBulkQueue(BulkQueueConfig{
+	queue := NewBulkQueue("testing", BulkQueueConfig{
 		FlushInterval: 10 * time.Second,
 		OnError: func(items []BulkItem, err error) {
 			errorCallbackCalled = true
@@ -1134,7 +1134,7 @@ func TestBulkQueueMalformedDocument(t *testing.T) {
 
 	var errorCallbackCalled bool
 
-	queue := NewBulkQueue(BulkQueueConfig{
+	queue := NewBulkQueue("testing", BulkQueueConfig{
 		FlushInterval: 10 * time.Second,
 		OnError: func(items []BulkItem, err error) {
 			errorCallbackCalled = true
@@ -1176,7 +1176,7 @@ func TestQueryBuilderWithNonExistentIndex(t *testing.T) {
 	nonExistentIndex := "non-existent-index-xyz-" + time.Now().Format("20060102-150405")
 
 	// Create builder with non-existent index
-	builder := NewQueryBuilder(ctx, []string{nonExistentIndex})
+	builder := NewQueryBuilder(ctx, []string{nonExistentIndex}, "testing")
 
 	// Build a query - should work (query building doesn't validate index)
 	query := builder.
@@ -1251,7 +1251,7 @@ func TestQueryBuilderMappingConflicts(t *testing.T) {
 
 	// Create builder spanning both indices
 	pattern := testIndex1[:len(testIndex1)-20] + "*" // Match both indices
-	builder := NewQueryBuilder(ctx, []string{testIndex1, testIndex2})
+	builder := NewQueryBuilder(ctx, []string{testIndex1, testIndex2}, "testing")
 
 	// Check for mapping conflicts
 	conflicts := builder.GetMappingConflicts()

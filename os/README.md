@@ -52,7 +52,7 @@ ctx := context.Background()
 indices := []string{"entities-*"}
 
 // Build a query with automatic field resolution
-builder := twos.NewQueryBuilder(ctx, indices)
+builder := twos.NewQueryBuilder(ctx, indices, "my-process")
 query := builder.
     Term("type", "ip").              // auto-resolves to type.keyword
     Range("reputation", "lte", -1).
@@ -138,7 +138,7 @@ The `QueryBuilder` provides a fluent API for constructing OpenSearch queries wit
 
 ```go
 // With default mapper (shared across builders)
-builder := twos.NewQueryBuilder(ctx, []string{"index-*"})
+builder := twos.NewQueryBuilder(ctx, []string{"index-*"}, "my-process")
 
 // With custom mapper
 mapper := twos.NewFieldMapper(
@@ -146,7 +146,7 @@ mapper := twos.NewFieldMapper(
     twos.WithMaxCacheSize(100),
     twos.WithConflictStrategy(twos.MostCommon),
 )
-builder := twos.NewQueryBuilderWithMapper(ctx, indices, mapper)
+builder := twos.NewQueryBuilderWithMapper(ctx, indices, mapper, "my-process")
 ```
 
 #### Pagination Methods
@@ -264,7 +264,7 @@ The `BoolBuilder` provides fine-grained control over nested boolean queries with
 boolBuilder := builder.Bool()
 
 // Standalone
-boolBuilder := twos.NewBoolBuilder(ctx, indices)
+boolBuilder := twos.NewBoolBuilder(ctx, indices, "my-process")
 ```
 
 #### Term Methods

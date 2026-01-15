@@ -53,7 +53,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	}()
 
 	t.Run("CreateQueueWithDefaults", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -72,7 +72,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	t.Run("CreateQueueWithCustomConfig", func(t *testing.T) {
 		var successCount atomic.Int32
 
-		queue := NewBulkQueue(BulkQueueConfig{
+		queue := NewBulkQueue("testing", BulkQueueConfig{
 			FlushInterval:  1 * time.Second,
 			FlushThreshold: 10,
 			MaxRetries:     2,
@@ -96,7 +96,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("AddSingleDocument", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -129,7 +129,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("AddDocumentWithID", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -170,7 +170,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("AddBatch", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -199,7 +199,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 		refreshIndex(ctx, testIndex)
 
 		// Verify documents exist (use .keyword for exact match on dynamic string fields)
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 		query := builder.
 			Term("batch_id.keyword", "batch-1").
 			Size(20).
@@ -216,7 +216,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("AddBatchWithIDs", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -257,7 +257,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("AddItems", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -291,7 +291,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("CreateOperation", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -332,7 +332,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("UpdateOperation", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -391,7 +391,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("DeleteOperation", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -434,7 +434,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("AutoFlushByInterval", func(t *testing.T) {
-		queue := NewBulkQueue(BulkQueueConfig{
+		queue := NewBulkQueue("testing", BulkQueueConfig{
 			FlushInterval: 500 * time.Millisecond,
 		})
 		if queue == nil {
@@ -464,7 +464,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("AutoFlushByThreshold", func(t *testing.T) {
-		queue := NewBulkQueue(BulkQueueConfig{
+		queue := NewBulkQueue("testing", BulkQueueConfig{
 			FlushInterval:  1 * time.Minute, // Long interval
 			FlushThreshold: 5,               // Flush after 5 items
 		})
@@ -500,7 +500,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("ConcurrentAdds", func(t *testing.T) {
-		queue := NewBulkQueue(BulkQueueConfig{
+		queue := NewBulkQueue("testing", BulkQueueConfig{
 			FlushInterval: 30 * time.Second, // Don't auto-flush during test
 		})
 		if queue == nil {
@@ -540,7 +540,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("Clear", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -564,7 +564,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("StopFlushesRemaining", func(t *testing.T) {
-		queue := NewBulkQueue(BulkQueueConfig{
+		queue := NewBulkQueue("testing", BulkQueueConfig{
 			FlushInterval: 1 * time.Minute, // Long interval
 		})
 		if queue == nil {
@@ -591,7 +591,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		// Verify documents were indexed
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 		query := builder.
 			Exists("stop_test").
 			Size(10).
@@ -611,7 +611,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 		var successCount atomic.Int32
 		var errorCalled atomic.Bool
 
-		queue := NewBulkQueue(BulkQueueConfig{
+		queue := NewBulkQueue("testing", BulkQueueConfig{
 			FlushInterval: 1 * time.Second,
 			OnSuccess: func(count int, indexCounts map[string]int) {
 				successCount.Add(int32(count))
@@ -646,7 +646,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("MultipleIndices", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -674,7 +674,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		// Verify counts per index
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 		query := builder.
 			Term("index", 1).
 			Size(10).
@@ -691,7 +691,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 	})
 
 	t.Run("StructDocument", func(t *testing.T) {
-		queue := NewBulkQueueWithDefaults()
+		queue := NewBulkQueueWithDefaults("testing")
 		if queue == nil {
 			t.Fatal("Expected non-nil queue")
 		}
@@ -719,7 +719,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 		refreshIndex(ctx, testIndex)
 
 		// Verify document (use .keyword for exact match on dynamic string fields)
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 		query := builder.
 			Term("name.keyword", "struct-test").
 			Size(1).
@@ -755,7 +755,7 @@ func BenchmarkBulkQueueAdd(b *testing.B) {
 		b.Skipf("Skipping benchmark: could not connect to OpenSearch: %v", err)
 	}
 
-	queue := NewBulkQueue(BulkQueueConfig{
+	queue := NewBulkQueue("testing", BulkQueueConfig{
 		FlushInterval: 1 * time.Hour, // Don't auto-flush during benchmark
 	})
 	if queue == nil {
@@ -786,7 +786,7 @@ func BenchmarkBulkQueueAddBatch(b *testing.B) {
 		b.Skipf("Skipping benchmark: could not connect to OpenSearch: %v", err)
 	}
 
-	queue := NewBulkQueue(BulkQueueConfig{
+	queue := NewBulkQueue("testing", BulkQueueConfig{
 		FlushInterval: 1 * time.Hour, // Don't auto-flush during benchmark
 	})
 	if queue == nil {
@@ -819,7 +819,7 @@ func BenchmarkBulkQueueConcurrentAdd(b *testing.B) {
 		b.Skipf("Skipping benchmark: could not connect to OpenSearch: %v", err)
 	}
 
-	queue := NewBulkQueue(BulkQueueConfig{
+	queue := NewBulkQueue("testing", BulkQueueConfig{
 		FlushInterval: 1 * time.Hour, // Don't auto-flush during benchmark
 	})
 	if queue == nil {

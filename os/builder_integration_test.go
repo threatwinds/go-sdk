@@ -35,7 +35,7 @@ func TestBuilderIntegration(t *testing.T) {
 
 	// Test 1: Basic query builder
 	t.Run("BasicBuilder", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{indexPattern})
+		builder := NewQueryBuilder(ctx, []string{indexPattern}, "testing")
 
 		query := builder.
 			Size(20).
@@ -103,7 +103,7 @@ func TestBuilderIntegration(t *testing.T) {
 
 	// Test 3: Query builder with field resolution
 	t.Run("QueryBuilderWithMapping", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{indexPattern})
+		builder := NewQueryBuilder(ctx, []string{indexPattern}, "testing")
 
 		// Build a complex query
 		query := builder.
@@ -126,7 +126,7 @@ func TestBuilderIntegration(t *testing.T) {
 
 	// Test 4: Check for mapping conflicts
 	t.Run("CheckMappingConflicts", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{indexPattern})
+		builder := NewQueryBuilder(ctx, []string{indexPattern}, "testing")
 
 		conflicts := builder.GetMappingConflicts()
 
@@ -146,7 +146,7 @@ func TestBuilderIntegration(t *testing.T) {
 
 	// Test 5: Aggregations
 	t.Run("AggregationsBuilder", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{indexPattern})
+		builder := NewQueryBuilder(ctx, []string{indexPattern}, "testing")
 
 		query := builder.
 			TermsAgg("field_counts", "_id", 10).
@@ -166,7 +166,7 @@ func TestBuilderIntegration(t *testing.T) {
 
 	// Test 6: Sorting
 	t.Run("SortingBuilder", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{indexPattern})
+		builder := NewQueryBuilder(ctx, []string{indexPattern}, "testing")
 
 		query := builder.
 			Sort("_id", "desc").
@@ -181,7 +181,7 @@ func TestBuilderIntegration(t *testing.T) {
 
 	// Test 7: Source filtering
 	t.Run("SourceFiltering", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{indexPattern})
+		builder := NewQueryBuilder(ctx, []string{indexPattern}, "testing")
 
 		query := builder.
 			IncludeSource("_id", "_index").
@@ -285,7 +285,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 1: Simple BoolBuilder query execution
 	t.Run("SimpleBoolBuilderExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -309,7 +309,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 2: OR condition with BoolBuilder
 	t.Run("OrConditionExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Find documents where type is "ip" OR "domain"
 		orCondition := builder.Bool().
@@ -336,7 +336,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 3: Nested bool queries
 	t.Run("NestedBoolExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// (status=active AND (type=ip OR type=domain))
 		typeOr := builder.Bool().
@@ -367,7 +367,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 4: Complex nested query with range
 	t.Run("ComplexNestedWithRange", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// (category=threat AND severity>=5) OR (category=indicator AND type=ip)
 		threatCondition := builder.Bool().
@@ -404,7 +404,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 5: MustNot clause
 	t.Run("MustNotExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -429,7 +429,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 6: SearchIn with visibleBy filter
 	t.Run("SearchInWithVisibility", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -454,7 +454,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 7: WideSearchIn (no visibility filter)
 	t.Run("WideSearchInNoVisibility", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -479,7 +479,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 8: Or/And/Not helper functions
 	t.Run("HelperFunctionsExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Using Or helper
 		query := builder.
@@ -506,7 +506,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 9: Field resolution verification (.keyword)
 	t.Run("FieldResolutionKeyword", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// BoolBuilder should auto-resolve "type" to "type.keyword" for term queries
 		query := builder.
@@ -531,7 +531,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 10: Terms query (multiple values)
 	t.Run("TermsQueryExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -555,7 +555,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 11: Deeply nested (3 levels)
 	t.Run("DeeplyNestedExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Level 3: severity >= 5
 		level3 := builder.Bool().
@@ -590,7 +590,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 12: Wildcard query
 	t.Run("WildcardQueryExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -614,7 +614,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 13: Exists query
 	t.Run("ExistsQueryExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -638,7 +638,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 14: Prefix query
 	t.Run("PrefixQueryExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -662,7 +662,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 15: Range query with different operators
 	t.Run("RangeQueryOperators", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// severity > 5
 		query := builder.
@@ -687,7 +687,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 16: IDs query
 	t.Run("IDsQueryExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -711,7 +711,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 17: MustNotIDs query
 	t.Run("MustNotIDsExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -735,7 +735,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 18: QueryString query
 	t.Run("QueryStringExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Using query_string syntax
 		query := builder.
@@ -760,7 +760,7 @@ func TestBoolBuilderIntegration(t *testing.T) {
 
 	// Test 19: Regexp query
 	t.Run("RegexpQueryExecution", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Match "ip" or "url" with regex
 		query := builder.
@@ -878,7 +878,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 1: Terms aggregation (use .keyword for text fields)
 	t.Run("TermsAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			TermsAgg("categories", "category.keyword", 10).
@@ -899,7 +899,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 2: Sum aggregation
 	t.Run("SumAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			SumAgg("total_price", "price").
@@ -920,7 +920,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 3: Avg aggregation
 	t.Run("AvgAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			AvgAgg("avg_price", "price").
@@ -941,7 +941,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 4: Min/Max aggregation
 	t.Run("MinMaxAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			MinAgg("min_price", "price").
@@ -963,7 +963,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 5: Stats aggregation
 	t.Run("StatsAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			StatsAgg("price_stats", "price").
@@ -984,7 +984,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 6: Cardinality aggregation (use .keyword for text fields)
 	t.Run("CardinalityAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			CardinalityAgg("unique_brands", "brand.keyword").
@@ -1005,7 +1005,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 7: Histogram aggregation
 	t.Run("HistogramAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			HistogramAgg("price_histogram", "price", 50.0).
@@ -1026,7 +1026,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 8: Range aggregation
 	t.Run("RangeAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		ranges := []map[string]interface{}{
 			{"to": 100},
@@ -1053,7 +1053,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 9: Sub-aggregation (use .keyword for text fields)
 	t.Run("SubAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			TermsAgg("by_category", "category.keyword", 10).
@@ -1075,7 +1075,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 10: Value count aggregation (use .keyword for text fields)
 	t.Run("ValueCountAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			ValueCountAgg("count_items", "category.keyword").
@@ -1096,7 +1096,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 11: Extended stats aggregation
 	t.Run("ExtendedStatsAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			ExtendedStatsAgg("extended_price_stats", "price", 2).
@@ -1117,7 +1117,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 12: Percentiles aggregation
 	t.Run("PercentilesAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			PercentilesAgg("price_percentiles", "price").
@@ -1138,7 +1138,7 @@ func TestAggregationIntegration(t *testing.T) {
 
 	// Test 13: Top hits aggregation (use .keyword for text fields)
 	t.Run("TopHitsAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			TermsAgg("by_category", "category.keyword", 10).
@@ -1264,7 +1264,7 @@ func TestIPCIDRIntegration(t *testing.T) {
 
 	// Test 1: Exact IP match using Term
 	t.Run("ExactIPMatch", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			Term("source_ip", "192.168.1.10").
@@ -1284,7 +1284,7 @@ func TestIPCIDRIntegration(t *testing.T) {
 
 	// Test 2: CIDR query - 192.168.0.0/16 (Class C private range)
 	t.Run("CIDRQuery192168", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			CIDR("source_ip", "192.168.0.0/16").
@@ -1305,7 +1305,7 @@ func TestIPCIDRIntegration(t *testing.T) {
 
 	// Test 3: CIDR query - 10.0.0.0/8 (Class A private range)
 	t.Run("CIDRQuery10", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -1329,7 +1329,7 @@ func TestIPCIDRIntegration(t *testing.T) {
 
 	// Test 4: Multiple CIDRs - all private IP ranges
 	t.Run("MultipleCIDRs", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			CIDRs("source_ip", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16").
@@ -1350,7 +1350,7 @@ func TestIPCIDRIntegration(t *testing.T) {
 
 	// Test 5: CIDR with MustNot - exclude localhost destination
 	t.Run("CIDRMustNot", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -1374,7 +1374,7 @@ func TestIPCIDRIntegration(t *testing.T) {
 
 	// Test 6: Combined IP query - source from private, dest to public DNS
 	t.Run("CombinedIPQuery", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -1399,7 +1399,7 @@ func TestIPCIDRIntegration(t *testing.T) {
 
 	// Test 7: IP range aggregation
 	t.Run("IPRangeAggregation", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		ranges := []map[string]interface{}{
 			{"key": "private_10", "from": "10.0.0.0", "to": "10.255.255.255"},
@@ -1426,7 +1426,7 @@ func TestIPCIDRIntegration(t *testing.T) {
 
 	// Test 8: ShouldCIDR with minimum_should_match
 	t.Run("ShouldCIDRWithMinMatch", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Find documents where source OR dest is in 192.168.x.x range
 		query := builder.
@@ -1565,7 +1565,7 @@ func TestIPRangeFieldIntegration(t *testing.T) {
 
 	// Test 1: IPRangeContains - find ranges that contain a specific IP
 	t.Run("IPRangeContains", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Find documents where allowed_range contains 192.168.1.50
 		query := builder.
@@ -1587,7 +1587,7 @@ func TestIPRangeFieldIntegration(t *testing.T) {
 
 	// Test 2: IPRangeContains - find ranges containing 10.0.0.100
 	t.Run("IPRangeContains10Network", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			IPRangeContains("allowed_range", "10.0.0.100").
@@ -1608,7 +1608,7 @@ func TestIPRangeFieldIntegration(t *testing.T) {
 
 	// Test 3: IPRangeIntersects - find ranges that overlap with a given range
 	t.Run("IPRangeIntersects", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Find documents where allowed_range overlaps with 10.0.0.0 - 10.255.255.255
 		query := builder.
@@ -1630,7 +1630,7 @@ func TestIPRangeFieldIntegration(t *testing.T) {
 
 	// Test 4: IPRangeWithin - find ranges entirely within a given range
 	t.Run("IPRangeWithin", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Find documents where allowed_range is entirely within 192.168.0.0-192.168.255.255
 		query := builder.
@@ -1654,7 +1654,7 @@ func TestIPRangeFieldIntegration(t *testing.T) {
 
 	// Test 5: BoolBuilder with IPRangeContains
 	t.Run("BoolBuilderIPRangeContains", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -1680,7 +1680,7 @@ func TestIPRangeFieldIntegration(t *testing.T) {
 
 	// Test 6: ShouldIPRangeContains with minimum_should_match
 	t.Run("ShouldIPRangeContains", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Find documents where either allowed_range OR network_subnet contains 192.168.1.100
 		query := builder.
@@ -1708,7 +1708,7 @@ func TestIPRangeFieldIntegration(t *testing.T) {
 
 	// Test 7: Combine ip_range queries with term queries
 	t.Run("CombinedIPRangeAndTerm", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			Term("acl_name", "datacenter_b").
@@ -1730,7 +1730,7 @@ func TestIPRangeFieldIntegration(t *testing.T) {
 
 	// Test 8: IPRangeIntersects with narrow range
 	t.Run("IPRangeIntersectsNarrow", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Find ranges that intersect with a narrow range (should find partial overlaps)
 		query := builder.
@@ -1877,7 +1877,7 @@ func TestKNNVectorSearchIntegration(t *testing.T) {
 
 	// Test 1: Basic KNN query - find 3 nearest neighbors to [1, 0, 0]
 	t.Run("BasicKNNQuery", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			KNN("embedding", []float32{1.0, 0.0, 0.0}, 3).
@@ -1903,7 +1903,7 @@ func TestKNNVectorSearchIntegration(t *testing.T) {
 
 	// Test 2: KNN with filter - only search electronics category
 	t.Run("KNNWithFilter", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		// Create filter for electronics category
 		filter := TermQuery("category", "electronics")
@@ -1928,7 +1928,7 @@ func TestKNNVectorSearchIntegration(t *testing.T) {
 
 	// Test 3: BoolBuilder with KNN
 	t.Run("BoolBuilderKNN", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			FilterBool(
@@ -2001,7 +2001,7 @@ func TestKNNVectorSearchIntegration(t *testing.T) {
 
 	// Test 6: Combined KNN and term filter
 	t.Run("CombinedKNNAndFilters", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			KNN("embedding", []float32{0.0, 1.0, 0.0}, 3).
@@ -2020,7 +2020,7 @@ func TestKNNVectorSearchIntegration(t *testing.T) {
 
 	// Test 7: SearchIn with visibility filter
 	t.Run("KNNWithSearchInVisibility", func(t *testing.T) {
-		builder := NewQueryBuilder(ctx, []string{testIndex})
+		builder := NewQueryBuilder(ctx, []string{testIndex}, "testing")
 
 		query := builder.
 			KNN("embedding", []float32{0.1, 0.9, 0.0}, 5). // Close to doc 5 which is private

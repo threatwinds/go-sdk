@@ -62,26 +62,28 @@ type IndexCreateRequest struct {
 
 // IndexBuilder provides a fluent API for creating indices
 type IndexBuilder struct {
-	ctx        context.Context
-	name       string
-	settings   map[string]interface{}
-	mappings   map[string]interface{}
-	properties map[string]interface{}
-	aliases    map[string]AliasConfig
-	dynamic    string
-	errors     []error
+	ctx         context.Context
+	name        string
+	settings    map[string]interface{}
+	mappings    map[string]interface{}
+	properties  map[string]interface{}
+	aliases     map[string]AliasConfig
+	dynamic     string
+	errors      []error
+	processName string
 }
 
 // NewIndexBuilder creates a new IndexBuilder
-func NewIndexBuilder(ctx context.Context, name string) *IndexBuilder {
+func NewIndexBuilder(ctx context.Context, name string, processName string) *IndexBuilder {
 	return &IndexBuilder{
-		ctx:        ctx,
-		name:       name,
-		settings:   make(map[string]interface{}),
-		mappings:   make(map[string]interface{}),
-		properties: make(map[string]interface{}),
-		aliases:    make(map[string]AliasConfig),
-		errors:     []error{},
+		ctx:         ctx,
+		name:        name,
+		settings:    make(map[string]interface{}),
+		mappings:    make(map[string]interface{}),
+		properties:  make(map[string]interface{}),
+		aliases:     make(map[string]AliasConfig),
+		errors:      []error{},
+		processName: processName,
 	}
 }
 

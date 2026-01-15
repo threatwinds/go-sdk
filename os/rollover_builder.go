@@ -36,23 +36,25 @@ type RolloverResult struct {
 
 // RolloverBuilder provides a fluent API for rollover operations
 type RolloverBuilder struct {
-	ctx        context.Context
-	alias      string
-	newIndex   string
-	conditions RolloverConditions
-	settings   map[string]interface{}
-	mappings   map[string]interface{}
-	aliases    map[string]interface{}
-	dryRun     bool
-	errors     []error
+	ctx         context.Context
+	alias       string
+	newIndex    string
+	conditions  RolloverConditions
+	settings    map[string]interface{}
+	mappings    map[string]interface{}
+	aliases     map[string]interface{}
+	dryRun      bool
+	errors      []error
+	processName string
 }
 
 // NewRolloverBuilder creates a new rollover builder for the specified alias
-func NewRolloverBuilder(ctx context.Context, alias string) *RolloverBuilder {
+func NewRolloverBuilder(ctx context.Context, alias string, processName string) *RolloverBuilder {
 	return &RolloverBuilder{
-		ctx:    ctx,
-		alias:  alias,
-		errors: []error{},
+		ctx:         ctx,
+		alias:       alias,
+		errors:      []error{},
+		processName: processName,
 	}
 }
 
@@ -267,9 +269,9 @@ func (b *RolloverBuilder) Execute() (*RolloverResult, error) {
 // SetupRolloverAlias creates the initial index and alias for rollover
 // This is idempotent - if the alias already exists, it does nothing
 // The setupFunc parameter is called with a new IndexBuilder for configuration
-func SetupRolloverAlias(ctx context.Context, indexPrefix, alias string, setupFunc func(*IndexBuilder) *IndexBuilder) error {
+func SetupRolloverAlias(ctx context.Context, indexPrefix, alias, processName string, setupFunc func(*IndexBuilder) *IndexBuilder) error {
 	// Check if alias already exists
-	exists, err := AliasExists(ctx, alias)
+	exists, err := AliasExists(ctx, alias, processName)
 	if err != nil {
 		return fmt.Errorf("failed to check alias existence: %w", err)
 	}
@@ -290,7 +292,7 @@ func SetupRolloverAlias(ctx context.Context, indexPrefix, alias string, setupFun
 
 	if !indexExists {
 		// Create the initial index with the write alias
-		builder := NewIndexBuilder(ctx, initialIndex).WriteAlias(alias)
+		builder := NewIndexBuilder(ctx, initialIndex, processName).WriteAlias(alias)
 		if setupFunc != nil {
 			builder = setupFunc(builder)
 		}
@@ -300,7 +302,7 @@ func SetupRolloverAlias(ctx context.Context, indexPrefix, alias string, setupFun
 		}
 	} else {
 		// Index exists but alias doesn't - add the alias
-		err = NewAliasBuilder(ctx).
+		err = NewAliasBuilder(ctx, processName).
 			AddWriteIndex(initialIndex, alias).
 			Ensure()
 		if err != nil {
@@ -312,13 +314,13 @@ func SetupRolloverAlias(ctx context.Context, indexPrefix, alias string, setupFun
 }
 
 // ForceRollover performs an unconditional rollover (no conditions)
-func ForceRollover(ctx context.Context, alias string) (*RolloverResult, error) {
-	return NewRolloverBuilder(ctx, alias).Execute()
+func ForceRollover(ctx context.Context, alias, processName string) (*RolloverResult, error) {
+	return NewRolloverBuilder(ctx, alias, processName).Execute()
 }
 
 // CheckRolloverConditions checks if rollover conditions are met without rolling over
-func CheckRolloverConditions(ctx context.Context, alias string, conditions RolloverConditions) (*RolloverResult, error) {
-	builder := NewRolloverBuilder(ctx, alias).DryRun()
+func CheckRolloverConditions(ctx context.Context, alias, processName string, conditions RolloverConditions) (*RolloverResult, error) {
+	builder := NewRolloverBuilder(ctx, alias, processName).DryRun()
 
 	if conditions.MaxAge != "" {
 		builder.MaxAge(conditions.MaxAge)
@@ -340,6 +342,6 @@ func CheckRolloverConditions(ctx context.Context, alias string, conditions Rollo
 }
 
 // GetCurrentWriteIndex returns the current write index for an alias
-func GetCurrentWriteIndex(ctx context.Context, alias string) (string, error) {
-	return GetWriteIndex(ctx, alias)
+func GetCurrentWriteIndex(ctx context.Context, alias, processName string) (string, error) {
+	return GetWriteIndex(ctx, alias, processName)
 }

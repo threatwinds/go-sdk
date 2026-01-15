@@ -108,12 +108,12 @@ func TestNewBulkQueueWithoutConnection(t *testing.T) {
 	apiClient = nil
 	defer func() { apiClient = oldClient }()
 
-	queue := NewBulkQueue(DefaultBulkQueueConfig())
+	queue := NewBulkQueue("testing", DefaultBulkQueueConfig())
 	if queue != nil {
 		t.Error("Expected nil when connection not established")
 	}
 
-	queue = NewBulkQueueWithDefaults()
+	queue = NewBulkQueueWithDefaults("testing")
 	if queue != nil {
 		t.Error("Expected nil when connection not established")
 	}
