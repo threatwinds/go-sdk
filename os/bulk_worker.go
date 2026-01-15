@@ -155,7 +155,7 @@ func (bq *BulkQueue) sendBulkRequest(items []BulkItem) (*BulkResponse, error) {
 	}
 
 	if resp.Errors {
-		response.Errors = extractBulkErrors(resp, items)
+		response.Errors = extractBulkErrors(resp)
 		response.FailedCount = len(response.Errors)
 		response.SuccessCount = len(items) - response.FailedCount
 	} else {
@@ -224,7 +224,7 @@ func marshalDocument(item BulkItem) ([]byte, error) {
 }
 
 // extractBulkErrors extracts error details from the bulk response.
-func extractBulkErrors(resp *opensearchapi.BulkResp, items []BulkItem) []BulkItemError {
+func extractBulkErrors(resp *opensearchapi.BulkResp) []BulkItemError {
 	var errors []BulkItemError
 
 	for i, responseItem := range resp.Items {

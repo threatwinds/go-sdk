@@ -46,7 +46,7 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 	})
 
 	if cp, ok := c.cache.Get(cacheKey); ok {
-		return c.eval(cp.prg, valuesMap, expression)
+		return c.eval(cp.prg, valuesMap)
 	}
 
 	// Use a sharded lock to prevent multiple simultaneous compilations of the same expression
@@ -56,7 +56,7 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 
 	// Double-check the cache after acquiring the lock
 	if cp, ok := c.cache.Get(cacheKey); ok {
-		return c.eval(cp.prg, valuesMap, expression)
+		return c.eval(cp.prg, valuesMap)
 	}
 
 	envOptions := []cel.EnvOption{
@@ -120,7 +120,7 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 
 	c.cache.Add(cacheKey, &cachedProgram{prg: prg, env: celEnv})
 
-	return c.eval(prg, valuesMap, expression)
+	return c.eval(prg, valuesMap)
 }
 
 var rCache = new(RegexpCache)
@@ -199,7 +199,7 @@ func (c *CELCache) Evaluate(data *string, expression string, envOption ...cel.En
 	return c.Get(cacheKey, expression, valuesMap, envOption...)
 }
 
-func (c *CELCache) eval(prg cel.Program, valuesMap map[string]interface{}, expression string) (bool, error) {
+func (c *CELCache) eval(prg cel.Program, valuesMap map[string]interface{}) (bool, error) {
 	out, details, err := prg.Eval(valuesMap)
 	if err != nil {
 		return false, catcher.Error("failed to evaluate program", err, map[string]any{
