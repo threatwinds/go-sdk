@@ -242,7 +242,12 @@ func updateCfg(processName string) {
 	tmpCfg.Patterns = make(map[string]string)
 	tmpCfg.loadCfg(processName)
 
-	*cfg = *tmpCfg
+	cfg.Pipeline = tmpCfg.Pipeline
+	cfg.DisabledRules = tmpCfg.DisabledRules
+	cfg.Tenants = tmpCfg.Tenants
+	cfg.Patterns = tmpCfg.Patterns
+	cfg.Plugins = tmpCfg.Plugins
+	cfg.Env = tmpCfg.Env
 
 	cfgMutex.Unlock()
 }
