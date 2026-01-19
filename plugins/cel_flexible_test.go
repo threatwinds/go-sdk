@@ -19,7 +19,10 @@ func TestCELFlexibleOverloads(t *testing.T) {
 		"ip": "192.168.1.1",
 		"status": "active",
 		"items": ["a", "b", "c"],
-		"version": "v1.2.3"
+		"version": "v1.2.3",
+		"ts_workday": "2024-01-15T10:30:00Z",
+		"ts_weekend": "2024-01-20T23:45:00Z",
+		"ts_invalid": "not_a_date"
 	}`
 
 	tests := []struct {
@@ -87,6 +90,20 @@ func TestCELFlexibleOverloads(t *testing.T) {
 		// Network
 		{"inCIDR_ipv4_true", `inCIDR("ip", "192.168.1.0/24")`, true},
 		{"inCIDR_ipv4_false", `inCIDR("ip", "10.0.0.0/8")`, false},
+
+		// Temporal (isHour, isMinute, isDayOfWeek, isWeekend, isWorkDay, isBetweenTime)
+		{"isHour_true", `isHour("ts_workday", 10)`, true},
+		{"isHour_false", `isHour("ts_workday", 11)`, false},
+		{"isMinute_true", `isMinute("ts_workday", 30)`, true},
+		{"isDayOfWeek_monday", `isDayOfWeek("ts_workday", 1)`, true}, // 2024-01-15 is Monday
+		{"isWeekend_true", `isWeekend("ts_weekend")`, true},          // 2024-01-20 is Saturday
+		{"isWeekend_false", `isWorkDay("ts_weekend")`, false},
+		{"isWorkDay_true", `isWorkDay("ts_workday")`, true},
+		{"isBetweenTime_true", `isBetweenTime("ts_workday", "08:00", "17:00")`, true},
+		{"isBetweenTime_false", `isBetweenTime("ts_workday", "17:00", "08:00")`, false},           // Day range
+		{"isBetweenTime_overnight_true", `isBetweenTime("ts_weekend", "22:00", "06:00")`, true},   // Overnight (23:45)
+		{"isBetweenTime_overnight_false", `isBetweenTime("ts_workday", "22:00", "06:00")`, false}, // Overnight (10:30)
+		{"temporal_invalid_date", `isHour("ts_invalid", 10)`, false},
 	}
 
 	for _, tt := range tests {
