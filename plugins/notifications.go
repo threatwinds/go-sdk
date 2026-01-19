@@ -29,19 +29,17 @@ var notificationsChannelOnce sync.Once
 
 // DataProcessingMessage represent the details of a success or failure during the processing of a log. Used as a message body for notifications.
 type DataProcessingMessage struct {
-	Error      *catcher.SdkError `json:"error,omitempty"`
-	DataType   string            `json:"dataType"`
-	DataSource string            `json:"dataSource"`
+	DataType   string `json:"dataType"`
+	DataSource string `json:"dataSource"`
 }
 
 type Topic string
 
 const (
 	TopicEnqueueSuccess     Topic = "enqueue_success"     // represents the topic name for enqueue success notifications.
-	TopicIntegrationFailure Topic = "integration_failure" // represents the topic name for integration failure notifications.
-	TopicParsingFailure     Topic = "parsing_failure"     // represents the topic name for parsing failure notifications.
-	TopicAnalysisFailure    Topic = "analysis_failure"    // represents the topic name for analysis failure notifications.
-	TopicCorrelationFailure Topic = "correlation_failure" // represents the topic name for correlation failure notifications.
+	TopicParsingDropped     Topic = "parsing_dropped"     // represents the topic name for parsing dropped events.
+	TopicAnalysisDropped    Topic = "analysis_dropped"    // represents the topic name for analysis dropped events.
+	TopicCorrelationDropped Topic = "correlation_dropped" // represents the topic name for correlation dropped events.
 )
 
 // SendNotificationsFromChannel listens to the notificationsChannel and sends notifications
