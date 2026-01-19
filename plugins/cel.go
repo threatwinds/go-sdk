@@ -76,6 +76,12 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 		c.greaterThan(),
 		c.lessOrEqual(),
 		c.greaterOrEqual(),
+		c.isHour(),
+		c.isMinute(),
+		c.isDayOfWeek(),
+		c.isWeekend(),
+		c.isWorkDay(),
+		c.isBetweenTime(),
 	}
 
 	// Add the provided environment options first (including cel.Types)
@@ -142,6 +148,7 @@ func (c *CELCache) transformExpression(expression string) string {
 		"exists", "safe", "inCIDR", "equals", "equalsIgnoreCase", "contains",
 		"containsAll", "oneOf", "startsWith", "endsWith", "regexMatch",
 		"lessThan", "greaterThan", "lessOrEqual", "greaterOrEqual",
+		"isHour", "isMinute", "isDayOfWeek", "isWeekend", "isWorkDay", "isBetweenTime",
 	}
 
 	for _, f := range overloads {

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"time"
+
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
@@ -216,7 +218,7 @@ func (c *CELCache) equalsIgnoreCase() cel.EnvOption {
 			key := args[1].Value().(string)
 			val := args[2].Value().(string)
 			v := gjson.Get(data, key)
-			if v.Exists() {
+			if v.Exists() && !v.IsObject() && !v.IsArray() {
 				return types.Bool(strings.EqualFold(v.String(), val))
 			}
 			return types.False
@@ -235,7 +237,7 @@ func (c *CELCache) contains() cel.EnvOption {
 				key := args[1].Value().(string)
 				val := args[2].Value().(string)
 				v := gjson.Get(data, key)
-				if v.Exists() {
+				if v.Exists() && !v.IsObject() && !v.IsArray() {
 					return types.Bool(strings.Contains(v.String(), val))
 				}
 				return types.False
@@ -250,7 +252,7 @@ func (c *CELCache) contains() cel.EnvOption {
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
 				v := gjson.Get(data, key)
-				if v.Exists() {
+				if v.Exists() && !v.IsObject() && !v.IsArray() {
 					for _, item := range listVal {
 						if strings.Contains(v.String(), strings.TrimSpace(item.Value().(string))) {
 							return types.Bool(true)
@@ -335,7 +337,7 @@ func (c *CELCache) startsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				prefix := args[2].Value().(string)
 				v := gjson.Get(data, key)
-				if v.Exists() {
+				if v.Exists() && !v.IsObject() && !v.IsArray() {
 					return types.Bool(strings.HasPrefix(v.String(), prefix))
 				}
 				return types.False
@@ -350,7 +352,7 @@ func (c *CELCache) startsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
 				v := gjson.Get(data, key)
-				if v.Exists() {
+				if v.Exists() && !v.IsObject() && !v.IsArray() {
 					s := v.String()
 					for _, item := range listVal {
 						if strings.HasPrefix(s, strings.TrimSpace(item.Value().(string))) {
@@ -375,7 +377,7 @@ func (c *CELCache) endsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				suffix := args[2].Value().(string)
 				v := gjson.Get(data, key)
-				if v.Exists() {
+				if v.Exists() && !v.IsObject() && !v.IsArray() {
 					return types.Bool(strings.HasSuffix(v.String(), suffix))
 				}
 				return types.False
@@ -390,7 +392,7 @@ func (c *CELCache) endsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
 				v := gjson.Get(data, key)
-				if v.Exists() {
+				if v.Exists() && !v.IsObject() && !v.IsArray() {
 					s := v.String()
 					for _, item := range listVal {
 						if strings.HasSuffix(s, strings.TrimSpace(item.Value().(string))) {
@@ -564,4 +566,141 @@ func (c *CELCache) greaterOrEqual() cel.EnvOption {
 			}),
 		),
 	)
+}
+
+func (c *CELCache) isHour() cel.EnvOption {
+	return cel.Function("isHour", cel.Overload("string_string_int_isHour_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+			data := args[0].Value().(string)
+			key := args[1].Value().(string)
+			target := args[2].Value().(int64)
+			v := gjson.Get(data, key)
+			if v.Exists() {
+				t, err := time.Parse(time.RFC3339, v.String())
+				if err != nil {
+					return types.False
+				}
+				return types.Bool(int64(t.Hour()) == target)
+			}
+			return types.False
+		}),
+	))
+}
+
+func (c *CELCache) isMinute() cel.EnvOption {
+	return cel.Function("isMinute", cel.Overload("string_string_int_isMinute_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+			data := args[0].Value().(string)
+			key := args[1].Value().(string)
+			target := args[2].Value().(int64)
+			v := gjson.Get(data, key)
+			if v.Exists() {
+				t, err := time.Parse(time.RFC3339, v.String())
+				if err != nil {
+					return types.False
+				}
+				return types.Bool(int64(t.Minute()) == target)
+			}
+			return types.False
+		}),
+	))
+}
+
+func (c *CELCache) isDayOfWeek() cel.EnvOption {
+	return cel.Function("isDayOfWeek", cel.Overload("string_string_int_isDayOfWeek_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+			data := args[0].Value().(string)
+			key := args[1].Value().(string)
+			target := args[2].Value().(int64)
+			v := gjson.Get(data, key)
+			if v.Exists() {
+				t, err := time.Parse(time.RFC3339, v.String())
+				if err != nil {
+					return types.False
+				}
+				return types.Bool(int64(t.Weekday()) == target)
+			}
+			return types.False
+		}),
+	))
+}
+
+func (c *CELCache) isWeekend() cel.EnvOption {
+	return cel.Function("isWeekend", cel.Overload("string_string_isWeekend_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+			data := args[0].Value().(string)
+			key := args[1].Value().(string)
+			v := gjson.Get(data, key)
+			if v.Exists() {
+				t, err := time.Parse(time.RFC3339, v.String())
+				if err != nil {
+					return types.False
+				}
+				w := t.Weekday()
+				return types.Bool(w == time.Saturday || w == time.Sunday)
+			}
+			return types.False
+		}),
+	))
+}
+
+func (c *CELCache) isWorkDay() cel.EnvOption {
+	return cel.Function("isWorkDay", cel.Overload("string_string_isWorkDay_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+			data := args[0].Value().(string)
+			key := args[1].Value().(string)
+			v := gjson.Get(data, key)
+			if v.Exists() {
+				t, err := time.Parse(time.RFC3339, v.String())
+				if err != nil {
+					return types.False
+				}
+				w := t.Weekday()
+				return types.Bool(w >= time.Monday && w <= time.Friday)
+			}
+			return types.False
+		}),
+	))
+}
+
+func (c *CELCache) isBetweenTime() cel.EnvOption {
+	return cel.Function("isBetweenTime", cel.Overload("string_string_string_string_isBetweenTime_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+			data := args[0].Value().(string)
+			key := args[1].Value().(string)
+			startStr := args[2].Value().(string)
+			endStr := args[3].Value().(string)
+
+			v := gjson.Get(data, key)
+			if !v.Exists() {
+				return types.False
+			}
+
+			t, err := time.Parse(time.RFC3339, v.String())
+			if err != nil {
+				return types.False
+			}
+
+			startT, err := time.Parse("15:04", startStr)
+			if err != nil {
+				return types.False
+			}
+
+			endT, err := time.Parse("15:04", endStr)
+			if err != nil {
+				return types.False
+			}
+
+			// Current time in comparable normalized format
+			current := t.Hour()*60 + t.Minute()
+			start := startT.Hour()*60 + startT.Minute()
+			end := endT.Hour()*60 + endT.Minute()
+
+			if start <= end {
+				return types.Bool(current >= start && current <= end)
+			}
+			// Overnight range (e.g., 22:00 to 06:00)
+			return types.Bool(current >= start || current <= end)
+		}),
+	))
 }
