@@ -14,6 +14,7 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/threatwinds/go-sdk/catcher"
+	"github.com/threatwinds/go-sdk/utils"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -46,7 +47,7 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 	})
 
 	if cp, ok := c.cache.Get(cacheKey); ok {
-		return c.eval(cp.prg, valuesMap)
+		return c.execute(cp.prg, valuesMap)
 	}
 
 	// Use a sharded lock to prevent multiple simultaneous compilations of the same expression
@@ -56,7 +57,7 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 
 	// Double-check the cache after acquiring the lock
 	if cp, ok := c.cache.Get(cacheKey); ok {
-		return c.eval(cp.prg, valuesMap)
+		return c.execute(cp.prg, valuesMap)
 	}
 
 	envOptions := []cel.EnvOption{
@@ -117,7 +118,7 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 
 	c.cache.Add(cacheKey, &cachedProgram{prg: prg, env: celEnv})
 
-	return c.eval(prg, valuesMap)
+	return c.execute(prg, valuesMap)
 }
 
 var rCache = new(RegexpCache)
@@ -161,28 +162,73 @@ func (c *CELCache) transformExpression(expression string) string {
 	return expression
 }
 
-// Evaluate evaluates a CEL expression against the given data and returns the boolean result if successful.
-// Returns true/false or an error in case of failure during evaluation or invalid output type.
-func (c *CELCache) Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool, error) {
+// Eval evaluates a CEL expression against the given data and returns the boolean result if successful.
+// 'data' can be a proto.Message, a JSON string (or *string), or a map[string]any.
+func (c *CELCache) Eval(expression string, data any, envOption ...cel.EnvOption) (bool, error) {
 	if data == nil {
 		return false, catcher.Error("failed to evaluate CEL expression", errors.New("required parameter 'data' is nil"), map[string]any{
 			"process": c.processName,
 		})
 	}
 
-	if *data == "" {
-		return false, catcher.Error("failed to evaluate CEL expression", errors.New("required parameter 'data' is empty"), map[string]any{
-			"process": c.processName,
-		})
-	}
-
 	var valuesMap map[string]interface{}
+	var jsonData string
 
-	err := json.Unmarshal([]byte(*data), &valuesMap)
-	if err != nil {
-		return false, catcher.Error("failed to evaluate CEL expression", err, map[string]any{
-			"process": c.processName,
-		})
+	switch v := data.(type) {
+	case proto.Message:
+		jsonPtr, err := utils.ProtoMessageToString(v)
+		if err != nil {
+			return false, catcher.Error("failed to convert proto to string for CEL evaluation", err, map[string]any{
+				"process": c.processName,
+			})
+		}
+		jsonData = *jsonPtr
+		err = json.Unmarshal([]byte(jsonData), &valuesMap)
+		if err != nil {
+			return false, catcher.Error("failed to convert proto to map for CEL evaluation", err, map[string]any{
+				"process": c.processName,
+			})
+		}
+	case *string:
+		if v == nil {
+			return false, catcher.Error("failed to evaluate CEL expression", errors.New("data pointer is nil"), map[string]any{
+				"process": c.processName,
+			})
+		}
+		jsonData = *v
+		err := json.Unmarshal([]byte(jsonData), &valuesMap)
+		if err != nil {
+			return false, catcher.Error("failed to unmarshal JSON data", err, map[string]any{
+				"process": c.processName,
+			})
+		}
+	case string:
+		jsonData = v
+		err := json.Unmarshal([]byte(jsonData), &valuesMap)
+		if err != nil {
+			return false, catcher.Error("failed to unmarshal JSON data", err, map[string]any{
+				"process": c.processName,
+			})
+		}
+	case map[string]interface{}:
+		valuesMap = v
+		b, _ := json.Marshal(v)
+		jsonData = string(b)
+	default:
+		// Attempt to handle other types by converting to JSON first
+		b, err := json.Marshal(v)
+		if err != nil {
+			return false, catcher.Error("failed to marshal data to JSON", err, map[string]any{
+				"process": c.processName,
+			})
+		}
+		jsonData = string(b)
+		err = json.Unmarshal(b, &valuesMap)
+		if err != nil {
+			return false, catcher.Error("failed to unmarshal intermediate JSON data", err, map[string]any{
+				"process": c.processName,
+			})
+		}
 	}
 
 	if valuesMap == nil {
@@ -190,13 +236,20 @@ func (c *CELCache) Evaluate(data *string, expression string, envOption ...cel.En
 	}
 
 	// Internal data for overloads
-	valuesMap["_data_"] = *data
+	valuesMap["_data_"] = jsonData
 
 	cacheKey := c.getCacheKey(expression, valuesMap)
 	return c.Get(cacheKey, expression, valuesMap, envOption...)
 }
 
-func (c *CELCache) eval(prg cel.Program, valuesMap map[string]interface{}) (bool, error) {
+// Evaluate is a wrapper around Eval for backward compatibility.
+// Note: It uses (data, expression) order while Eval uses (expression, data).
+func (c *CELCache) Evaluate(data *string, expression string, envOption ...cel.EnvOption) (bool, error) {
+	return c.Eval(expression, data, envOption...)
+}
+
+// execute is the internal method that performs the actual CEL program evaluation.
+func (c *CELCache) execute(prg cel.Program, valuesMap map[string]interface{}) (bool, error) {
 	out, details, err := prg.Eval(valuesMap)
 	if err != nil {
 		return false, catcher.Error("failed to evaluate program", err, map[string]any{

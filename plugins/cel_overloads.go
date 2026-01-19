@@ -1,7 +1,6 @@
 package plugins
 
 import (
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -47,6 +46,48 @@ func valToFloat(v ref.Val) (float64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// flexibleMatch provides a robust, "best effort" comparison between a JSON field and a CEL value.
+func flexibleMatch(v gjson.Result, target ref.Val) bool {
+	if !v.Exists() {
+		return false
+	}
+
+	// 1. Numeric Comparison (Best Effort)
+	f1, ok1 := getNumeric(v)
+	if ok1 {
+		f2, ok2 := valToFloat(target)
+		if ok2 {
+			return numericEqual(f1, f2)
+		}
+	}
+
+	// 2. Strict String Comparison (if field and target are both strings)
+	if v.Type == gjson.String {
+		s1 := v.String()
+		if s2, ok := target.Value().(string); ok {
+			return s1 == s2
+		}
+	}
+
+	// 3. Boolean Comparison (if field and target are both booleans)
+	if v.Type == gjson.True || v.Type == gjson.False {
+		b1 := v.Bool()
+		if b2, ok := target.Value().(bool); ok {
+			return b1 == b2
+		}
+	}
+
+	// 4. Best Effort Fallback: Match string representation if target is a string and field is a scalar.
+	// This handles cases like comparing a boolean field with the string "true".
+	if s2, ok := target.Value().(string); ok {
+		if !v.IsObject() && !v.IsArray() && v.String() == s2 {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (c *CELCache) celExists() cel.EnvOption {
@@ -146,25 +187,8 @@ func (c *CELCache) equals() cel.EnvOption {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for equals(string, string, string)")
 				}
-				data := args[0].Value().(string)
-				key := args[1].Value().(string)
-				val := args[2].Value().(string)
-				v := gjson.Get(data, key)
-				if !v.Exists() {
-					return types.False
-				}
-
-				// Flexible match for string literal "1" against number 1 or string "1"
-				if v.Type == gjson.String && v.String() == val {
-					return types.True
-				}
-				if f1, ok1 := getNumeric(v); ok1 {
-					if f2, err := strconv.ParseFloat(val, 64); err == nil {
-						return types.Bool(numericEqual(f1, f2))
-					}
-				}
-
-				return types.Bool(v.String() == val)
+				v := gjson.Get(args[0].Value().(string), args[1].Value().(string))
+				return types.Bool(flexibleMatch(v, args[2]))
 			}),
 		),
 		cel.Overload("string_int_equals_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
@@ -172,18 +196,8 @@ func (c *CELCache) equals() cel.EnvOption {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for equals(string, string, int)")
 				}
-				data := args[0].Value().(string)
-				key := args[1].Value().(string)
-				val := args[2].Value().(int64)
-				v := gjson.Get(data, key)
-				if !v.Exists() {
-					return types.False
-				}
-
-				if f, ok := getNumeric(v); ok {
-					return types.Bool(numericEqual(f, float64(val)))
-				}
-				return types.False
+				v := gjson.Get(args[0].Value().(string), args[1].Value().(string))
+				return types.Bool(flexibleMatch(v, args[2]))
 			}),
 		),
 		cel.Overload("string_float_equals_bool", []*cel.Type{cel.StringType, cel.StringType, cel.DoubleType}, cel.BoolType,
@@ -191,18 +205,8 @@ func (c *CELCache) equals() cel.EnvOption {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for equals(string, string, double)")
 				}
-				data := args[0].Value().(string)
-				key := args[1].Value().(string)
-				val := args[2].Value().(float64)
-				v := gjson.Get(data, key)
-				if !v.Exists() {
-					return types.False
-				}
-
-				if f, ok := getNumeric(v); ok {
-					return types.Bool(numericEqual(f, val))
-				}
-				return types.False
+				v := gjson.Get(args[0].Value().(string), args[1].Value().(string))
+				return types.Bool(flexibleMatch(v, args[2]))
 			}),
 		),
 	)
@@ -218,7 +222,7 @@ func (c *CELCache) equalsIgnoreCase() cel.EnvOption {
 			key := args[1].Value().(string)
 			val := args[2].Value().(string)
 			v := gjson.Get(data, key)
-			if v.Exists() && !v.IsObject() && !v.IsArray() {
+			if v.Exists() && v.Type == gjson.String {
 				return types.Bool(strings.EqualFold(v.String(), val))
 			}
 			return types.False
@@ -237,7 +241,7 @@ func (c *CELCache) contains() cel.EnvOption {
 				key := args[1].Value().(string)
 				val := args[2].Value().(string)
 				v := gjson.Get(data, key)
-				if v.Exists() && !v.IsObject() && !v.IsArray() {
+				if v.Exists() && v.Type == gjson.String {
 					return types.Bool(strings.Contains(v.String(), val))
 				}
 				return types.False
@@ -252,7 +256,7 @@ func (c *CELCache) contains() cel.EnvOption {
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
 				v := gjson.Get(data, key)
-				if v.Exists() && !v.IsObject() && !v.IsArray() {
+				if v.Exists() && v.Type == gjson.String {
 					for _, item := range listVal {
 						if strings.Contains(v.String(), strings.TrimSpace(item.Value().(string))) {
 							return types.Bool(true)
@@ -275,7 +279,7 @@ func (c *CELCache) containsAll() cel.EnvOption {
 			key := args[1].Value().(string)
 			listVal := args[2].Value().([]ref.Val)
 			v := gjson.Get(data, key)
-			if v.Exists() {
+			if v.Exists() && v.Type == gjson.String {
 				for _, item := range listVal {
 					if !strings.Contains(v.String(), strings.TrimSpace(item.Value().(string))) {
 						return types.Bool(false)
@@ -302,22 +306,8 @@ func (c *CELCache) oneOf() cel.EnvOption {
 				return types.False
 			}
 
-			f1, ok1 := getNumeric(v)
-			s1 := v.String()
-
 			for _, item := range listVal {
-				// Try numeric comparison if field can be numeric
-				if ok1 {
-					if f2, ok2 := valToFloat(item); ok2 {
-						if numericEqual(f1, f2) {
-							return types.Bool(true)
-						}
-					}
-				}
-
-				// Fallback: compare formatted string representation
-				s2 := fmt.Sprintf("%v", item.Value())
-				if s1 == strings.TrimSpace(s2) {
+				if flexibleMatch(v, item) {
 					return types.Bool(true)
 				}
 			}
@@ -337,7 +327,7 @@ func (c *CELCache) startsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				prefix := args[2].Value().(string)
 				v := gjson.Get(data, key)
-				if v.Exists() && !v.IsObject() && !v.IsArray() {
+				if v.Exists() && v.Type == gjson.String {
 					return types.Bool(strings.HasPrefix(v.String(), prefix))
 				}
 				return types.False
@@ -352,7 +342,7 @@ func (c *CELCache) startsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
 				v := gjson.Get(data, key)
-				if v.Exists() && !v.IsObject() && !v.IsArray() {
+				if v.Exists() && v.Type == gjson.String {
 					s := v.String()
 					for _, item := range listVal {
 						if strings.HasPrefix(s, strings.TrimSpace(item.Value().(string))) {
@@ -377,7 +367,7 @@ func (c *CELCache) endsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				suffix := args[2].Value().(string)
 				v := gjson.Get(data, key)
-				if v.Exists() && !v.IsObject() && !v.IsArray() {
+				if v.Exists() && v.Type == gjson.String {
 					return types.Bool(strings.HasSuffix(v.String(), suffix))
 				}
 				return types.False
@@ -392,7 +382,7 @@ func (c *CELCache) endsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
 				v := gjson.Get(data, key)
-				if v.Exists() && !v.IsObject() && !v.IsArray() {
+				if v.Exists() && v.Type == gjson.String {
 					s := v.String()
 					for _, item := range listVal {
 						if strings.HasSuffix(s, strings.TrimSpace(item.Value().(string))) {
@@ -416,7 +406,7 @@ func (c *CELCache) regexMatch() cel.EnvOption {
 			key := args[1].Value().(string)
 			pattern := args[2].Value().(string)
 			v := gjson.Get(data, key)
-			if v.Exists() {
+			if v.Exists() && v.Type == gjson.String {
 				re, err := rCache.Get(pattern)
 				if err != nil {
 					return types.False
