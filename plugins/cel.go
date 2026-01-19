@@ -62,23 +62,14 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 	envOptions := []cel.EnvOption{
 		cel.Variable("_data_", cel.StringType),
 		c.celExists(),
-		c.safeBool(),
-		c.safeString(),
-		c.safeNum(),
+		c.safe(),
 		c.inCIDR(),
-		c.equalStrings(),
-		c.equalIntegers(),
-		c.equalFloats(),
+		c.equals(),
 		c.equalsIgnoreCase(),
 		c.contains(),
-		c.containsAny(),
 		c.containsAll(),
 		c.oneOf(),
-		c.oneOfInt(),
-		c.oneOfDouble(),
 		c.startsWith(),
-		c.startsWithList(),
-		c.endsWithList(),
 		c.endsWith(),
 		c.regexMatch(),
 		c.lessThan(),
@@ -148,10 +139,9 @@ func (c *CELCache) getCacheKey(expression string, valuesMap map[string]interface
 
 func (c *CELCache) transformExpression(expression string) string {
 	overloads := []string{
-		"exists", "safe", "inCIDR", "equals", "equalsIgnoreCase", "contains", "containsAny",
-		"containsAll", "oneOf", "oneOfInt", "oneOfDouble", "startsWith",
-		"startsWithList", "endsWithList", "endsWith", "regexMatch", "lessThan",
-		"greaterThan", "lessOrEqual", "greaterOrEqual",
+		"exists", "safe", "inCIDR", "equals", "equalsIgnoreCase", "contains",
+		"containsAll", "oneOf", "startsWith", "endsWith", "regexMatch",
+		"lessThan", "greaterThan", "lessOrEqual", "greaterOrEqual",
 	}
 
 	for _, f := range overloads {
