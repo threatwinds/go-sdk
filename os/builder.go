@@ -1630,7 +1630,7 @@ func (b *QueryBuilder) BuildWithErrors() (SearchRequest, []error) {
 
 // GetMappingConflicts returns fields with type conflicts across indices
 func (b *QueryBuilder) GetMappingConflicts() []FieldInfo {
-	conflicts := []FieldInfo{}
+	var conflicts = make([]FieldInfo, 0)
 
 	for _, indexPattern := range b.indices {
 		merged, err := b.mapper.GetMergedMapping(b.ctx, indexPattern)
