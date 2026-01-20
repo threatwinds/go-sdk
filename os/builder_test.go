@@ -2652,15 +2652,11 @@ func TestQueryBuilder_KNN(t *testing.T) {
 		KNN("embedding", vector, 10).
 		Build()
 
-	if len(query.Query.Bool.Must) != 1 {
-		t.Fatalf("Expected 1 must clause, got %d", len(query.Query.Bool.Must))
+	if query.Query.KNN == nil {
+		t.Fatal("Expected KNN query at top level")
 	}
 
-	if query.Query.Bool.Must[0].KNN == nil {
-		t.Fatal("Expected KNN query in must clause")
-	}
-
-	knn := query.Query.Bool.Must[0].KNN["embedding"]
+	knn := query.Query.KNN["embedding"]
 	if knn == nil {
 		t.Fatal("Expected embedding field in KNN query")
 	}
@@ -2680,11 +2676,11 @@ func TestQueryBuilder_KNNWithFilter(t *testing.T) {
 		KNNWithFilter("embedding", vector, 5, filter).
 		Build()
 
-	if len(query.Query.Bool.Must) != 1 {
-		t.Fatalf("Expected 1 must clause, got %d", len(query.Query.Bool.Must))
+	if query.Query.KNN == nil {
+		t.Fatal("Expected KNN query at top level")
 	}
 
-	knn := query.Query.Bool.Must[0].KNN["embedding"]
+	knn := query.Query.KNN["embedding"]
 	if knn == nil {
 		t.Fatal("Expected embedding field")
 	}
@@ -2707,7 +2703,11 @@ func TestQueryBuilder_KNNWithMinScore(t *testing.T) {
 		KNNWithMinScore("embedding", vector, 10, 0.85).
 		Build()
 
-	knn := query.Query.Bool.Must[0].KNN["embedding"]
+	if query.Query.KNN == nil {
+		t.Fatal("Expected KNN query at top level")
+	}
+
+	knn := query.Query.KNN["embedding"]
 	if knn.MinScore == nil {
 		t.Fatal("Expected min_score to be set")
 	}
@@ -2726,7 +2726,11 @@ func TestQueryBuilder_KNNWithMaxDistance(t *testing.T) {
 		KNNWithMaxDistance("embedding", vector, 10, 50.0).
 		Build()
 
-	knn := query.Query.Bool.Must[0].KNN["embedding"]
+	if query.Query.KNN == nil {
+		t.Fatal("Expected KNN query at top level")
+	}
+
+	knn := query.Query.KNN["embedding"]
 	if knn.MaxDistance == nil {
 		t.Fatal("Expected max_distance to be set")
 	}
@@ -2750,9 +2754,21 @@ func TestQueryBuilder_KNNWithOptions(t *testing.T) {
 		KNNWithOptions("embedding", vector, 15, opts).
 		Build()
 
-	knn := query.Query.Bool.Must[0].KNN["embedding"]
-	if knn.K != 15 {
-		t.Errorf("Expected k=15, got %d", knn.K)
+	if query.Query.KNN == nil {
+		t.Fatal("Expected KNN query at top level")
+	}
+
+	knn := query.Query.KNN["embedding"]
+	// In OpenSearch 3.x, if MinScore is set, K should NOT be set on the query itself.
+	// Instead, Size on the request limits results.
+	if knn.K != 0 {
+		t.Errorf("Expected k=0 (unset) when MinScore is used, got %d", knn.K)
+	}
+	if knn.MinScore == nil || *knn.MinScore != 0.7 {
+		t.Errorf("Expected MinScore=0.7, got %v", knn.MinScore)
+	}
+	if query.Size != 15 {
+		t.Errorf("Expected Size=15, got %v", query.Size)
 	}
 
 	if knn.MethodParameters == nil {
@@ -2950,18 +2966,23 @@ func TestQueryBuilder_CombinedKNNAndMatch(t *testing.T) {
 		Match("description", "machine learning").
 		Build()
 
-	if len(query.Query.Bool.Must) != 2 {
-		t.Errorf("Expected 2 must clauses, got %d", len(query.Query.Bool.Must))
+	// In OpenSearch 3.x, other bool queries are moved to KNN filter
+	if query.Query.KNN == nil {
+		t.Fatal("Expected top level KNN query")
 	}
 
-	// First should be KNN
-	if query.Query.Bool.Must[0].KNN == nil {
-		t.Error("Expected first clause to be KNN query")
+	knn := query.Query.KNN["embedding"]
+	if knn.Filter == nil || knn.Filter.Bool == nil {
+		t.Fatal("Expected boolean filter map in KNN query")
 	}
 
-	// Second should be Match
-	if query.Query.Bool.Must[1].Match == nil {
-		t.Error("Expected second clause to be Match query")
+	if len(knn.Filter.Bool.Must) != 1 {
+		t.Errorf("Expected 1 must clause in filter, got %d", len(knn.Filter.Bool.Must))
+	}
+
+	// Should be Match
+	if knn.Filter.Bool.Must[0].Match == nil {
+		t.Error("Expected clause in filter to be Match query")
 	}
 }
 

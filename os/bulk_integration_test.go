@@ -3,6 +3,7 @@ package os
 import (
 	"context"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,12 @@ import (
 // Uses NODES env var, defaults to http://10.128.0.3:9200 for integration tests.
 func getTestNodes() string {
 	if nodes := os.Getenv("NODES"); nodes != "" {
+		if strings.HasPrefix(nodes, "https://") {
+			nodes = strings.Replace(nodes, "https://", "http://", 1)
+		}
+		if !strings.HasPrefix(nodes, "http://") && !strings.HasPrefix(nodes, "https://") {
+			nodes = "http://" + nodes
+		}
 		return nodes
 	}
 	return "http://10.128.0.3:9200"
