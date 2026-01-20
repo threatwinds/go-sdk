@@ -13,18 +13,49 @@ import (
 // Use this for user-facing queries that require access control.
 // It returns a SearchResult and an error, if any.
 func (q SearchRequest) SearchIn(ctx context.Context, index []string, groups []string) (SearchResult, error) {
-	for i := range q.Query.Bool.Filter {
-		delete(q.Query.Bool.Filter[i].Terms, "visibleBy")
-		delete(q.Query.Bool.Filter[i].Terms, "visibleBy.keyword")
+	if q.Query == nil {
+		q.Query = &Query{}
 	}
 
-	var groupList = make([]interface{}, 0, 1)
-
+	var groupList = make([]interface{}, 0, len(groups))
 	for _, group := range groups {
 		groupList = append(groupList, group)
 	}
 
-	q.Query.Bool.Filter = append(q.Query.Bool.Filter, Query{Terms: map[string][]interface{}{"visibleBy.keyword": groupList}})
+	visibilityFilter := Query{Terms: map[string][]interface{}{"visibleBy.keyword": groupList}}
+
+	// If it's a k-NN query, we need to apply the filter to the k-NN filter clause
+	if len(q.Query.KNN) > 0 {
+		for _, knn := range q.Query.KNN {
+			if knn.Filter == nil {
+				knn.Filter = &Query{}
+			}
+			if knn.Filter.Bool == nil {
+				knn.Filter.Bool = &Bool{}
+			}
+
+			// Clean up existing visibility filters if any
+			for i := range knn.Filter.Bool.Filter {
+				delete(knn.Filter.Bool.Filter[i].Terms, "visibleBy")
+				delete(knn.Filter.Bool.Filter[i].Terms, "visibleBy.keyword")
+			}
+
+			// Add visibility filter
+			knn.Filter.Bool.Filter = append(knn.Filter.Bool.Filter, visibilityFilter)
+		}
+	} else {
+		// Standard Bool query path
+		if q.Query.Bool == nil {
+			q.Query.Bool = &Bool{}
+		}
+
+		for i := range q.Query.Bool.Filter {
+			delete(q.Query.Bool.Filter[i].Terms, "visibleBy")
+			delete(q.Query.Bool.Filter[i].Terms, "visibleBy.keyword")
+		}
+
+		q.Query.Bool.Filter = append(q.Query.Bool.Filter, visibilityFilter)
+	}
 
 	return q.WideSearchIn(ctx, index)
 }
