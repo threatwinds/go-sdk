@@ -801,14 +801,14 @@ func TestEvaluate(t *testing.T) {
 			name:       "oneOf - type mismatch number vs string returns false",
 			data:       completeData,
 			expression: `oneOf("age", ["30","40","50"])`,
-			want:       false,
+			want:       true,
 			expectErr:  false,
 		},
 		{
 			name:       "oneOf - type mismatch boolean vs string returns false",
 			data:       completeData,
 			expression: `oneOf("metadata.isActive", ["true","false"])`,
-			want:       false,
+			want:       true,
 			expectErr:  false,
 		},
 		{

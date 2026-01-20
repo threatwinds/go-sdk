@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -36,7 +37,7 @@ func AcquireLock(processName string) (bool, error) {
 	// Check if lock file exists
 	if _, err := os.Stat(lockPath); err == nil {
 		// Lock file exists, cannot acquire lock
-		return false, nil
+		return false, errors.New("lock file already exists")
 	} else if !os.IsNotExist(err) {
 		// Error checking lock file
 		return false, catcher.Error("failed to check lock file status", err, map[string]any{
