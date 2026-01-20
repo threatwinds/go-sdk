@@ -24,6 +24,15 @@ func Info(msg string, args map[string]any) {
 	Log(msg, args)
 }
 
+// Warn logs a message with WARNING severity.
+func Warn(msg string, args map[string]any) {
+	if args == nil {
+		args = make(map[string]any)
+	}
+	args["status"] = 400 // Triggers WARNING severity in calculateSeverity
+	Log(msg, args)
+}
+
 // Log logs a message with a unique code, stack trace, and optional contextual arguments in a structured format.
 func Log(msg string, args map[string]any) {
 	mu.Lock()

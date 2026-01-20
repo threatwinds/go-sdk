@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"time"
 )
 
@@ -39,4 +40,23 @@ func GetMainIP() (string, error) {
 	}
 
 	return localAddr.IP.String(), nil
+}
+
+// CheckConnectivity checks if a given URL is reachable within the specified timeout.
+// It sends a HEAD request to minimize bandwidth usage.
+func CheckConnectivity(url string, timeout time.Duration) error {
+	client := &http.Client{
+		Timeout: timeout,
+	}
+	resp, err := client.Head(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("server returned status: %s", resp.Status)
+	}
+
+	return nil
 }
