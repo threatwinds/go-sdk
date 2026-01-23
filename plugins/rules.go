@@ -13,9 +13,6 @@ import (
 // Normalize ensures that the newest fields are populated even if old aliases were used
 // This is now a method on the generated Rule struct from plugins.pb.go
 func (r *Rule) Normalize() {
-	if len(r.AfterEvents) == 0 && len(r.Correlation) > 0 {
-		r.AfterEvents = r.Correlation
-	}
 	if len(r.Correlation) == 0 && len(r.AfterEvents) > 0 {
 		r.Correlation = r.AfterEvents
 	}
