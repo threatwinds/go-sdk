@@ -31,19 +31,23 @@ func (c *RegexpCache) Get(pattern string) (*regexp.Regexp, error) {
 
 	finalPattern := pattern
 	// If the pattern contains template markers, try to expand it using global patterns
-	if strings.Contains(pattern, "{{") {
-		cfgMutex.RLock()
-		if cfg != nil && len(cfg.Patterns) > 0 {
-			t, err := template.New("pattern").Parse(pattern)
+	maxDepth := 10
+	for i := 0; i < maxDepth && strings.Contains(finalPattern, "{{"); i++ {
+		currentCfg := GetCfg("regexp")
+		if currentCfg != nil && len(currentCfg.Patterns) > 0 {
+			t, err := template.New("pattern").Parse(finalPattern)
 			if err == nil {
 				var output bytes.Buffer
-				err = t.Execute(&output, cfg.Patterns)
+				err = t.Execute(&output, currentCfg.Patterns)
 				if err == nil {
-					finalPattern = output.String()
+					newPattern := output.String()
+					if newPattern == finalPattern {
+						break // No more changes
+					}
+					finalPattern = newPattern
 				}
 			}
 		}
-		cfgMutex.RUnlock()
 	}
 
 	if compiledPattern, ok := c.cache.Get(finalPattern); ok {

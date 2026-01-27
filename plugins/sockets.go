@@ -2,9 +2,10 @@ package plugins
 
 import (
 	"fmt"
-	"github.com/threatwinds/go-sdk/utils"
 	"path/filepath"
 	"strings"
+
+	"github.com/threatwinds/go-sdk/utils"
 )
 
 type SocketType string
@@ -21,7 +22,11 @@ func (t *SocketType) String() string {
 
 func GetOrderedSockets(t SocketType) []string {
 	var pList = make([]string, 0, 3)
-	order := PluginCfg(t.String(), false).Get("order").Array()
+	cfg := PluginCfg(t.String())
+	if !cfg.Exists() {
+		return pList
+	}
+	order := cfg.Get("order").Array()
 
 	for _, name := range order {
 		pList = append(pList, filepath.Join(
