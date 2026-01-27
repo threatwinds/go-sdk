@@ -140,7 +140,15 @@ func (c *Config) loadCfg(processName string) {
 			"dir":     pipelineFolder,
 			"process": processName,
 		})
-		os.Exit(1)
+		return
+	}
+
+	if _, err := os.Stat(pipelineFolder.String()); os.IsNotExist(err) {
+		_ = catcher.Error("pipeline folder does not exist", nil, map[string]any{
+			"dir":     pipelineFolder,
+			"process": processName,
+		})
+		return
 	}
 
 	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml")
@@ -212,7 +220,7 @@ func updateCfg(processName string) {
 			break
 		}
 
-		// Lock not acquired, wait and retry
+		// Lock was not acquired, wait and retry
 		if i < maxRetries-1 {
 			_ = catcher.Error("failed to acquire lock", err, map[string]any{
 				"retry": i + 1, "maxRetries": maxRetries,
@@ -264,16 +272,18 @@ func GetCfg(processName string) *Config {
 		// Start the lock monitor goroutine
 		startLockMonitor(processName)
 
+		updateCfg(processName)
+
 		go func() {
 			for {
-				updateCfg(processName)
 				time.Sleep(60 * time.Second)
+				updateCfg(processName)
 			}
 		}()
 	})
 
 	for cfg.Env == nil {
-		time.Sleep(20 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 
 	cfgMutex.RLock()
@@ -293,31 +303,25 @@ func GetCfg(processName string) *Config {
 // Returns:
 //
 //	gjson.Result: An object containing the configuration of the specified plugin.
-func PluginCfg(pluginName string, wait bool) gjson.Result {
+func PluginCfg(pluginName string) gjson.Result {
 	for {
 		cfg := GetCfg(fmt.Sprintf("plugin_%s", pluginName))
 
+		if cfg.Plugins == nil {
+			return gjson.Result{}
+		}
+
 		pConfig, ok := cfg.Plugins[pluginName]
 		if !ok {
-			if wait {
-				time.Sleep(1 * time.Second)
-				continue
-			}
-
-			panic(fmt.Sprintf("plugin config not found for plugin: %s", pluginName))
+			return gjson.Result{}
 		}
 
-		bJson, err := protojson.Marshal(pConfig)
+		bJson, err := utils.ProtoMessageToBytes(pConfig)
 		if err != nil {
-			if wait {
-				time.Sleep(1 * time.Second)
-				continue
-			}
-
-			panic(fmt.Sprintf("failed to decode the configuration for plugin %s: %v", pluginName, err))
+			return gjson.Result{}
 		}
 
-		pJson := gjson.ParseBytes(bJson)
+		pJson := gjson.ParseBytes(*bJson)
 
 		return pJson
 	}
