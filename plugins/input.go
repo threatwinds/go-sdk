@@ -31,6 +31,7 @@ func SendLogsFromChannel(pluginName string) {
 		_ = catcher.Error("failed to create socket directory", err, map[string]any{
 			"process": processName,
 		})
+		time.Sleep(5 * time.Second)
 		os.Exit(1)
 	}
 	socketFile := socketDir.FileJoin("engine_server.sock")
@@ -41,6 +42,7 @@ func SendLogsFromChannel(pluginName string) {
 			"socket":  socketFile,
 			"process": processName,
 		})
+		time.Sleep(5 * time.Second)
 		os.Exit(1)
 	}
 
@@ -52,6 +54,7 @@ func SendLogsFromChannel(pluginName string) {
 			"socket":  socketFile,
 			"process": processName,
 		})
+		time.Sleep(5 * time.Second)
 		os.Exit(1)
 	}
 
@@ -72,6 +75,7 @@ func SendLogsFromChannel(pluginName string) {
 					"socket":  socketFile,
 					"process": processName,
 				})
+				time.Sleep(5 * time.Second)
 				os.Exit(1)
 			}
 		}
@@ -86,6 +90,7 @@ func SendLogsFromChannel(pluginName string) {
 			_ = catcher.Error("failed to receive ack", err, map[string]any{
 				"process": processName,
 			})
+			time.Sleep(5 * time.Second)
 			os.Exit(1)
 		}
 	}
