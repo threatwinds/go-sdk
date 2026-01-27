@@ -75,7 +75,7 @@ func (b *QueryBuilder) From(from int64) *QueryBuilder {
 }
 
 // SearchAfter sets cursor-based pagination
-func (b *QueryBuilder) SearchAfter(values []int64) *QueryBuilder {
+func (b *QueryBuilder) SearchAfter(values []any) *QueryBuilder {
 	b.request.SearchAfter = values
 	return b
 }

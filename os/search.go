@@ -123,19 +123,6 @@ func (q SearchRequest) WideSearchIn(ctx context.Context, index []string) (Search
 			}
 		}
 
-		// Convert Sort from []any to []int64 (the best effort)
-		sort := make([]int64, len(hit.Sort))
-		for j, s := range hit.Sort {
-			switch v := s.(type) {
-			case float64:
-				sort[j] = int64(v)
-			case int64:
-				sort[j] = v
-			case int:
-				sort[j] = int64(v)
-			}
-		}
-
 		result.Hits.Hits[i] = Hit{
 			Index:   hit.Index,
 			ID:      hit.ID,
@@ -143,7 +130,7 @@ func (q SearchRequest) WideSearchIn(ctx context.Context, index []string) (Search
 			Score:   hit.Score,
 			Source:  source,
 			Fields:  fields,
-			Sort:    sort,
+			Sort:    hit.Sort,
 		}
 	}
 

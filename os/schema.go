@@ -27,7 +27,7 @@ type Hit struct {
 	Score   interface{}            `json:"_score"`
 	Source  HitSource              `json:"_source"`
 	Fields  map[string]interface{} `json:"fields"`
-	Sort    []int64                `json:"sort"`
+	Sort    []any                  `json:"sort"`
 	Found   bool                   `json:"found,omitempty"`
 }
 
@@ -56,7 +56,7 @@ type SearchRequest struct {
 	Query        *Query                              `json:"query,omitempty"`
 	Collapse     *Collapse                           `json:"collapse,omitempty"`
 	Aggs         map[string]Aggs                     `json:"aggs,omitempty"`
-	SearchAfter  []int64                             `json:"search_after,omitempty"`
+	SearchAfter  []any                               `json:"search_after,omitempty"`
 	ScriptFields interface{}                         `json:"script_fields,omitempty"`
 }
 
