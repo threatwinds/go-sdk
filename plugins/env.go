@@ -118,7 +118,7 @@ func getEnv() *Env {
 		panic(err)
 	}
 
-	env.Mode, err = getEnvStr("MODE", "", true)
+	env.Mode, err = getEnvStr("MODE", "manager", false)
 	if err != nil {
 		panic(err)
 	}
