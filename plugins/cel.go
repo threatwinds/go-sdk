@@ -104,15 +104,17 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 	ast, issues := celEnv.Compile(transformedExpr)
 	if issues != nil && issues.Err() != nil {
 		return false, catcher.Error("failed to compile expression", errors.New("consult issues list for more information"), map[string]any{
-			"issues":  issues.Errors(),
-			"process": c.processName,
+			"issues":     issues.Errors(),
+			"process":    c.processName,
+			"expression": expression,
 		})
 	}
 
 	prg, err := celEnv.Program(ast)
 	if err != nil {
 		return false, catcher.Error("failed to create program", err, map[string]any{
-			"process": c.processName,
+			"process":    c.processName,
+			"expression": expression,
 		})
 	}
 
