@@ -8,18 +8,29 @@ import (
 	"github.com/threatwinds/go-sdk/utils"
 )
 
+// SocketType represents the type of plugin socket used for gRPC communication.
+// It is used to compose socket filenames and to look up plugin ordering in config.
+// Valid values are defined in the constants below.
+
 type SocketType string
 
 const (
+	// NotificationSocket identifies Notification plugins sockets: <name>_notification.sock
 	NotificationSocket SocketType = "notification"
-	AnalysisSocket     SocketType = "analysis"
-	CorrelationSocket  SocketType = "correlation"
+	// AnalysisSocket identifies Analysis plugins sockets: <name>_analysis.sock
+	AnalysisSocket SocketType = "analysis"
+	// CorrelationSocket identifies Correlation plugins sockets: <name>_correlation.sock
+	CorrelationSocket SocketType = "correlation"
 )
 
+// String returns the string representation of the SocketType.
 func (t *SocketType) String() string {
 	return string(*t)
 }
 
+// GetOrderedSockets returns an ordered list of socket file paths for the given
+// socket type, based on the plugin order specified in configuration (env/config).
+// If no configuration is present, an empty list is returned.
 func GetOrderedSockets(t SocketType) []string {
 	var pList = make([]string, 0, 3)
 	cfg := PluginCfg(t.String())
@@ -37,6 +48,8 @@ func GetOrderedSockets(t SocketType) []string {
 	return pList
 }
 
+// GetParsingSockets scans the sockets directory and returns a map of parsing
+// plugin names to their corresponding socket file paths.
 func GetParsingSockets() map[string]string {
 	files := utils.ListFiles(
 		filepath.Join(WorkDir, "sockets"), ".sock")

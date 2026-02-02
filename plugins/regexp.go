@@ -12,6 +12,8 @@ import (
 	"github.com/hashicorp/golang-lru/v2/expirable"
 )
 
+// RegexpCache provides a thread-safe cache for compiled regular expressions.
+// It supports pattern expansion using templates defined in the configuration.
 type RegexpCache struct {
 	cache *expirable.LRU[string, *regexp.Regexp]
 	once  sync.Once
@@ -24,6 +26,9 @@ func (c *RegexpCache) getLock(key string) *sync.Mutex {
 	return &c.locks[h.Sum32()%1024]
 }
 
+// Get retrieves a compiled regular expression from the cache.
+// If the pattern is not cached, it is compiled and added to the cache.
+// Patterns containing "{{ ... }}" markers are expanded using global patterns from configuration.
 func (c *RegexpCache) Get(pattern string) (*regexp.Regexp, error) {
 	c.once.Do(func() {
 		c.cache = expirable.NewLRU[string, *regexp.Regexp](10000, nil, time.Hour*24)

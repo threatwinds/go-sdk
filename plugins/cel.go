@@ -22,6 +22,8 @@ import (
 	"time"
 )
 
+// CELCache provides a thread-safe cache for compiled CEL (Common Expression Language) programs.
+// It uses an LRU cache to store and reuse programs to optimize evaluation performance.
 type CELCache struct {
 	cache       *expirable.LRU[string, *cachedProgram]
 	once        sync.Once
@@ -29,6 +31,7 @@ type CELCache struct {
 	processName string
 }
 
+// NewCELCache creates and returns a new instance of CELCache for the specified process.
 func NewCELCache(processName string) *CELCache {
 	return &CELCache{
 		processName: processName,
@@ -41,6 +44,8 @@ func (c *CELCache) getLock(key string) *sync.Mutex {
 	return &c.locks[h.Sum32()%1024]
 }
 
+// Get retrieves a compiled CEL program from the cache or compiles it if not present.
+// It then executes the program with the provided valuesMap and returns the result.
 func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]interface{}, envOption ...cel.EnvOption) (bool, error) {
 	c.once.Do(func() {
 		c.cache = expirable.NewLRU[string, *cachedProgram](10000, nil, time.Hour*24)

@@ -33,11 +33,13 @@ func (e SdkError) Error() string {
 	return fmt.Sprintf("%s: %s. Args: %s", e.Msg, *e.Cause, args)
 }
 
+// JSON returns the JSON string representation of the SdkError.
 func (e SdkError) JSON() string {
 	jLog, _ := json.Marshal(e)
 	return string(jLog)
 }
 
+// SecureString returns the error message if the status code is >= 500, otherwise it returns the full error description.
 func (e SdkError) SecureString() string {
 	status, ok := e.Args["status"]
 	if ok {

@@ -33,13 +33,18 @@ type DataProcessingMessage struct {
 	DataSource string `json:"dataSource"`
 }
 
+// Topic represents a notification topic identifier.
 type Topic string
 
 const (
-	TopicEnqueueSuccess     Topic = "enqueue_success"     // represents the topic name for enqueue success notifications.
-	TopicParsingDropped     Topic = "parsing_dropped"     // represents the topic name for parsing dropped events.
-	TopicAnalysisDropped    Topic = "analysis_dropped"    // represents the topic name for analysis dropped events.
-	TopicCorrelationDropped Topic = "correlation_dropped" // represents the topic name for correlation dropped events.
+	// TopicEnqueueSuccess identifies notifications for successful event enqueuing.
+	TopicEnqueueSuccess Topic = "enqueue_success"
+	// TopicParsingDropped identifies notifications for events dropped during parsing.
+	TopicParsingDropped Topic = "parsing_dropped"
+	// TopicAnalysisDropped identifies notifications for events dropped during analysis.
+	TopicAnalysisDropped Topic = "analysis_dropped"
+	// TopicCorrelationDropped identifies notifications for events dropped during correlation.
+	TopicCorrelationDropped Topic = "correlation_dropped"
 )
 
 // SendNotificationsFromChannel listens to the notificationsChannel and sends notifications
@@ -159,6 +164,9 @@ func (p *notificationServer) Notify(ctx context.Context, message *Message) (*emp
 	return p.notificationFunction(ctx, message)
 }
 
+// InitNotificationPlugin initializes a gRPC-based notification plugin with a specified name and notification function.
+// It sets up a UNIX socket, handles lifecycle events, and manages graceful shutdowns upon termination signals.
+// Locks until shutdown is complete or an error occurs.
 func InitNotificationPlugin(name string, notificationFunction func(ctx context.Context, message *Message) (*emptypb.Empty, error)) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
