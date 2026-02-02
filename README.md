@@ -2,6 +2,10 @@
 
 The official Go SDK for building applications and plugins within the ThreatWinds ecosystem.
 
+## 📚 Documentation
+
+For detailed guides, architecture overview, and plugin development references, please visit our [Official Wiki](https://github.com/threatwinds/go-sdk/wiki).
+
 ## 📦 Modules
 
 This SDK is organized into several modules, each serving a specific purpose:
