@@ -20,6 +20,14 @@ var cfg *Config
 var cfgOnce sync.Once
 var cfgMutex sync.RWMutex
 
+type fileState struct {
+	modTime time.Time
+	size    int64
+}
+
+var lastFileStates map[string]fileState
+var statesMutex sync.RWMutex
+
 // AcquireLock tries to acquire the lock file to prevent race conditions
 // when loading or modifying configurations. It returns true if the lock
 // was acquired successfully, false otherwise.
@@ -204,12 +212,61 @@ func RandomDuration(min, max int) time.Duration {
 	return time.Duration(randomNumber) * time.Second
 }
 
+// getNewStates returns the current state of configuration files and a boolean
+// indicating if the state has changed since the last check.
+func getNewStates() (map[string]fileState, bool) {
+	pipelineFolder, err := utils.MkdirJoin(WorkDir, "pipeline")
+	if err != nil {
+		return nil, true
+	}
+
+	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml")
+	newStates := make(map[string]fileState)
+
+	changed := false
+	statesMutex.RLock()
+	if lastFileStates == nil || len(lastFileStates) != len(cFiles) {
+		changed = true
+	}
+	statesMutex.RUnlock()
+
+	for _, cFile := range cFiles {
+		info, err := os.Stat(cFile)
+		if err != nil {
+			return nil, true
+		}
+		state := fileState{modTime: info.ModTime(), size: info.Size()}
+		newStates[cFile] = state
+
+		if !changed {
+			statesMutex.RLock()
+			oldState, ok := lastFileStates[cFile]
+			if !ok || !oldState.modTime.Equal(state.modTime) || oldState.size != state.size {
+				changed = true
+			}
+			statesMutex.RUnlock()
+		}
+	}
+
+	return newStates, changed
+}
+
 // updateCfg updates the global configuration by loading new values
 // into a temporary Config object and then replacing the current
 // configuration with the new one. It ensures thread safety by using
 // a mutex lock and a lockfile mechanism to prevent race conditions
 // with other components that might modify the configuration.
 func updateCfg(processName string) {
+	newStates, changed := getNewStates()
+
+	cfgMutex.RLock()
+	env := cfg.Env
+	cfgMutex.RUnlock()
+
+	if env != nil && !changed {
+		return
+	}
+
 	// Try to acquire the lock
 	maxRetries := 5
 
@@ -259,6 +316,10 @@ func updateCfg(processName string) {
 	cfg.Env = tmpCfg.Env
 
 	cfgMutex.Unlock()
+
+	statesMutex.Lock()
+	lastFileStates = newStates
+	statesMutex.Unlock()
 }
 
 // GetCfg initializes the configuration if it hasn't been initialized yet,
