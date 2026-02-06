@@ -28,14 +28,19 @@ func BuildIndexPattern(elements ...string) string {
 	return strings.Join(elements, "-")
 }
 
-// BuildCurrentIndex returns a string representing the current index based on the given elements.
-func BuildCurrentIndex(elements ...string) string {
-	return BuildIndex(time.Now().UTC(), elements...)
+// BuildCurrentDayIndex returns a string representing the current index based on the given elements.
+func BuildCurrentDayIndex(elements ...string) string {
+	return BuildIndex(time.Now().UTC(), "2006-01-02", elements...)
+}
+
+// BuildCurrentMonthIndex returns a string representing the current index based on the given elements.
+func BuildCurrentMonthIndex(elements ...string) string {
+	return BuildIndex(time.Now().UTC(), "2006-01", elements...)
 }
 
 // BuildIndex returns a string representing an index based on the given date and elements.
-func BuildIndex(date time.Time, elements ...string) string {
-	elements = append(elements, date.Format("2006-01"))
+func BuildIndex(date time.Time, layout string, elements ...string) string {
+	elements = append(elements, date.Format(layout))
 	return strings.Join(elements, "-")
 }
 
