@@ -209,6 +209,15 @@ func (c *CELCache) equals() cel.EnvOption {
 				return types.Bool(flexibleMatch(v, args[2]))
 			}),
 		),
+		cel.Overload("string_bool_equals_bool", []*cel.Type{cel.StringType, cel.StringType, cel.BoolType}, cel.BoolType,
+			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+				if len(args) != 3 {
+					return types.NewErr("invalid number of arguments for equals(string, string, bool)")
+				}
+				v := gjson.Get(args[0].Value().(string), args[1].Value().(string))
+				return types.Bool(flexibleMatch(v, args[2]))
+			}),
+		),
 	)
 }
 
