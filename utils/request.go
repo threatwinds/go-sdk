@@ -32,7 +32,7 @@ import (
 //   - int: The HTTP status code of the response.
 //   - error: An error if any occurred during the request or response
 //     processing, otherwise nil.
-func DoReq[response any](url string, data []byte, method string, headers map[string]string) (response, int, error) {
+func DoReq[response any](url string, data []byte, method string, headers map[string]string, skipTlsVerification bool) (response, int, error) {
 	var result response
 
 	if len(data) > maxMessageSize {
@@ -49,15 +49,18 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 	}
 
 	// Configure HTTP client with security settings
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-			},
-			DisableCompression: true,
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: skipTlsVerification,
 		},
+		DisableCompression: true,
 	}
+	client := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: tr,
+	}
+	defer tr.CloseIdleConnections()
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -91,8 +94,9 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 type DownloadOption func(*downloadConfig)
 
 type downloadConfig struct {
-	headers map[string]string
-	timeout time.Duration
+	headers             map[string]string
+	timeout             time.Duration
+	skipTlsVerification bool
 }
 
 // WithHeaders sets the headers for the download request.
@@ -106,6 +110,13 @@ func WithHeaders(headers map[string]string) DownloadOption {
 func WithTimeout(timeout time.Duration) DownloadOption {
 	return func(c *downloadConfig) {
 		c.timeout = timeout
+	}
+}
+
+// WithSkipTlsVerification sets the skipTlsVerification for the download request.
+func WithSkipTlsVerification(skip bool) DownloadOption {
+	return func(c *downloadConfig) {
+		c.skipTlsVerification = skip
 	}
 }
 
@@ -174,14 +185,18 @@ func DownloadStream(url string, opts ...DownloadOption) (io.ReadCloser, error) {
 		req.Header.Add(k, v)
 	}
 
-	client := &http.Client{
-		Timeout: config.timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-			},
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: config.skipTlsVerification,
 		},
 	}
+
+	client := &http.Client{
+		Timeout:   config.timeout,
+		Transport: tr,
+	}
+	defer tr.CloseIdleConnections()
 
 	resp, err := client.Do(req)
 	if err != nil {
