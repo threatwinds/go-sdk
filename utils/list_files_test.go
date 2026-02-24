@@ -26,6 +26,8 @@ func TestNaturalLess(t *testing.T) {
 		{"filter10.yaml", "filter2.yaml", false},
 		{"abc.yaml", "abc.yaml", false},
 		{"1a.yaml", "1b.yaml", true},
+		{"1000001.yaml", "701.yaml", false},
+		{"701.yaml", "1000001.yaml", true},
 	}
 
 	for _, tt := range tests {
