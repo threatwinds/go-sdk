@@ -17,7 +17,17 @@ func (bq *BulkQueue) AddWithID(index, docID string, doc any) {
 }
 
 // AddCreate adds a document using the "create" operation (fails if document exists).
-func (bq *BulkQueue) AddCreate(index, docID string, doc any) {
+// If docID is empty, OpenSearch auto-generates one (required for data streams).
+func (bq *BulkQueue) AddCreate(index string, doc any) {
+	bq.AddItem(BulkItem{
+		Index:     index,
+		Operation: BulkOperationCreate,
+		Document:  doc,
+	})
+}
+
+// AddCreateWithID adds a document using the "create" operation with a specific ID.
+func (bq *BulkQueue) AddCreateWithID(index, docID string, doc any) {
 	bq.AddItem(BulkItem{
 		Index:      index,
 		DocumentID: docID,

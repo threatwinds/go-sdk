@@ -1062,7 +1062,7 @@ func TestBulkQueueCreateExistingDocument(t *testing.T) {
 	}
 
 	// First create should succeed
-	queue.AddCreate(testIndex, docID, doc)
+	queue.AddCreateWithID(testIndex, docID, doc)
 	queue.Flush()
 	time.Sleep(1 * time.Second)
 
@@ -1071,7 +1071,7 @@ func TestBulkQueueCreateExistingDocument(t *testing.T) {
 		"message":   "second document",
 		"visibleBy": []string{"public"},
 	}
-	queue.AddCreate(testIndex, docID, doc2)
+	queue.AddCreateWithID(testIndex, docID, doc2)
 	queue.Flush()
 	time.Sleep(1 * time.Second)
 

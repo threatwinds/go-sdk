@@ -310,7 +310,7 @@ func TestBulkQueueIntegration(t *testing.T) {
 		}
 
 		// First create should succeed
-		queue.AddCreate(testIndex, "create-test-1", doc)
+		queue.AddCreateWithID(testIndex, "create-test-1", doc)
 		queue.Flush()
 
 		// Wait for indexing
