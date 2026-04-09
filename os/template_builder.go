@@ -18,6 +18,7 @@ type IndexTemplate struct {
 	Version       *int64                 `json:"version,omitempty"`
 	Meta          map[string]interface{} `json:"_meta,omitempty"`
 	ComposedOf    []string               `json:"composed_of,omitempty"`
+	DataStream    *DataStreamConfig      `json:"data_stream,omitempty"`
 }
 
 // TemplateContent represents the template content (settings, mappings, aliases)
@@ -25,6 +26,11 @@ type TemplateContent struct {
 	Settings map[string]interface{}         `json:"settings,omitempty"`
 	Mappings map[string]interface{}         `json:"mappings,omitempty"`
 	Aliases  map[string]TemplateAliasConfig `json:"aliases,omitempty"`
+}
+
+// DataStreamConfig represents data stream configuration in an index template
+type DataStreamConfig struct {
+	TimestampField string `json:"timestamp_field,omitempty"`
 }
 
 // TemplateAliasConfig represents alias configuration in a template
@@ -52,6 +58,7 @@ type TemplateBuilder struct {
 	composedOf []string
 	dynamic    string
 	errors     []error
+	dataStream *DataStreamConfig
 }
 
 // NewTemplateBuilder creates a new template builder
@@ -95,6 +102,18 @@ func (b *TemplateBuilder) Meta(meta map[string]interface{}) *TemplateBuilder {
 // ComposedOf sets the component templates to compose from
 func (b *TemplateBuilder) ComposedOf(components ...string) *TemplateBuilder {
 	b.composedOf = components
+	return b
+}
+
+// DataStream enables data stream for this template with the given timestamp field name.
+// If timestampField is empty, it defaults to "@timestamp".
+func (b *TemplateBuilder) DataStream(timestampField string) *TemplateBuilder {
+	if timestampField == "" {
+		timestampField = "@timestamp"
+	}
+	b.dataStream = &DataStreamConfig{
+		TimestampField: timestampField,
+	}
 	return b
 }
 
@@ -298,6 +317,10 @@ func (b *TemplateBuilder) Build() (IndexTemplate, error) {
 		ComposedOf:    b.composedOf,
 	}
 
+	if b.dataStream != nil {
+		template.DataStream = b.dataStream
+	}
+
 	// Build template content
 	if len(b.settings) > 0 {
 		template.Template.Settings = b.settings
@@ -336,6 +359,10 @@ func (b *TemplateBuilder) BuildWithErrors() (IndexTemplate, []error) {
 		Version:       b.version,
 		Meta:          b.meta,
 		ComposedOf:    b.composedOf,
+	}
+
+	if b.dataStream != nil {
+		template.DataStream = b.dataStream
 	}
 
 	if len(b.settings) > 0 {
@@ -396,6 +423,16 @@ func (b *TemplateBuilder) Ensure() error {
 	}
 	if len(template.ComposedOf) > 0 {
 		body["composed_of"] = template.ComposedOf
+	}
+
+	if template.DataStream != nil {
+		dsConfig := map[string]interface{}{}
+		if template.DataStream.TimestampField != "" {
+			dsConfig["timestamp_field"] = map[string]interface{}{
+				"name": template.DataStream.TimestampField,
+			}
+		}
+		body["data_stream"] = dsConfig
 	}
 
 	bodyJSON, err := json.Marshal(body)
