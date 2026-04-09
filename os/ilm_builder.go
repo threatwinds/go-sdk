@@ -273,7 +273,7 @@ func (b *ISMPolicyBuilder) Ensure() error {
 	}
 
 	// Check if policy exists
-	exists, _, err := getISMPolicyWithSeqNo(b.ctx, b.name)
+	exists, seqNo, primaryTerm, err := getISMPolicyWithSeqNo(b.ctx, b.name)
 	if err != nil {
 		return catcher.Error("failed to ensure ISM policy", fmt.Errorf("failed to check policy existence: %w", err), map[string]any{
 			"policy": b.name,
@@ -300,18 +300,15 @@ func (b *ISMPolicyBuilder) Ensure() error {
 	}
 
 	var path string
-	var method string
 	if exists {
-		// Update existing policy
-		path = fmt.Sprintf("/_plugins/_ism/policies/%s", b.name)
-		method = "PUT"
+		// Update existing policy with optimistic concurrency control
+		path = fmt.Sprintf("/_plugins/_ism/policies/%s?if_seq_no=%d&if_primary_term=%d", b.name, seqNo, primaryTerm)
 	} else {
 		// Create new policy
 		path = fmt.Sprintf("/_plugins/_ism/policies/%s", b.name)
-		method = "PUT"
 	}
 
-	req, err := http.NewRequestWithContext(b.ctx, method, path, bytes.NewReader(bodyJSON))
+	req, err := http.NewRequestWithContext(b.ctx, "PUT", path, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return catcher.Error("failed to ensure ISM policy", fmt.Errorf("failed to create request: %w", err), map[string]any{
 			"policy": b.name,
@@ -536,35 +533,36 @@ func (t *ISMTransitionBuilder) Done() *ISMStateBuilder {
 }
 
 // Helper function to get ISM policy with sequence number
-func getISMPolicyWithSeqNo(ctx context.Context, name string) (bool, int64, error) {
+func getISMPolicyWithSeqNo(ctx context.Context, name string) (bool, int64, int64, error) {
 	path := fmt.Sprintf("/_plugins/_ism/policies/%s", name)
 	req, err := http.NewRequestWithContext(ctx, "GET", path, nil)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 
 	resp, err := client.Perform(req)
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 404 {
-		return false, 0, nil
+		return false, 0, 0, nil
 	}
 
 	if resp.StatusCode >= 400 {
-		return false, 0, nil
+		return false, 0, 0, nil
 	}
 
 	var result struct {
-		SeqNo int64 `json:"_seq_no"`
+		SeqNo      int64 `json:"_seq_no"`
+		PrimaryTerm int64 `json:"_primary_term"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return true, 0, nil
+		return true, 0, 0, nil
 	}
 
-	return true, result.SeqNo, nil
+	return true, result.SeqNo, result.PrimaryTerm, nil
 }
 
 // GetISMPolicy retrieves an ISM policy by name
@@ -791,6 +789,6 @@ func RetryISM(ctx context.Context, index string) error {
 
 // ISMPolicyExists checks if an ISM policy exists
 func ISMPolicyExists(ctx context.Context, name string) (bool, error) {
-	exists, _, err := getISMPolicyWithSeqNo(ctx, name)
+	exists, _, _, err := getISMPolicyWithSeqNo(ctx, name)
 	return exists, err
 }
