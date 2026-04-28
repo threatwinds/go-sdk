@@ -7,9 +7,16 @@ import (
 	"unicode/utf8"
 )
 
+const MaxEntityAttrLength = 65536 // 64KB
+
 // ValidateString validates a string value and returns the original value, its SHA3-256 hash and an error.
 // If the insensitive flag is set to true, the value is converted to lowercase before hashing.
 func ValidateString(value string, insensitive bool) (string, string, error) {
+	// Length check first
+	if len(value) > MaxEntityAttrLength {
+		return "", "", fmt.Errorf("string exceeds %d characters", MaxEntityAttrLength)
+	}
+
 	replacement, _ := utf8.DecodeRuneInString(" ")
 	allowed := "\r\n \r \n"
 	v := strings.Map(func(r rune) rune {
