@@ -15,6 +15,18 @@ import (
 	"time"
 )
 
+// errorParam represents a single error field in the JSON response.
+type errorParam struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Code    string `json:"code"`
+}
+
+// errorResponse is the JSON envelope returned to the client on error.
+type errorResponse struct {
+	Error errorParam `json:"error"`
+}
+
 // SdkError is a struct that implements the Go error interface.
 type SdkError struct {
 	Timestamp string         `json:"timestamp"`
@@ -151,17 +163,29 @@ func ToSdkError(err error) *SdkError {
 }
 
 // GinError is a helper function to return an error to the client using Gin framework context.
-// It sets the headers x-error and x-error-id with the error message and UUID respectively and sets the status code.
+// It sets the headers x-error and x-error-id with the error message and UUID respectively,
+// writes a JSON error body, and sets the status code.
 func (e SdkError) GinError(c *gin.Context) {
 	c.Header("x-error-id", e.Code)
 
+	secureMsg := e.SecureString()
+	c.Header("x-error", secureMsg)
+
+	resp := errorResponse{
+		Error: errorParam{
+			Message: secureMsg,
+			Type:    e.Severity,
+			Code:    e.Code,
+		},
+	}
+
 	status, ok := e.Args["status"]
 	if !ok {
-		c.Header("x-error", e.SecureString())
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.Abort()
+		c.JSON(http.StatusInternalServerError, resp)
 	} else {
-		c.Header("x-error", e.SecureString())
-		c.AbortWithStatus(castInt(status))
+		c.Abort()
+		c.JSON(castInt(status), resp)
 	}
 }
 
