@@ -179,14 +179,11 @@ func (e SdkError) GinError(c *gin.Context) {
 		},
 	}
 
-	status, ok := e.Args["status"]
-	if !ok {
-		c.Abort()
-		c.JSON(http.StatusInternalServerError, resp)
-	} else {
-		c.Abort()
-		c.JSON(castInt(status), resp)
+	statusCode := http.StatusInternalServerError
+	if status, ok := e.Args["status"]; ok {
+		statusCode = castInt(status)
 	}
+	c.AbortWithStatusJSON(statusCode, resp)
 }
 
 func pointerOf[t any](s t) *t {
