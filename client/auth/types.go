@@ -8,6 +8,12 @@ type ListUsersOptions struct {
 	Role    string  `url:"role,omitempty"`
 }
 
+// ListOpts holds pagination parameters for admin list endpoints.
+type ListOpts struct {
+	Limit int
+	Page  int
+}
+
 // — Session —
 
 // CreateSessionRequest is the body for creating a new session.

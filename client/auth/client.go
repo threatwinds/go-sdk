@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 )
 
@@ -169,4 +170,189 @@ func (c *Client) PartnerCreateUser(ctx context.Context, req AdminCreateUserReque
 	b, _ := json.Marshal(req)
 	var out AdminCreateUserResponse
 	return &out, c.do(ctx, "POST", "/partners/user", b, &out)
+}
+
+// — Admin —
+
+// AdminListUsers lists users with optional filtering.
+func (c *Client) AdminListUsers(ctx context.Context, opts *ListUsersOptions) (*ListUsersResponse, error) {
+	q := make(url.Values)
+	if opts != nil {
+		if opts.Limit > 0 {
+			q.Set("limit", fmt.Sprintf("%d", opts.Limit))
+		}
+		if opts.Page > 0 {
+			q.Set("page", fmt.Sprintf("%d", opts.Page))
+		}
+		if opts.Enabled != nil {
+			q.Set("enabled", fmt.Sprintf("%t", *opts.Enabled))
+		}
+		if opts.Role != "" {
+			q.Set("role", opts.Role)
+		}
+	}
+	path := "/admin/users"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	var out ListUsersResponse
+	return &out, c.do(ctx, "GET", path, nil, &out)
+}
+
+// AdminGetUser fetches a user by ID as admin.
+func (c *Client) AdminGetUser(ctx context.Context, userID string) (*AdminUserDetailResponse, error) {
+	var out AdminUserDetailResponse
+	return &out, c.do(ctx, "GET", "/admin/user/"+url.PathEscape(userID), nil, &out)
+}
+
+// AdminDeleteUser deletes a user by ID.
+func (c *Client) AdminDeleteUser(ctx context.Context, userID string) error {
+	return c.do(ctx, "DELETE", "/admin/user/"+url.PathEscape(userID), nil, new(struct{}))
+}
+
+// AdminDisableUser disables a user.
+func (c *Client) AdminDisableUser(ctx context.Context, userID string) error {
+	return c.do(ctx, "PUT", "/admin/user/"+url.PathEscape(userID)+"/disable", nil, new(struct{}))
+}
+
+// AdminEnableUser enables a user.
+func (c *Client) AdminEnableUser(ctx context.Context, userID string) error {
+	return c.do(ctx, "PUT", "/admin/user/"+url.PathEscape(userID)+"/enable", nil, new(struct{}))
+}
+
+// AdminVerifyUser verifies a user.
+func (c *Client) AdminVerifyUser(ctx context.Context, userID string) error {
+	return c.do(ctx, "PUT", "/admin/user/"+url.PathEscape(userID)+"/verify", nil, new(struct{}))
+}
+
+// AdminUnverifyUser un-verifies a user.
+func (c *Client) AdminUnverifyUser(ctx context.Context, userID string) error {
+	return c.do(ctx, "PUT", "/admin/user/"+url.PathEscape(userID)+"/unverify", nil, new(struct{}))
+}
+
+// AdminAssignRole assigns a role to a user.
+func (c *Client) AdminAssignRole(ctx context.Context, userID string, req AssignRoleRequest) (*AssignRoleResponse, error) {
+	b, _ := json.Marshal(req)
+	var out AssignRoleResponse
+	return &out, c.do(ctx, "POST", "/admin/user/"+url.PathEscape(userID)+"/roles", b, &out)
+}
+
+// AdminRemoveRole removes a role from a user.
+func (c *Client) AdminRemoveRole(ctx context.Context, userID, roleName string) error {
+	return c.do(ctx, "DELETE", "/admin/user/"+url.PathEscape(userID)+"/roles/"+url.PathEscape(roleName), nil, new(struct{}))
+}
+
+// AdminListRoles lists roles for a user.
+func (c *Client) AdminListRoles(ctx context.Context, userID string) (*ListRolesResponse, error) {
+	var out ListRolesResponse
+	return &out, c.do(ctx, "GET", "/admin/user/"+url.PathEscape(userID)+"/roles", nil, &out)
+}
+
+// AdminCreateSession creates a session for a user as admin.
+func (c *Client) AdminCreateSession(ctx context.Context, userID string, req AdminCreateSessionRequest) (*AdminCreateSessionResponse, error) {
+	b, _ := json.Marshal(req)
+	var out AdminCreateSessionResponse
+	return &out, c.do(ctx, "POST", "/admin/user/"+url.PathEscape(userID)+"/session", b, &out)
+}
+
+// AdminListSessions lists all sessions as admin.
+func (c *Client) AdminListSessions(ctx context.Context, opts *ListOpts) (*AdminListSessionsResponse, error) {
+	q := make(url.Values)
+	if opts != nil {
+		if opts.Limit > 0 {
+			q.Set("limit", fmt.Sprintf("%d", opts.Limit))
+		}
+		if opts.Page > 0 {
+			q.Set("page", fmt.Sprintf("%d", opts.Page))
+		}
+	}
+	path := "/admin/sessions"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	var out AdminListSessionsResponse
+	return &out, c.do(ctx, "GET", path, nil, &out)
+}
+
+// AdminVerifySession verifies a session as admin.
+func (c *Client) AdminVerifySession(ctx context.Context, sessionID string) error {
+	return c.do(ctx, "PUT", "/admin/session/"+url.PathEscape(sessionID)+"/verify", nil, new(struct{}))
+}
+
+// AdminDeleteSession deletes a session as admin.
+func (c *Client) AdminDeleteSession(ctx context.Context, sessionID string) error {
+	return c.do(ctx, "DELETE", "/admin/session/"+url.PathEscape(sessionID), nil, new(struct{}))
+}
+
+// AdminListKeyPairs lists all key pairs as admin.
+func (c *Client) AdminListKeyPairs(ctx context.Context, opts *ListOpts) (*AdminListKeyPairsResponse, error) {
+	q := make(url.Values)
+	if opts != nil {
+		if opts.Limit > 0 {
+			q.Set("limit", fmt.Sprintf("%d", opts.Limit))
+		}
+		if opts.Page > 0 {
+			q.Set("page", fmt.Sprintf("%d", opts.Page))
+		}
+	}
+	path := "/admin/keypairs"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	var out AdminListKeyPairsResponse
+	return &out, c.do(ctx, "GET", path, nil, &out)
+}
+
+// AdminCreateKeyPair creates a key pair for a user as admin.
+func (c *Client) AdminCreateKeyPair(ctx context.Context, userID string) error {
+	return c.do(ctx, "POST", "/admin/user/"+url.PathEscape(userID)+"/keypair", nil, new(struct{}))
+}
+
+// AdminVerifyKeyPair verifies a key pair as admin.
+func (c *Client) AdminVerifyKeyPair(ctx context.Context, keyID string) error {
+	return c.do(ctx, "PUT", "/admin/keypair/"+url.PathEscape(keyID)+"/verify", nil, new(struct{}))
+}
+
+// AdminDeleteKeyPair deletes a key pair as admin.
+func (c *Client) AdminDeleteKeyPair(ctx context.Context, keyID string) error {
+	return c.do(ctx, "DELETE", "/admin/keypair/"+url.PathEscape(keyID), nil, new(struct{}))
+}
+
+// AdminCreateEmail creates an email for a user as admin.
+func (c *Client) AdminCreateEmail(ctx context.Context, userID string) error {
+	return c.do(ctx, "POST", "/admin/user/"+url.PathEscape(userID)+"/email", nil, new(struct{}))
+}
+
+// AdminVerifyEmail verifies an email as admin.
+func (c *Client) AdminVerifyEmail(ctx context.Context, emailID string) error {
+	return c.do(ctx, "PUT", "/admin/email/"+url.PathEscape(emailID)+"/verify", nil, new(struct{}))
+}
+
+// AdminSetPreferredEmail sets the preferred email as admin.
+func (c *Client) AdminSetPreferredEmail(ctx context.Context, req AdminSetPreferredEmailRequest) error {
+	b, _ := json.Marshal(req)
+	return c.do(ctx, "PUT", "/admin/email/preferred", b, new(struct{}))
+}
+
+// AdminDeleteEmail deletes an email as admin.
+func (c *Client) AdminDeleteEmail(ctx context.Context, emailID string) error {
+	return c.do(ctx, "DELETE", "/admin/email/"+url.PathEscape(emailID), nil, new(struct{}))
+}
+
+// AdminGetVerification gets verification status for a user as admin.
+func (c *Client) AdminGetVerification(ctx context.Context, userID string) (*AdminVerificationResponse, error) {
+	var out AdminVerificationResponse
+	return &out, c.do(ctx, "GET", "/admin/user/"+url.PathEscape(userID)+"/verification", nil, &out)
+}
+
+// AdminResetVerification resets verification for a user as admin.
+func (c *Client) AdminResetVerification(ctx context.Context, userID string) (*Verification, error) {
+	var out Verification
+	return &out, c.do(ctx, "PUT", "/admin/user/"+url.PathEscape(userID)+"/verification/reset", nil, &out)
+}
+
+// AdminRevokeVerification revokes verification for a user as admin.
+func (c *Client) AdminRevokeVerification(ctx context.Context, userID string) (*Verification, error) {
+	var out Verification
+	return &out, c.do(ctx, "PUT", "/admin/user/"+url.PathEscape(userID)+"/verification/revoke", nil, &out)
 }
