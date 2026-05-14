@@ -30,13 +30,10 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("%d: %s %s: %s", e.StatusCode, e.Method, e.Path, e.Message)
 }
 
-// HeaderGet returns the value of the named header stored on the error.
-// Currently only "Retry-After" is supported.
-func (e *APIError) HeaderGet(key string) string {
-	if key == "Retry-After" {
-		return e.retryAfter
-	}
-	return ""
+// RetryAfter returns the Retry-After header value stored on the error,
+// used by the retry logic to determine backoff duration.
+func (e *APIError) RetryAfter() string {
+	return e.retryAfter
 }
 
 func (e *APIError) IsNotFound() bool        { return e.StatusCode == 404 }

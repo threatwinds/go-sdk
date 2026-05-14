@@ -65,3 +65,14 @@ func TestSDKError(t *testing.T) {
 		t.Errorf("unexpected: %q", e.Error())
 	}
 }
+
+func TestAPIError_RetryAfter(t *testing.T) {
+	err := newAPIError("GET", "/", 429, "rate limited", "id", "30", nil)
+	if err.RetryAfter() != "30" {
+		t.Errorf("RetryAfter() = %q, want %q", err.RetryAfter(), "30")
+	}
+	err2 := newAPIError("GET", "/", 429, "rate limited", "id", "", nil)
+	if err2.RetryAfter() != "" {
+		t.Errorf("RetryAfter() should be empty when not set")
+	}
+}
