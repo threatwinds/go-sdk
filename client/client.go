@@ -96,9 +96,12 @@ func (c *Client) Compute() *compute.Client {
 }
 
 func (c *Client) initServices() {
-	c.auth = auth.NewClient(c)
-	c.billing = billing.NewClient(c)
-	c.compute = compute.NewClient(c)
+	d := func(ctx context.Context, method, path string, body []byte, out any) error {
+		return c.do(ctx, method, path, body, out)
+	}
+	c.auth = auth.NewClient(d)
+	c.billing = billing.NewClient(d)
+	c.compute = compute.NewClient(d)
 }
 
 // PathEscape wraps url.PathEscape for use by service clients.
@@ -158,9 +161,15 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body, out inte
 	// Create request body if present.
 	var reader io.Reader
 	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return err
+		var data []byte
+		if b, ok := body.([]byte); ok {
+			data = b
+		} else {
+			var err error
+			data, err = json.Marshal(body)
+			if err != nil {
+				return err
+			}
 		}
 		reader = bytes.NewReader(data)
 	}
