@@ -17,6 +17,8 @@ import (
 	"github.com/threatwinds/go-sdk/client/compute"
 )
 
+const userAgent = "threatwinds-go-sdk"
+
 // Client is the root entry point for the ThreatWinds API SDK.
 type Client struct {
 	endpoint   string
@@ -145,7 +147,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out interfac
 		}
 	}
 	// Should not reach here, but return last error.
-	return c.doOnce(context.Background(), method, path, body, out)
+	return c.doOnce(ctx, method, path, body, out)
 }
 
 // doOnce executes a single HTTP request without retry.
@@ -175,6 +177,9 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body, out inte
 
 	// Apply authentication headers.
 	c.applyAuth(req)
+
+	// Set User-Agent.
+	req.Header.Set("User-Agent", userAgent)
 
 	// Execute request.
 	resp, err := c.httpClient.Do(req)
