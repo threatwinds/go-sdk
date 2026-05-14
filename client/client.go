@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -104,11 +103,6 @@ func (c *Client) initServices() {
 	c.compute = compute.NewClient(d)
 }
 
-// PathEscape wraps url.PathEscape for use by service clients.
-func PathEscape(s string) string {
-	return url.PathEscape(s)
-}
-
 // ---------------------------------------------------------------------------
 // do() — HTTP execution engine with retry, auth, and Retry-After support.
 // ---------------------------------------------------------------------------
@@ -117,9 +111,9 @@ func PathEscape(s string) string {
 // For GET requests, it retries up to maxRetries times on retryable
 // statuses (429, 502, 503, 504). Non-GET requests are not retried.
 func (c *Client) do(ctx context.Context, method, path string, body, out interface{}) error {
+	var lastErr error
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		if attempt > 0 {
-			// Check context before retrying.
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -129,18 +123,17 @@ func (c *Client) do(ctx context.Context, method, path string, body, out interfac
 		if err == nil {
 			return nil
 		}
+		lastErr = err
 
 		if !c.isRetryable(err, method) {
 			return err
 		}
 
-		// Determine delay: Retry-After header first, then exponential backoff.
 		delay := c.parseRetryAfter(err)
 		if delay == 0 {
 			delay = c.backoff(attempt)
 		}
 
-		// Wait, respecting context cancellation.
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
@@ -149,8 +142,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out interfac
 		case <-timer.C:
 		}
 	}
-	// Should not reach here, but return last error.
-	return c.doOnce(ctx, method, path, body, out)
+	return lastErr
 }
 
 // doOnce executes a single HTTP request without retry.
