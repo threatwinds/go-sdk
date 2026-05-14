@@ -1,7 +1,12 @@
 package client
 
 import (
+	"context"
+	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -120,5 +125,274 @@ func TestServiceAccessors(t *testing.T) {
 	}
 	if c.Compute() == nil {
 		t.Error("Compute() returned nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// mockRT implements http.RoundTripper for unit tests.
+// ---------------------------------------------------------------------------
+
+type mockRT struct {
+	roundTripper func(req *http.Request) (*http.Response, error)
+}
+
+func (m *mockRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	if m.roundTripper != nil {
+		return m.roundTripper(req)
+	}
+	return nil, nil
+}
+
+func mockResp(status int, headers http.Header, body string) *http.Response {
+	if headers == nil {
+		headers = make(http.Header)
+	}
+	return &http.Response{
+		StatusCode: status,
+		Header:     headers,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDo_* tests
+// ---------------------------------------------------------------------------
+
+func TestDo_Success(t *testing.T) {
+	var receivedMethod string
+	var receivedPath string
+	var receivedKey string
+	var receivedSecret string
+
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			receivedMethod = req.Method
+			receivedPath = req.URL.Path
+			receivedKey = req.Header.Get("Api-Key")
+			receivedSecret = req.Header.Get("Api-Secret")
+			return mockResp(200, nil, `{"name":"alice","role":"admin"}`), nil
+		},
+	}
+
+	c, _ := New(WithAPIKey("k1", "s1"), WithHTTPClient(&http.Client{Transport: rt}))
+	c.endpoint = "https://api.example.com"
+
+	var result map[string]string
+	err := c.do(context.Background(), http.MethodGet, "/users/1", nil, &result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if receivedMethod != "GET" {
+		t.Errorf("method = %q, want GET", receivedMethod)
+	}
+	if receivedPath != "/users/1" {
+		t.Errorf("path = %q, want /users/1", receivedPath)
+	}
+	if receivedKey != "k1" {
+		t.Errorf("Api-Key = %q, want k1", receivedKey)
+	}
+	if receivedSecret != "s1" {
+		t.Errorf("Api-Secret = %q, want s1", receivedSecret)
+	}
+	if result["name"] != "alice" {
+		t.Errorf("result[name] = %q, want alice", result["name"])
+	}
+}
+
+func TestDo_BearerAuth(t *testing.T) {
+	var receivedAuth string
+
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			receivedAuth = req.Header.Get("Authorization")
+			return mockResp(200, nil, `{"ok":true}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("my-token"), WithHTTPClient(&http.Client{Transport: rt}))
+	c.endpoint = "https://api.example.com"
+
+	var result map[string]bool
+	err := c.do(context.Background(), http.MethodGet, "/ping", nil, &result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if receivedAuth != "Bearer my-token" {
+		t.Errorf("Authorization = %q, want 'Bearer my-token'", receivedAuth)
+	}
+	if !result["ok"] {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestDo_PostBody(t *testing.T) {
+	var receivedMethod string
+	var receivedCT string
+	var receivedBody []byte
+
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			receivedMethod = req.Method
+			receivedCT = req.Header.Get("Content-Type")
+			receivedBody, _ = io.ReadAll(req.Body)
+			return mockResp(200, nil, `{"id":"created-1"}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}))
+	c.endpoint = "https://api.example.com"
+
+	payload := map[string]string{"name": "server-1"}
+	var result map[string]string
+	err := c.do(context.Background(), http.MethodPost, "/servers", payload, &result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if receivedMethod != "POST" {
+		t.Errorf("method = %q, want POST", receivedMethod)
+	}
+	if receivedCT != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", receivedCT)
+	}
+
+	var parsed map[string]string
+	if err := json.Unmarshal(receivedBody, &parsed); err != nil {
+		t.Fatalf("failed to parse request body: %v", err)
+	}
+	if parsed["name"] != "server-1" {
+		t.Errorf("request body name = %q, want server-1", parsed["name"])
+	}
+	if result["id"] != "created-1" {
+		t.Errorf("result[id] = %q, want created-1", result["id"])
+	}
+}
+
+func TestDo_APIError(t *testing.T) {
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			h := make(http.Header)
+			h.Set("X-Error", "user not found")
+			h.Set("X-Error-Id", "err-123")
+			return mockResp(404, h, `{"error":"not found"}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}))
+	c.endpoint = "https://api.example.com"
+
+	var result map[string]string
+	err := c.do(context.Background(), http.MethodGet, "/users/999", nil, &result)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.StatusCode != 404 {
+		t.Errorf("status = %d, want 404", apiErr.StatusCode)
+	}
+	if apiErr.Message != "user not found" {
+		t.Errorf("message = %q, want 'user not found'", apiErr.Message)
+	}
+	if apiErr.ErrorID != "err-123" {
+		t.Errorf("errorID = %q, want err-123", apiErr.ErrorID)
+	}
+}
+
+func TestDo_RetryRetryAfter(t *testing.T) {
+	attempts := 0
+
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			attempts++
+			if attempts == 1 {
+				h := make(http.Header)
+				h.Set("Retry-After", "0")
+				h.Set("X-Error", "rate limited")
+				h.Set("X-Error-Id", "rl-1")
+				return mockResp(429, h, `{"error":"rate limited"}`), nil
+			}
+			return mockResp(200, nil, `{"ok":true}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}), WithMaxRetries(3))
+	c.endpoint = "https://api.example.com"
+
+	var result map[string]bool
+	err := c.do(context.Background(), http.MethodGet, "/data", nil, &result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if attempts != 2 {
+		t.Errorf("attempts = %d, want 2 (initial + 1 retry)", attempts)
+	}
+	if !result["ok"] {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestDo_NoRetryOnPost(t *testing.T) {
+	attempts := 0
+
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			attempts++
+			h := make(http.Header)
+			h.Set("X-Error", "service unavailable")
+			h.Set("X-Error-Id", "su-1")
+			return mockResp(503, h, `{"error":"unavailable"}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}), WithMaxRetries(3))
+	c.endpoint = "https://api.example.com"
+
+	payload := map[string]string{"action": "deploy"}
+	var result map[string]string
+	err := c.do(context.Background(), http.MethodPost, "/deploy", payload, &result)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if attempts != 1 {
+		t.Errorf("attempts = %d, want 1 (no retry on POST)", attempts)
+	}
+
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.StatusCode != 503 {
+		t.Errorf("status = %d, want 503", apiErr.StatusCode)
+	}
+}
+
+func TestDo_ContextCancel(t *testing.T) {
+	// Use a test server that sleeps to ensure context is cancelled before response.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+
+	c, _ := New(WithBearer("tok"))
+	c.endpoint = server.URL
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel immediately.
+	cancel()
+
+	var result map[string]string
+	err := c.do(ctx, http.MethodGet, "/slow", nil, &result)
+	if err == nil {
+		t.Fatal("expected error from cancelled context, got nil")
+	}
+	if !strings.Contains(err.Error(), "canceled") {
+		t.Errorf("error = %v, expected context cancellation error", err)
 	}
 }

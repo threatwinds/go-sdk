@@ -1,10 +1,16 @@
 package client
 
 import (
+	"bytes"
+	"context"
 	"crypto/tls"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/threatwinds/go-sdk/client/auth"
 	"github.com/threatwinds/go-sdk/client/billing"
@@ -96,4 +102,183 @@ func (c *Client) initServices() {
 // PathEscape wraps url.PathEscape for use by service clients.
 func PathEscape(s string) string {
 	return url.PathEscape(s)
+}
+
+// ---------------------------------------------------------------------------
+// do() — HTTP execution engine with retry, auth, and Retry-After support.
+// ---------------------------------------------------------------------------
+
+// do executes an HTTP request with retry logic for GET requests.
+// For GET requests, it retries up to maxRetries times on retryable
+// statuses (429, 502, 503, 504). Non-GET requests are not retried.
+func (c *Client) do(ctx context.Context, method, path string, body, out interface{}) error {
+	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+		if attempt > 0 {
+			// Check context before retrying.
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+		}
+
+		err := c.doOnce(ctx, method, path, body, out)
+		if err == nil {
+			return nil
+		}
+
+		if !c.isRetryable(err, method) {
+			return err
+		}
+
+		// Determine delay: Retry-After header first, then exponential backoff.
+		delay := c.parseRetryAfter(err)
+		if delay == 0 {
+			delay = c.backoff(attempt)
+		}
+
+		// Wait, respecting context cancellation.
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	// Should not reach here, but return last error.
+	return c.doOnce(context.Background(), method, path, body, out)
+}
+
+// doOnce executes a single HTTP request without retry.
+func (c *Client) doOnce(ctx context.Context, method, path string, body, out interface{}) error {
+	// Build URL.
+	urlStr := c.endpoint + path
+
+	// Create request body if present.
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(data)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, urlStr, reader)
+	if err != nil {
+		return err
+	}
+
+	// Set Content-Type for requests with a body.
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	// Apply authentication headers.
+	c.applyAuth(req)
+
+	// Execute request.
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Read full response body.
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// Handle error responses.
+	if resp.StatusCode >= 400 {
+		message := resp.Header.Get("X-Error")
+		errorID := resp.Header.Get("X-Error-Id")
+		retryAfter := resp.Header.Get("Retry-After")
+		return newAPIError(method, path, resp.StatusCode, message, errorID, retryAfter, respBody)
+	}
+
+	// Handle 204 No Content.
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+
+	// Unmarshal JSON response into out.
+	if out != nil {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// applyAuth sets the appropriate authentication headers on the request.
+func (c *Client) applyAuth(req *http.Request) {
+	if c.apiKey != "" && c.apiSecret != "" {
+		req.Header.Set("Api-Key", c.apiKey)
+		req.Header.Set("Api-Secret", c.apiSecret)
+	} else if c.bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+c.bearer)
+	}
+}
+
+// isRetryable returns true if the error is retryable for the given HTTP method.
+// Only GET requests with retryable status codes (429, 502, 503, 504) are retried.
+func (c *Client) isRetryable(err error, method string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		return false
+	}
+	switch apiErr.StatusCode {
+	case http.StatusTooManyRequests, // 429
+		http.StatusBadGateway,         // 502
+		http.StatusServiceUnavailable, // 503
+		http.StatusGatewayTimeout:     // 504
+		return true
+	}
+	return false
+}
+
+// parseRetryAfter parses the Retry-After header from an APIError.
+// If the value is numeric, it's treated as seconds.
+// If it's an HTTP date (RFC 1123), it computes the time until that date.
+// If empty or invalid, returns 0 (fallback to exponential backoff).
+func (c *Client) parseRetryAfter(err error) time.Duration {
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		return 0
+	}
+	raw := apiErr.RetryAfter()
+	if raw == "" {
+		return 0
+	}
+
+	// Try numeric (seconds) first.
+	if seconds, err := strconv.Atoi(raw); err == nil && seconds >= 0 {
+		return time.Duration(seconds) * time.Second
+	}
+
+	// Try HTTP date (RFC 1123).
+	if t, err := time.Parse(time.RFC1123, raw); err == nil {
+		until := time.Until(t)
+		if until > 0 {
+			return until
+		}
+		return 0
+	}
+
+	return 0
+}
+
+// backoff returns the exponential backoff duration for the given attempt.
+// Base: 100ms, multiplier: 4x. Formula: 100ms * 4^attempt.
+func (c *Client) backoff(attempt int) time.Duration {
+	d := 100 * time.Millisecond
+	for i := 0; i < attempt; i++ {
+		d *= 4
+	}
+	return d
 }
