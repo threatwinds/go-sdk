@@ -35,7 +35,7 @@ func New(opts ...Option) (*Client, error) {
 	}
 
 	// Validate authentication: exactly one method required.
-	hasAPIKey := cfg.apiKey != "" || cfg.apiSecret != ""
+	hasAPIKey := cfg.apiKey != "" && cfg.apiSecret != ""
 	hasBearer := cfg.bearer != ""
 	if !hasAPIKey && !hasBearer {
 		return nil, newSDKErr("authentication required: provide WithAPIKey or WithBearer")
@@ -94,6 +94,6 @@ func (c *Client) initServices() {
 }
 
 // PathEscape wraps url.PathEscape for use by service clients.
-func (c *Client) PathEscape(s string) string {
+func PathEscape(s string) string {
 	return url.PathEscape(s)
 }

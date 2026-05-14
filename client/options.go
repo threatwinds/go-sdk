@@ -15,8 +15,8 @@ const (
 
 // ListOptions holds pagination parameters for list endpoints.
 type ListOptions struct {
-	Limit int
-	Page  int
+	Limit int // 0 = server default
+	Page  int // 0 = server default
 }
 
 // Option configures a Client via the functional options pattern.

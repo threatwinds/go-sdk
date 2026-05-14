@@ -16,6 +16,19 @@ func TestNew_NoAuth(t *testing.T) {
 	}
 }
 
+func TestNew_PartialAPIKey(t *testing.T) {
+	// Key without secret should be rejected
+	_, err := New(WithAPIKey("key", ""))
+	if err == nil {
+		t.Fatal("expected error with partial API key, got nil")
+	}
+	// Secret without key should be rejected
+	_, err = New(WithAPIKey("", "secret"))
+	if err == nil {
+		t.Fatal("expected error with partial API key (secret only), got nil")
+	}
+}
+
 func TestNew_DuplicateAuth(t *testing.T) {
 	_, err := New(WithAPIKey("key", "secret"), WithBearer("token"))
 	if err == nil {
