@@ -128,6 +128,33 @@ func TestServiceAccessors(t *testing.T) {
 	}
 }
 
+func TestClose_SDKCreatedTransport(t *testing.T) {
+	c, err := New(WithBearer("token"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.transport == nil {
+		t.Fatal("SDK-created client should have a non-nil transport")
+	}
+	// Close should not panic.
+	c.Close()
+	// Calling Close multiple times should be safe.
+	c.Close()
+}
+
+func TestClose_UserSuppliedClient(t *testing.T) {
+	custom := &http.Client{Timeout: 5 * time.Second}
+	c, err := New(WithBearer("token"), WithHTTPClient(custom))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.transport != nil {
+		t.Fatal("user-supplied client should have a nil transport")
+	}
+	// Close should be a no-op, not panic.
+	c.Close()
+}
+
 // ---------------------------------------------------------------------------
 // mockRT implements http.RoundTripper for unit tests.
 // ---------------------------------------------------------------------------

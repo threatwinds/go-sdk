@@ -25,6 +25,7 @@ type Client struct {
 	apiSecret  string
 	bearer     string
 	httpClient *http.Client
+	transport  *http.Transport // non-nil only when SDK created the transport
 	maxRetries int
 
 	auth    *auth.Client
@@ -52,17 +53,21 @@ func New(opts ...Option) (*Client, error) {
 	}
 
 	// Build HTTP client.
-	var httpClient *http.Client
+	var (
+		httpClient *http.Client
+		transport  *http.Transport
+	)
 	if cfg.httpClient != nil {
 		httpClient = cfg.httpClient
 	} else {
-		httpClient = &http.Client{
-			Timeout: cfg.timeout,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					MinVersion: tls.VersionTLS12,
-				},
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
 			},
+		}
+		httpClient = &http.Client{
+			Timeout:   cfg.timeout,
+			Transport: transport,
 		}
 	}
 
@@ -72,6 +77,7 @@ func New(opts ...Option) (*Client, error) {
 		apiSecret:  cfg.apiSecret,
 		bearer:     cfg.bearer,
 		httpClient: httpClient,
+		transport:  transport,
 		maxRetries: cfg.maxRetries,
 	}, nil
 }
@@ -92,6 +98,16 @@ func (c *Client) Billing() *billing.Client {
 func (c *Client) Compute() *compute.Client {
 	c.once.Do(c.initServices)
 	return c.compute
+}
+
+// Close releases idle HTTP connections held by the SDK's internal transport.
+// It is a no-op when the caller supplied their own http.Client via
+// WithHTTPClient. Callers should invoke Close() when they are done with the
+// client to avoid leaking TCP connections in long-running processes.
+func (c *Client) Close() {
+	if c.transport != nil {
+		c.transport.CloseIdleConnections()
+	}
 }
 
 func (c *Client) initServices() {
