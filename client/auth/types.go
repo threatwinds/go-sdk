@@ -2,10 +2,10 @@ package auth
 
 // ListUsersOptions provides filtering for the admin user list endpoint.
 type ListUsersOptions struct {
-	Limit   int     `url:"limit,omitempty"`
-	Page    int     `url:"page,omitempty"`
-	Enabled *bool   `url:"enabled,omitempty"`
-	Role    string  `url:"role,omitempty"`
+	Limit   int    `url:"limit,omitempty"`
+	Page    int    `url:"page,omitempty"`
+	Enabled *bool  `url:"enabled,omitempty"`
+	Role    string `url:"role,omitempty"`
 }
 
 // ListOpts holds pagination parameters for admin list endpoints.
@@ -24,7 +24,7 @@ type CreateSessionRequest struct {
 
 // VerifySessionRequest is the body for verifying a session.
 type VerifySessionRequest struct {
-	Code             string `json:"code"`
+	Code               string `json:"code"`
 	VerificationCodeID string `json:"verificationCodeID"`
 }
 
@@ -38,12 +38,12 @@ type CreateSessionResponse struct {
 
 // GetSessionResponse is returned when fetching the current session.
 type GetSessionResponse struct {
-	SessionID  string   `json:"sessionID"`
-	UserID     string   `json:"userID"`
-	Roles      []string `json:"roles"`
-	Groups     []string `json:"groups"`
-	Verified   bool     `json:"verified"`
-	ExpireAt   string   `json:"expireAt"`
+	SessionID string   `json:"sessionID"`
+	UserID    string   `json:"userID"`
+	Roles     []string `json:"roles"`
+	Groups    []string `json:"groups"`
+	Verified  bool     `json:"verified"`
+	ExpireAt  string   `json:"expireAt"`
 }
 
 // ActiveSession represents a session in a list.
@@ -64,7 +64,7 @@ type CreateEmailRequest struct {
 
 // VerifyEmailRequest is the body for verifying an email address.
 type VerifyEmailRequest struct {
-	Code             string `json:"code"`
+	Code               string `json:"code"`
 	VerificationCodeID string `json:"verificationCodeID"`
 }
 
@@ -96,7 +96,7 @@ type CreateKeyPairRequest struct {
 
 // VerifyKeyPairRequest is the body for verifying a key pair.
 type VerifyKeyPairRequest struct {
-	Code             string `json:"code"`
+	Code               string `json:"code"`
 	VerificationCodeID string `json:"verificationCodeID"`
 }
 
@@ -251,8 +251,8 @@ type UserResponse struct {
 
 // ListUsersResponse is the paginated response for listing users.
 type ListUsersResponse struct {
-	Pages int          `json:"pages"`
-	Items int          `json:"items"`
+	Pages int            `json:"pages"`
+	Items int            `json:"items"`
 	Users []UserResponse `json:"users"`
 }
 

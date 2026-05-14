@@ -9,8 +9,8 @@ import (
 const DefaultEndpoint = "https://api.threatwinds.com"
 
 const (
-	defaultTimeout     = 30 * time.Second
-	defaultMaxRetries  = 3
+	defaultTimeout    = 30 * time.Second
+	defaultMaxRetries = 3
 )
 
 // ListOptions holds pagination parameters for list endpoints.

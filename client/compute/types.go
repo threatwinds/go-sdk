@@ -27,17 +27,17 @@ type InstanceCreateRequest struct {
 
 // Instance represents a compute instance.
 type Instance struct {
-	ID           string `json:"id"`
-	UserID       string `json:"userID"`
-	CustomerID   string `json:"customerID"`
-	Name         string `json:"name"`
-	Zone         string `json:"zone"`
-	MachineType  string `json:"machineType"`
-	ExternalIP   string `json:"externalIp"`
-	InternalIP   string `json:"internalIp"`
-	Status       string `json:"status"`
-	TemplateID   string `json:"templateId"`
-	CreatedAt    string `json:"createdAt"`
+	ID          string `json:"id"`
+	UserID      string `json:"userID"`
+	CustomerID  string `json:"customerID"`
+	Name        string `json:"name"`
+	Zone        string `json:"zone"`
+	MachineType string `json:"machineType"`
+	ExternalIP  string `json:"externalIp"`
+	InternalIP  string `json:"internalIp"`
+	Status      string `json:"status"`
+	TemplateID  string `json:"templateId"`
+	CreatedAt   string `json:"createdAt"`
 }
 
 // — Templates —
