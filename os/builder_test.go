@@ -1527,7 +1527,7 @@ func TestQueryBuilder_SearchAfter(t *testing.T) {
 	builder := NewQueryBuilder(ctx, []string{"test-index"}, "testing")
 
 	query := builder.
-		SearchAfter([]int64{1234567890, 42}).
+		SearchAfter([]any{int64(1234567890), int64(42)}).
 		Build()
 
 	if len(query.SearchAfter) != 2 {

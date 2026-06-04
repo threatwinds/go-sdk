@@ -58,7 +58,7 @@ func TestBuildIndex(t *testing.T) {
 		t.Error(err)
 	}
 
-	gen := twos.BuildIndex(date, twos.RelationPrefix, twos.HistoryPrefix)
+	gen := twos.BuildIndex(date, "2006-01", twos.RelationPrefix, twos.HistoryPrefix)
 
 	if gen != "relation-history-1993-10" {
 		t.Error("expected relation-history-1993-10")
@@ -90,7 +90,7 @@ func TestEntityWorkflow(t *testing.T) {
 		return
 	}
 
-	index := twos.BuildCurrentIndex(twos.CommentPrefix)
+	index := twos.BuildCurrentDayIndex(twos.CommentPrefix)
 	hash := sha256.Sum256([]byte(index))
 	entityID := hex.EncodeToString(hash[:])
 	userID := uuid.MustParse("46e3c6eb-1403-4f52-94b7-9a067bb75b47")
