@@ -249,6 +249,7 @@ message Step {
   Drop drop = 10;
   Add add = 11;
   Dynamic dynamic = 12;
+  Xml xml = 13;
 }
 
 message Dynamic {
@@ -299,6 +300,11 @@ message Csv {
   string separator = 2;
   repeated string headers = 3;
   string where = 4;
+}
+
+message Xml {
+  string source = 1;
+  string where = 2;
 }
 
 message Trim {
