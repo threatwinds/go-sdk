@@ -71,7 +71,13 @@ func (e SdkError) SecureString() string {
 // Params:
 // msg: the error message.
 // cause: the error that caused this error.
-// args: a map of additional information.
+// args: a map of additional information. Recognized keys when used with GinError():
+//
+//		"status" (int)         → HTTP status code (default 500)
+//		"retry" (int)          → Retry-After header value in seconds
+//		"code_override" (string) → overrides the error code in the JSON body
+//		"param" (string)       → included as "param" in the JSON error detail
+//
 // Returns:
 // *SdkError: the error. This type implements the Go error interface.
 func Error(msg string, cause error, args map[string]any) *SdkError {
