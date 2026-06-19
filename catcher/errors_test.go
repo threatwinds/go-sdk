@@ -268,3 +268,77 @@ func TestGinErrorResponseBody(t *testing.T) {
 		}
 	})
 }
+
+func TestGinErrorRetryAfter(t *testing.T) {
+	t.Run("retry header set from args", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		err := Error("model warming up", nil, map[string]any{
+			"status":        503,
+			"retry":         600,
+			"code_override": "model_warming_up",
+			"param":         "silas-1.6",
+		})
+		err.GinError(c)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Errorf("expected status 503, got %d", w.Code)
+		}
+
+		retryAfter := w.Header().Get("Retry-After")
+		if retryAfter != "600" {
+			t.Errorf("expected Retry-After header '600', got %q", retryAfter)
+		}
+
+		var resp map[string]any
+		if jsonErr := json.Unmarshal(w.Body.Bytes(), &resp); jsonErr != nil {
+			t.Fatalf("failed to unmarshal response body: %v", jsonErr)
+		}
+
+		errorObj, ok := resp["error"].(map[string]any)
+		if !ok {
+			t.Fatal("expected 'error' key in response body")
+		}
+
+		if errorObj["code"] != "model_warming_up" {
+			t.Errorf("expected code_override 'model_warming_up', got %v", errorObj["code"])
+		}
+
+		if errorObj["param"] != "silas-1.6" {
+			t.Errorf("expected param 'silas-1.6', got %v", errorObj["param"])
+		}
+	})
+
+	t.Run("no retry header when not configured", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		err := Error("server error", nil, map[string]any{"status": 500})
+		err.GinError(c)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("expected status 500, got %d", w.Code)
+		}
+
+		retryAfter := w.Header().Get("Retry-After")
+		if retryAfter != "" {
+			t.Errorf("expected no Retry-After header, got %q", retryAfter)
+		}
+	})
+
+	t.Run("retry zero does not set header", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		err := Error("warm", nil, map[string]any{
+			"status": 503,
+			"retry":  0,
+		})
+		err.GinError(c)
+
+		// 0 is still a valid int, so "0" should appear — but callers using 0
+		// signal "do not retry", so we treat it as unset.
+		retryAfter := w.Header().Get("Retry-After")
+		if retryAfter != "" {
+			t.Errorf("expected no Retry-After when retry=0, got %q", retryAfter)
+		}
+	})
+}
