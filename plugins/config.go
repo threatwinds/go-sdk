@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -138,7 +139,7 @@ func startLockMonitor(processName string) {
 }
 
 // loadCfg loads configuration files from the "pipeline" directory within the working directory.
-// It reads all YAML files, decodes them into Config objects, and merges their contents into the receiver Config object.
+// It reads all .yaml/.yml files, decodes them into Config objects, and merges their contents into the receiver Config object.
 // The function updates the Pipeline, DisabledRules, Tenants, Patterns, and Plugins fields of the receiver Config object.
 // If an error occurs while reading or unmarshalling a file, the function logs the error and continues with the next file.
 func (c *Config) loadCfg(processName string) {
@@ -159,7 +160,7 @@ func (c *Config) loadCfg(processName string) {
 		return
 	}
 
-	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml")
+	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml", ".yml")
 	for _, cFile := range cFiles {
 		var nCfg = new(Config)
 		b, err := utils.ReadPbYaml(cFile)
@@ -195,7 +196,30 @@ func (c *Config) loadCfg(processName string) {
 		}
 	}
 
+	sortPipelinesByOrder(c.Pipeline, processName)
+
 	c.Env = getEnv()
+}
+
+func sortPipelinesByOrder(pipelines []*Pipeline, processName string) {
+	seen := make(map[string]map[int32]bool)
+	for _, p := range pipelines {
+		if seen[p.DataType] == nil {
+			seen[p.DataType] = make(map[int32]bool)
+		}
+		if seen[p.DataType][p.Order] {
+			_ = catcher.Error("duplicate pipeline order for dataType", errors.New("duplicate pipeline order"), map[string]any{
+				"dataType": p.DataType,
+				"order":    p.Order,
+				"process":  processName,
+			})
+		}
+		seen[p.DataType][p.Order] = true
+	}
+
+	sort.SliceStable(pipelines, func(i, j int) bool {
+		return pipelines[i].Order < pipelines[j].Order
+	})
 }
 
 // RandomDuration returns a random time.Duration between min and max seconds. It panics if max <= 0.
@@ -220,7 +244,7 @@ func getNewStates() (map[string]fileState, bool) {
 		return nil, true
 	}
 
-	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml")
+	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml", ".yml")
 	newStates := make(map[string]fileState)
 
 	changed := false

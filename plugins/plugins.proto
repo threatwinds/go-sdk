@@ -343,7 +343,7 @@ message Add {
 
 message Config {
   repeated Pipeline pipeline = 1;
-  repeated uint64 disabledRules = 2;
+  repeated string disabledRules = 2;
   repeated Tenant tenants = 3;
   map<string, string> patterns = 4;
   map<string, google.protobuf.Value> plugins = 5;
@@ -354,7 +354,7 @@ message Tenant {
   string name = 1;
   string id = 2;
   repeated Asset assets = 3;
-  repeated uint64 disabledRules = 4;
+  repeated string disabledRules = 4;
 }
 
 message Asset {
@@ -367,8 +367,9 @@ message Asset {
 }
 
 message Pipeline {
-  repeated string dataTypes = 1;
+  string dataType = 1;
   repeated Step steps = 2;
+  int32 order = 3;
 }
 
 message Env {
@@ -385,20 +386,19 @@ message Variable {
 }
 
 message Rule {
-  uint64 id = 1;
-  string name = 2;
-  string description = 3;
-  string category = 4;
-  string technique = 5;
-  repeated string references = 6;
-  repeated string dataTypes = 7;
-  string adversary = 8;
-  Impact impact = 9;
-  string where = 10;
-  repeated SearchRequest afterEvents = 11;
-  repeated string deduplicateBy = 12;
-  repeated string groupBy = 13;
-  repeated SearchRequest correlation = 14;
+  string name = 1;
+  string description = 2;
+  string category = 3;
+  string technique = 4;
+  repeated string references = 5;
+  repeated string dataTypes = 6;
+  string adversary = 7;
+  Impact impact = 8;
+  string where = 9;
+  repeated SearchRequest afterEvents = 10;
+  repeated string deduplicateBy = 11;
+  repeated string groupBy = 12;
+  repeated SearchRequest correlation = 13;
 }
 
 message SearchRequest {
