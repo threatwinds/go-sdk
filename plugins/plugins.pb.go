@@ -2954,7 +2954,7 @@ func (x *Asset) GetIntegrity() uint32 {
 
 type Pipeline struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DataType      string                 `protobuf:"bytes,1,opt,name=dataType,proto3" json:"dataType,omitempty"`
+	DataTypes     []string               `protobuf:"bytes,1,rep,name=dataTypes,proto3" json:"dataTypes,omitempty"`
 	Steps         []*Step                `protobuf:"bytes,2,rep,name=steps,proto3" json:"steps,omitempty"`
 	Order         int32                  `protobuf:"varint,3,opt,name=order,proto3" json:"order,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2991,11 +2991,11 @@ func (*Pipeline) Descriptor() ([]byte, []int) {
 	return file_plugins_plugins_proto_rawDescGZIP(), []int{31}
 }
 
-func (x *Pipeline) GetDataType() string {
+func (x *Pipeline) GetDataTypes() []string {
 	if x != nil {
-		return x.DataType
+		return x.DataTypes
 	}
-	return ""
+	return nil
 }
 
 func (x *Pipeline) GetSteps() []*Step {
@@ -3727,9 +3727,9 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\x03ips\x18\x03 \x03(\tR\x03ips\x12(\n" +
 	"\x0fconfidentiality\x18\x04 \x01(\rR\x0fconfidentiality\x12\"\n" +
 	"\favailability\x18\x05 \x01(\rR\favailability\x12\x1c\n" +
-	"\tintegrity\x18\x06 \x01(\rR\tintegrity\"a\n" +
-	"\bPipeline\x12\x1a\n" +
-	"\bdataType\x18\x01 \x01(\tR\bdataType\x12#\n" +
+	"\tintegrity\x18\x06 \x01(\rR\tintegrity\"c\n" +
+	"\bPipeline\x12\x1c\n" +
+	"\tdataTypes\x18\x01 \x03(\tR\tdataTypes\x12#\n" +
 	"\x05steps\x18\x02 \x03(\v2\r.plugins.StepR\x05steps\x12\x14\n" +
 	"\x05order\x18\x03 \x01(\x05R\x05order\"q\n" +
 	"\x03Env\x12\x1a\n" +

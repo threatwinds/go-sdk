@@ -204,17 +204,19 @@ func (c *Config) loadCfg(processName string) {
 func sortPipelinesByOrder(pipelines []*Pipeline, processName string) {
 	seen := make(map[string]map[int32]bool)
 	for _, p := range pipelines {
-		if seen[p.DataType] == nil {
-			seen[p.DataType] = make(map[int32]bool)
+		for _, dataType := range p.DataTypes {
+			if seen[dataType] == nil {
+				seen[dataType] = make(map[int32]bool)
+			}
+			if seen[dataType][p.Order] {
+				_ = catcher.Error("duplicate pipeline order for dataType", errors.New("duplicate pipeline order"), map[string]any{
+					"dataType": dataType,
+					"order":    p.Order,
+					"process":  processName,
+				})
+			}
+			seen[dataType][p.Order] = true
 		}
-		if seen[p.DataType][p.Order] {
-			_ = catcher.Error("duplicate pipeline order for dataType", errors.New("duplicate pipeline order"), map[string]any{
-				"dataType": p.DataType,
-				"order":    p.Order,
-				"process":  processName,
-			})
-		}
-		seen[p.DataType][p.Order] = true
 	}
 
 	sort.SliceStable(pipelines, func(i, j int) bool {
