@@ -2801,13 +2801,14 @@ func (x *Config) GetEnv() *Env {
 }
 
 type Tenant struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
-	Assets        []*Asset               `protobuf:"bytes,3,rep,name=assets,proto3" json:"assets,omitempty"`
-	DisabledRules []string               `protobuf:"bytes,4,rep,name=disabledRules,proto3" json:"disabledRules,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Name              string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Id                string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	Assets            []*Asset               `protobuf:"bytes,3,rep,name=assets,proto3" json:"assets,omitempty"`
+	DisabledRules     []string               `protobuf:"bytes,4,rep,name=disabledRules,proto3" json:"disabledRules,omitempty"`
+	DisabledPipelines []string               `protobuf:"bytes,5,rep,name=disabledPipelines,proto3" json:"disabledPipelines,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Tenant) Reset() {
@@ -2864,6 +2865,13 @@ func (x *Tenant) GetAssets() []*Asset {
 func (x *Tenant) GetDisabledRules() []string {
 	if x != nil {
 		return x.DisabledRules
+	}
+	return nil
+}
+
+func (x *Tenant) GetDisabledPipelines() []string {
+	if x != nil {
+		return x.DisabledPipelines
 	}
 	return nil
 }
@@ -2953,10 +2961,15 @@ func (x *Asset) GetIntegrity() uint32 {
 }
 
 type Pipeline struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DataTypes     []string               `protobuf:"bytes,1,rep,name=dataTypes,proto3" json:"dataTypes,omitempty"`
-	Steps         []*Step                `protobuf:"bytes,2,rep,name=steps,proto3" json:"steps,omitempty"`
-	Order         int32                  `protobuf:"varint,3,opt,name=order,proto3" json:"order,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	DataTypes []string               `protobuf:"bytes,1,rep,name=dataTypes,proto3" json:"dataTypes,omitempty"`
+	Steps     []*Step                `protobuf:"bytes,2,rep,name=steps,proto3" json:"steps,omitempty"`
+	Order     int32                  `protobuf:"varint,3,opt,name=order,proto3" json:"order,omitempty"`
+	TenantId  string                 `protobuf:"bytes,4,opt,name=tenantId,proto3" json:"tenantId,omitempty"`
+	// name is the pipeline's identity, derived from its filename by
+	// Config.loadCfg — never trust a value present in the file itself, same
+	// convention as rule identity.
+	Name          string `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3010,6 +3023,20 @@ func (x *Pipeline) GetOrder() int32 {
 		return x.Order
 	}
 	return 0
+}
+
+func (x *Pipeline) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *Pipeline) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
 }
 
 type Env struct {
@@ -3155,6 +3182,7 @@ type Rule struct {
 	DeduplicateBy []string               `protobuf:"bytes,11,rep,name=deduplicateBy,proto3" json:"deduplicateBy,omitempty"`
 	GroupBy       []string               `protobuf:"bytes,12,rep,name=groupBy,proto3" json:"groupBy,omitempty"`
 	Correlation   []*SearchRequest       `protobuf:"bytes,13,rep,name=correlation,proto3" json:"correlation,omitempty"`
+	TenantId      string                 `protobuf:"bytes,14,opt,name=tenantId,proto3" json:"tenantId,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3278,6 +3306,13 @@ func (x *Rule) GetCorrelation() []*SearchRequest {
 		return x.Correlation
 	}
 	return nil
+}
+
+func (x *Rule) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
 }
 
 type SearchRequest struct {
@@ -3715,23 +3750,26 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aR\n" +
 	"\fPluginsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
-	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\"z\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\"\xa8\x01\n" +
 	"\x06Tenant\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12&\n" +
 	"\x06assets\x18\x03 \x03(\v2\x0e.plugins.AssetR\x06assets\x12$\n" +
-	"\rdisabledRules\x18\x04 \x03(\tR\rdisabledRules\"\xb7\x01\n" +
+	"\rdisabledRules\x18\x04 \x03(\tR\rdisabledRules\x12,\n" +
+	"\x11disabledPipelines\x18\x05 \x03(\tR\x11disabledPipelines\"\xb7\x01\n" +
 	"\x05Asset\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\thostnames\x18\x02 \x03(\tR\thostnames\x12\x10\n" +
 	"\x03ips\x18\x03 \x03(\tR\x03ips\x12(\n" +
 	"\x0fconfidentiality\x18\x04 \x01(\rR\x0fconfidentiality\x12\"\n" +
 	"\favailability\x18\x05 \x01(\rR\favailability\x12\x1c\n" +
-	"\tintegrity\x18\x06 \x01(\rR\tintegrity\"c\n" +
+	"\tintegrity\x18\x06 \x01(\rR\tintegrity\"\x93\x01\n" +
 	"\bPipeline\x12\x1c\n" +
 	"\tdataTypes\x18\x01 \x03(\tR\tdataTypes\x12#\n" +
 	"\x05steps\x18\x02 \x03(\v2\r.plugins.StepR\x05steps\x12\x14\n" +
-	"\x05order\x18\x03 \x01(\x05R\x05order\"q\n" +
+	"\x05order\x18\x03 \x01(\x05R\x05order\x12\x1a\n" +
+	"\btenantId\x18\x04 \x01(\tR\btenantId\x12\x12\n" +
+	"\x04name\x18\x05 \x01(\tR\x04name\"q\n" +
 	"\x03Env\x12\x1a\n" +
 	"\bnodeName\x18\x01 \x01(\tR\bnodeName\x12\x1e\n" +
 	"\n" +
@@ -3742,7 +3780,7 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\bVariable\x12\x10\n" +
 	"\x03get\x18\x01 \x01(\tR\x03get\x12\x0e\n" +
 	"\x02as\x18\x02 \x01(\tR\x02as\x12\x16\n" +
-	"\x06ofType\x18\x03 \x01(\tR\x06ofType\"\xc5\x03\n" +
+	"\x06ofType\x18\x03 \x01(\tR\x06ofType\"\xe1\x03\n" +
 	"\x04Rule\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1a\n" +
@@ -3759,7 +3797,8 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	" \x03(\v2\x16.plugins.SearchRequestR\vafterEvents\x12$\n" +
 	"\rdeduplicateBy\x18\v \x03(\tR\rdeduplicateBy\x12\x18\n" +
 	"\agroupBy\x18\f \x03(\tR\agroupBy\x128\n" +
-	"\vcorrelation\x18\r \x03(\v2\x16.plugins.SearchRequestR\vcorrelation\"\xb2\x01\n" +
+	"\vcorrelation\x18\r \x03(\v2\x16.plugins.SearchRequestR\vcorrelation\x12\x1a\n" +
+	"\btenantId\x18\x0e \x01(\tR\btenantId\"\xb2\x01\n" +
 	"\rSearchRequest\x12\"\n" +
 	"\findexPattern\x18\x01 \x01(\tR\findexPattern\x12'\n" +
 	"\x04with\x18\x02 \x03(\v2\x13.plugins.ExpressionR\x04with\x12&\n" +

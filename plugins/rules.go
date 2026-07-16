@@ -22,11 +22,12 @@ func (r *Rule) Normalize() {
 }
 
 // Execute performs the correlation search using the provided context and previous event data
-func (e *SearchRequest) Execute(previous *string) (bool, []sdkos.Hit, error) {
+func (e *SearchRequest) Execute(previous *string, tenantId string) (bool, []sdkos.Hit, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	builder := sdkos.NewQueryBuilder(ctx, []string{e.IndexPattern}, "plugin_analysis")
+	builder.Term("tenantId", tenantId)
 
 	// Add time range filter
 	if e.Within != "" {
@@ -84,7 +85,7 @@ func (e *SearchRequest) Execute(previous *string) (bool, []sdkos.Hit, error) {
 
 	var hits []sdkos.Hit
 	for _, or := range e.Or {
-		if alert, newHits, err := or.Execute(previous); alert {
+		if alert, newHits, err := or.Execute(previous, tenantId); alert {
 			hits = append(hits, newHits...)
 		} else if err != nil {
 			return false, nil, err

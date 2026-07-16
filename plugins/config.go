@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,9 +30,12 @@ type fileState struct {
 var lastFileStates map[string]fileState
 var statesMutex sync.RWMutex
 
-// AcquireLock tries to acquire the lock file to prevent race conditions
-// when loading or modifying configurations. It returns true if the lock
-// was acquired successfully, false otherwise.
+// AcquireLock tries to atomically create the lock file, to prevent race
+// conditions when loading or modifying configurations. It returns true if
+// the lock was acquired successfully, false otherwise. No longer used by
+// this package's own config reload (loadCfg's readers never need it, since
+// every writer of these files already writes atomically via temp file +
+// rename) — kept as a public utility in case other code still depends on it.
 func AcquireLock(processName string) (bool, error) {
 	pipelinePath, err := utils.MkdirJoin(WorkDir, "pipeline")
 
@@ -43,21 +47,14 @@ func AcquireLock(processName string) (bool, error) {
 
 	lockPath := pipelinePath.FileJoin(lockFile)
 
-	// Check if lock file exists
-	if _, err := os.Stat(lockPath); err == nil {
-		// Lock file exists, cannot acquire lock
-		return false, errors.New("lock file already exists")
-	} else if !os.IsNotExist(err) {
-		// Error checking lock file
-		return false, catcher.Error("failed to check lock file status", err, map[string]any{
-			"lockPath": lockPath,
-			"process":  processName,
-		})
-	}
-
-	// Create lock file
-	file, err := os.Create(lockPath)
+	// O_EXCL makes the create-if-absent check atomic — unlike a separate
+	// Stat-then-Create, two callers can't both observe "no lock" and both
+	// proceed to create it.
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
+		if os.IsExist(err) {
+			return false, errors.New("lock file already exists")
+		}
 		return false, catcher.Error("failed to create lock file", err, map[string]any{
 			"lockPath": lockPath,
 			"process":  processName,
@@ -181,6 +178,10 @@ func (c *Config) loadCfg(processName string) {
 			continue
 		}
 
+		identity := pipelineIdentity(cFile)
+		for _, p := range nCfg.Pipeline {
+			p.Name = identity
+		}
 		c.Pipeline = append(c.Pipeline, nCfg.Pipeline...)
 
 		c.DisabledRules = append(c.DisabledRules, nCfg.DisabledRules...)
@@ -199,6 +200,11 @@ func (c *Config) loadCfg(processName string) {
 	sortPipelinesByOrder(c.Pipeline, processName)
 
 	c.Env = getEnv()
+}
+
+func pipelineIdentity(path string) string {
+	base := filepath.Base(path)
+	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
 func sortPipelinesByOrder(pipelines []*Pipeline, processName string) {
@@ -277,11 +283,6 @@ func getNewStates() (map[string]fileState, bool) {
 	return newStates, changed
 }
 
-// updateCfg updates the global configuration by loading new values
-// into a temporary Config object and then replacing the current
-// configuration with the new one. It ensures thread safety by using
-// a mutex lock and a lockfile mechanism to prevent race conditions
-// with other components that might modify the configuration.
 func updateCfg(processName string) {
 	newStates, changed := getNewStates()
 
@@ -292,40 +293,6 @@ func updateCfg(processName string) {
 	if env != nil && !changed {
 		return
 	}
-
-	// Try to acquire the lock
-	maxRetries := 5
-
-	for i := 0; i < maxRetries; i++ {
-		acquired, err := AcquireLock(processName)
-
-		if acquired {
-			break
-		}
-
-		// Lock was not acquired, wait and retry
-		if i < maxRetries-1 {
-			_ = catcher.Error("failed to acquire lock", err, map[string]any{
-				"retry": i + 1, "maxRetries": maxRetries,
-				"process": processName,
-			})
-			time.Sleep(RandomDuration(10, 60))
-		} else {
-			_ = catcher.Error("failed to acquire lock after multiple retries", err, map[string]any{
-				"process": processName,
-			})
-			return
-		}
-	}
-
-	defer func() {
-		// Release the lock when done
-		if err := ReleaseLock(); err != nil {
-			_ = catcher.Error("failed to release lock", err, map[string]any{
-				"process": processName,
-			})
-		}
-	}()
 
 	cfgMutex.Lock()
 
@@ -356,7 +323,9 @@ func GetCfg(processName string) *Config {
 	cfgOnce.Do(func() {
 		cfg = new(Config)
 
-		// Start the lock monitor goroutine
+		// Not used by our own reload path anymore, but kept running so any
+		// external caller of AcquireLock/ReleaseLock still gets automatic
+		// stale-lock cleanup, exactly as before.
 		startLockMonitor(processName)
 
 		updateCfg(processName)

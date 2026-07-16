@@ -355,6 +355,7 @@ message Tenant {
   string id = 2;
   repeated Asset assets = 3;
   repeated string disabledRules = 4;
+  repeated string disabledPipelines = 5;
 }
 
 message Asset {
@@ -370,6 +371,8 @@ message Pipeline {
   repeated string dataTypes = 1;
   repeated Step steps = 2;
   int32 order = 3;
+  string tenantId = 4;
+  string name = 5;
 }
 
 message Env {
@@ -399,6 +402,7 @@ message Rule {
   repeated string deduplicateBy = 11;
   repeated string groupBy = 12;
   repeated SearchRequest correlation = 13;
+  string tenantId = 14;
 }
 
 message SearchRequest {
