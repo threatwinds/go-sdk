@@ -2,13 +2,27 @@ package plugins
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
-	sdkos "github.com/threatwinds/go-sdk/os"
+	"github.com/threatwinds/go-sdk/store"
 	"github.com/tidwall/gjson"
 )
+
+// sampleSize is how many matching records come back as evidence when a
+// correlation fires. It is what the query builder defaulted to.
+const sampleSize = 10
+
+// operators maps the rule vocabulary, which is a contract with rule authors,
+// onto store operators.
+var operators = map[string]store.Op{
+	"filter_term":    store.OpEq,
+	"must_not_term":  store.OpNotEq,
+	"filter_match":   store.OpContains,
+	"must_not_match": store.OpNotContains,
+}
 
 // Normalize ensures that the newest fields are populated even if old aliases were used
 // This is now a method on the generated Rule struct from plugins.pb.go
@@ -21,76 +35,88 @@ func (r *Rule) Normalize() {
 	}
 }
 
-// Execute performs the correlation search using the provided context and previous event data
-func (e *SearchRequest) Execute(previous *string, tenantId string) (bool, []sdkos.Hit, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	builder := sdkos.NewQueryBuilder(ctx, []string{e.IndexPattern}, "plugin_analysis")
-	builder.Term("tenantId", tenantId)
-
-	// Add time range filter
-	if e.Within != "" {
-		duration, err := time.ParseDuration(e.Within)
-		if err == nil {
-			builder.Range("@timestamp", "gte", time.Now().Add(-duration).Format(time.RFC3339))
-		}
-	}
-
-	// Add expressions
-	for _, expr := range e.With {
-		if expr.Value == nil {
-			return false, nil, fmt.Errorf("expression value cannot be nil")
-		}
-		val := expr.Value.AsInterface()
-		// Handle dynamic values
-		if previous != nil {
-			if s, ok := val.(string); ok && strings.HasPrefix(s, "{{.") && strings.HasSuffix(s, "}}") {
-				field := strings.ReplaceAll(s, "{{.", "")
-				field = strings.ReplaceAll(field, "}}", "")
-				val = gjson.Get(*previous, field).Value()
-			}
-		}
-
-		if val == nil {
-			return false, nil, fmt.Errorf("expression value cannot be nil after placeholder resolution")
-		}
-
-		switch expr.Operator {
-		case "filter_term":
-			builder.Term(expr.Field, val)
-		case "must_not_term":
-			builder.MustNot(*sdkos.NewQueryBuilder(ctx, []string{e.IndexPattern}, "plugin_analysis").Term(expr.Field, val).Build().Query)
-		case "filter_match":
-			if s, ok := val.(string); ok {
-				builder.Match(expr.Field, s)
-			}
-		case "must_not_match":
-			if s, ok := val.(string); ok {
-				builder.MustNot(*sdkos.NewQueryBuilder(ctx, []string{e.IndexPattern}, "plugin_analysis").Match(expr.Field, s).Build().Query)
-			}
-		}
-	}
-
-	sr := builder.Build()
-
-	result, err := sr.WideSearchIn(ctx, []string{e.IndexPattern})
+// Execute reports whether at least Count records match within Within, and if so
+// returns up to sampleSize of them as evidence. Counting and sampling are two
+// calls so that records are read only when the threshold is actually met.
+func (e *SearchRequest) Execute(ctx context.Context, st store.Store, scope store.Scope, previous *string) (bool, []json.RawMessage, error) {
+	filters, err := e.filters(previous)
 	if err != nil {
 		return false, nil, err
 	}
 
-	if uint64(result.Hits.Total.Value) >= e.Count {
-		return true, result.Hits.Hits, nil
-	}
-
-	var hits []sdkos.Hit
-	for _, or := range e.Or {
-		if alert, newHits, err := or.Execute(previous, tenantId); alert {
-			hits = append(hits, newHits...)
-		} else if err != nil {
-			return false, nil, err
+	var window time.Duration
+	if e.Within != "" {
+		// An unparseable window used to be ignored, which silently widened the
+		// search to all of history.
+		if window, err = time.ParseDuration(e.Within); err != nil || window <= 0 {
+			return false, nil, fmt.Errorf("correlation: invalid 'within' %q", e.Within)
 		}
 	}
 
-	return len(e.Or) != 0 && len(hits) > 0, hits, nil
+	// Correlating against another source is opt-in; by default a rule looks at
+	// the same dataType that triggered it.
+	if e.DataType != "" {
+		scope.DataType = e.DataType
+	}
+
+	// Pin the end of the range so the count and the sample cannot disagree.
+	if scope.To.IsZero() {
+		scope.To = time.Now()
+	}
+
+	var n int64
+	if window > 0 {
+		scope.From = scope.To.Add(-window)
+		n, err = st.CountInWindow(ctx, scope, filters, window)
+	} else {
+		n, err = st.Count(ctx, scope, filters)
+	}
+	if err != nil {
+		return false, nil, err
+	}
+
+	if uint64(n) >= e.Count {
+		docs, err := st.FetchN(ctx, scope, filters, sampleSize)
+		if err != nil {
+			return false, nil, err
+		}
+		return true, docs, nil
+	}
+
+	var docs []json.RawMessage
+	for _, or := range e.Or {
+		matched, more, err := or.Execute(ctx, st, scope, previous)
+		if err != nil {
+			return false, nil, err
+		}
+		if matched {
+			docs = append(docs, more...)
+		}
+	}
+	return len(docs) > 0, docs, nil
+}
+
+func (e *SearchRequest) filters(previous *string) ([]store.Filter, error) {
+	out := make([]store.Filter, 0, len(e.With))
+	for _, expr := range e.With {
+		if expr.Value == nil {
+			return nil, fmt.Errorf("correlation: nil value for %q", expr.Field)
+		}
+
+		val := expr.Value.AsInterface()
+		if s, ok := val.(string); ok && previous != nil &&
+			strings.HasPrefix(s, "{{.") && strings.HasSuffix(s, "}}") {
+			val = gjson.Get(*previous, strings.TrimSuffix(strings.TrimPrefix(s, "{{."), "}}")).Value()
+		}
+		if val == nil {
+			return nil, fmt.Errorf("correlation: unresolved placeholder for %q", expr.Field)
+		}
+
+		op, ok := operators[expr.Operator]
+		if !ok {
+			return nil, fmt.Errorf("correlation: unknown operator %q", expr.Operator)
+		}
+		out = append(out, store.Filter{Field: expr.Field, Op: op, Value: val})
+	}
+	return out, nil
 }

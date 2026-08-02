@@ -406,7 +406,7 @@ message Rule {
 }
 
 message SearchRequest {
-  string indexPattern = 1;
+  string dataType = 1;
   repeated Expression with = 2;
   repeated SearchRequest or = 3;
   string within = 4;

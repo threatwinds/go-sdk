@@ -2961,15 +2961,12 @@ func (x *Asset) GetIntegrity() uint32 {
 }
 
 type Pipeline struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	DataTypes []string               `protobuf:"bytes,1,rep,name=dataTypes,proto3" json:"dataTypes,omitempty"`
-	Steps     []*Step                `protobuf:"bytes,2,rep,name=steps,proto3" json:"steps,omitempty"`
-	Order     int32                  `protobuf:"varint,3,opt,name=order,proto3" json:"order,omitempty"`
-	TenantId  string                 `protobuf:"bytes,4,opt,name=tenantId,proto3" json:"tenantId,omitempty"`
-	// name is the pipeline's identity, derived from its filename by
-	// Config.loadCfg — never trust a value present in the file itself, same
-	// convention as rule identity.
-	Name          string `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DataTypes     []string               `protobuf:"bytes,1,rep,name=dataTypes,proto3" json:"dataTypes,omitempty"`
+	Steps         []*Step                `protobuf:"bytes,2,rep,name=steps,proto3" json:"steps,omitempty"`
+	Order         int32                  `protobuf:"varint,3,opt,name=order,proto3" json:"order,omitempty"`
+	TenantId      string                 `protobuf:"bytes,4,opt,name=tenantId,proto3" json:"tenantId,omitempty"`
+	Name          string                 `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3317,7 +3314,7 @@ func (x *Rule) GetTenantId() string {
 
 type SearchRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	IndexPattern  string                 `protobuf:"bytes,1,opt,name=indexPattern,proto3" json:"indexPattern,omitempty"`
+	DataType      string                 `protobuf:"bytes,1,opt,name=dataType,proto3" json:"dataType,omitempty"`
 	With          []*Expression          `protobuf:"bytes,2,rep,name=with,proto3" json:"with,omitempty"`
 	Or            []*SearchRequest       `protobuf:"bytes,3,rep,name=or,proto3" json:"or,omitempty"`
 	Within        string                 `protobuf:"bytes,4,opt,name=within,proto3" json:"within,omitempty"`
@@ -3356,9 +3353,9 @@ func (*SearchRequest) Descriptor() ([]byte, []int) {
 	return file_plugins_plugins_proto_rawDescGZIP(), []int{35}
 }
 
-func (x *SearchRequest) GetIndexPattern() string {
+func (x *SearchRequest) GetDataType() string {
 	if x != nil {
-		return x.IndexPattern
+		return x.DataType
 	}
 	return ""
 }
@@ -3798,9 +3795,9 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\rdeduplicateBy\x18\v \x03(\tR\rdeduplicateBy\x12\x18\n" +
 	"\agroupBy\x18\f \x03(\tR\agroupBy\x128\n" +
 	"\vcorrelation\x18\r \x03(\v2\x16.plugins.SearchRequestR\vcorrelation\x12\x1a\n" +
-	"\btenantId\x18\x0e \x01(\tR\btenantId\"\xb2\x01\n" +
-	"\rSearchRequest\x12\"\n" +
-	"\findexPattern\x18\x01 \x01(\tR\findexPattern\x12'\n" +
+	"\btenantId\x18\x0e \x01(\tR\btenantId\"\xaa\x01\n" +
+	"\rSearchRequest\x12\x1a\n" +
+	"\bdataType\x18\x01 \x01(\tR\bdataType\x12'\n" +
 	"\x04with\x18\x02 \x03(\v2\x13.plugins.ExpressionR\x04with\x12&\n" +
 	"\x02or\x18\x03 \x03(\v2\x16.plugins.SearchRequestR\x02or\x12\x16\n" +
 	"\x06within\x18\x04 \x01(\tR\x06within\x12\x14\n" +
