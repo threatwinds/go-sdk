@@ -29,6 +29,7 @@ type fileState struct {
 
 var lastFileStates map[string]fileState
 var statesMutex sync.RWMutex
+var playgroundMode bool
 
 // AcquireLock tries to atomically create the lock file, to prevent race
 // conditions when loading or modifying configurations. It returns true if
@@ -323,6 +324,8 @@ func GetCfg(processName string) *Config {
 	cfgOnce.Do(func() {
 		cfg = new(Config)
 
+		playgroundMode = os.Getenv("MODE") == "playground"
+
 		// Not used by our own reload path anymore, but kept running so any
 		// external caller of AcquireLock/ReleaseLock still gets automatic
 		// stale-lock cleanup, exactly as before.
@@ -337,6 +340,10 @@ func GetCfg(processName string) *Config {
 			}
 		}()
 	})
+
+	if playgroundMode {
+		updateCfg(processName)
+	}
 
 	for cfg.Env == nil {
 		time.Sleep(1 * time.Second)

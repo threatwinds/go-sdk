@@ -22,13 +22,17 @@ import (
 // Returns:
 //   - A slice of strings containing the paths of the files that match any filter.
 //
-// If an error occurs during the file walk, it logs the error and panics if the error is not
-// "no such file or directory".
+// Entries that disappear while the walk is in progress are skipped, so a tree being
+// rewritten concurrently still yields every file that survived the traversal. Any other
+// error during the walk panics.
 func ListFiles(route string, filters ...string) []string {
 	var files []string
 
 	err := filepath.Walk(route, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return err
 		}
 		if slices.Contains(filters, filepath.Ext(path)) {
