@@ -31,6 +31,8 @@ var notificationsChannelOnce sync.Once
 type DataProcessingMessage struct {
 	DataType   string `json:"dataType"`
 	DataSource string `json:"dataSource"`
+	TenantID   string `json:"tenantId,omitempty"`
+	Bytes      int64  `json:"bytes,omitempty"`
 }
 
 // Topic represents a notification topic identifier.
