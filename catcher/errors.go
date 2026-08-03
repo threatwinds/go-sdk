@@ -122,9 +122,9 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 		}
 
 		if beauty {
-			printLog(fmt.Sprint(GetSeverityIcon(err.Severity), " ", err.JSON()))
+			printLog(fmt.Sprint(GetSeverityIcon(err.Severity), " ", err.JSON()), err.Severity)
 		} else {
-			printLog(err.JSON())
+			printLog(err.JSON(), err.Severity)
 		}
 	}
 
