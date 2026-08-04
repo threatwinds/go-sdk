@@ -56,6 +56,9 @@ type Config struct {
 	MaxOpenConns int
 }
 
+// boundLayout keeps the millisecond that DateTime64(3) stores.
+const boundLayout = "2006-01-02 15:04:05.000"
+
 type Driver struct {
 	conn driver.Conn
 	cfg  Config
@@ -147,12 +150,12 @@ func (d *Driver) where(s store.Scope, filters []store.Filter) (string, []any, er
 	}
 
 	if !s.From.IsZero() {
-		clauses = append(clauses, quoteIdent(d.cfg.TimeColumn)+" >= ?")
-		args = append(args, s.From)
+		clauses = append(clauses, quoteIdent(d.cfg.TimeColumn)+" >= toDateTime64(?, 3, 'UTC')")
+		args = append(args, s.From.UTC().Format(boundLayout))
 	}
 	if !s.To.IsZero() {
-		clauses = append(clauses, quoteIdent(d.cfg.TimeColumn)+" <= ?")
-		args = append(args, s.To)
+		clauses = append(clauses, quoteIdent(d.cfg.TimeColumn)+" <= toDateTime64(?, 3, 'UTC')")
+		args = append(args, s.To.UTC().Format(boundLayout))
 	}
 
 	for _, f := range filters {

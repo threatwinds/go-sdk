@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
 	"github.com/threatwinds/go-sdk/store"
@@ -83,6 +84,12 @@ func (b *bulkWriter) Write(s store.Scope, doc []byte) error {
 // path, and blocking each one on a round trip is what they exist to avoid.
 func (b *bulkWriter) Flush(ctx context.Context) error { return b.flush(ctx, false) }
 
+type dedupTokenKey struct{}
+
+func WithDeduplicationToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, dedupTokenKey{}, token)
+}
+
 func (b *bulkWriter) flush(ctx context.Context, wait bool) error {
 	b.mu.Lock()
 	rows := b.rows
@@ -91,6 +98,12 @@ func (b *bulkWriter) flush(ctx context.Context, wait bool) error {
 
 	if len(rows) == 0 {
 		return nil
+	}
+
+	if token, ok := ctx.Value(dedupTokenKey{}).(string); ok && token != "" {
+		ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
+			"insert_deduplication_token": token,
+		}))
 	}
 
 	// JSONEachRow lets each row carry whatever fields it has, which is what
@@ -102,7 +115,7 @@ func (b *bulkWriter) flush(ctx context.Context, wait bool) error {
 	return nil
 }
 
-func (b *bulkWriter) Close(ctx context.Context) error { return b.Flush(ctx) }
+func (b *bulkWriter) Close(ctx context.Context) error { return b.flush(ctx, true) }
 
 func (d *Driver) UpdateWhere(ctx context.Context, s store.Scope, filters []store.Filter, patch map[string]any) (int64, error) {
 	if len(patch) == 0 {

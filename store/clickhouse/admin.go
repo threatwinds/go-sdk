@@ -325,3 +325,7 @@ func intervalDays(clause string) int {
 func quoteString(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "\\'") + "'"
 }
+
+func (d *Driver) Exec(ctx context.Context, query string, args ...any) error {
+	return d.conn.Exec(ctx, query, args...)
+}

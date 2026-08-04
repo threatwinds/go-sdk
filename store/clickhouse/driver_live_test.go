@@ -2,6 +2,8 @@ package clickhouse_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -34,9 +36,9 @@ func newLive(t *testing.T) *ch.Driver {
 			dsAlerts:     "alerts",
 			dsStatistics: "statistics",
 		},
-		TenantColumn:   "tenant_id",
+		TenantColumn:   "tenantId",
 		TimeColumn:     "@timestamp",
-		DataTypeColumn: "data_type",
+		DataTypeColumn: "dataType",
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -77,8 +79,8 @@ func TestLiveCountIsScopedToTheTenant(t *testing.T) {
 	d := newLive(t)
 	ctx := context.Background()
 
-	seed(t, d, "tenant-a", map[string]any{"data_type": "linux", "data_source": "h1", "raw": "a"})
-	seed(t, d, "tenant-b", map[string]any{"data_type": "linux", "data_source": "h2", "raw": "b"})
+	seed(t, d, "tenant-a", map[string]any{"dataType": "linux", "dataSource": "h1", "raw": "a"})
+	seed(t, d, "tenant-b", map[string]any{"dataType": "linux", "dataSource": "h2", "raw": "b"})
 
 	a, err := d.Count(ctx, scope("tenant-a"), nil)
 	if err != nil {
@@ -112,7 +114,7 @@ func TestLiveFiltersOnAJSONPath(t *testing.T) {
 	d := newLive(t)
 
 	seed(t, d, "tenant-json", map[string]any{
-		"data_type": "wineventlog", "data_source": "DC01",
+		"dataType": "wineventlog", "dataSource": "DC01",
 		"log": map[string]any{"event_id": 4688, "process": map[string]any{"name": "powershell.exe"}},
 	})
 
@@ -134,12 +136,12 @@ func TestLiveWriteAndReadBack(t *testing.T) {
 	s.From = time.Now().UTC().Add(-time.Hour)
 
 	doc := map[string]any{
-		"@timestamp":  time.Now().UTC().Format("2006-01-02 15:04:05.000"),
-		"data_type":   "linux",
-		"data_source": "test-host",
-		"severity":    "low",
-		"log":         map[string]any{"probe": true, "n": 7},
-		"raw":         "written by the driver test",
+		"@timestamp": time.Now().UTC().Format("2006-01-02 15:04:05.000"),
+		"dataType":   "linux",
+		"dataSource": "test-host",
+		"severity":   "low",
+		"log":        map[string]any{"probe": true, "n": 7},
+		"raw":        "written by the driver test",
 	}
 	if err := d.Insert(ctx, s, "live-1", doc); err != nil {
 		t.Fatalf("Insert: %v", err)
@@ -174,7 +176,7 @@ func TestLiveTopValuesAndTimeline(t *testing.T) {
 	d := newLive(t)
 	ctx := context.Background()
 
-	buckets, err := d.TopValues(ctx, scope(store.AllTenants), "data_type", nil, 5)
+	buckets, err := d.TopValues(ctx, scope(store.AllTenants), "dataType", nil, 5)
 	if err != nil {
 		t.Fatalf("TopValues: %v", err)
 	}
@@ -191,13 +193,70 @@ func TestLiveTopValuesAndTimeline(t *testing.T) {
 	}
 }
 
+// GroupBy takes a list of fields and Group carries Children, so a caller asking
+// for two levels expects two. Grouping by only the first and returning no
+// children reports a plausible answer built from half the request, which no
+// error would reveal.
+func TestLiveGroupByNestsEveryField(t *testing.T) {
+	ctx := context.Background()
+	const ds store.Dataset = "grouped"
+
+	d := newLiveTable(t, ds, "logs_grouped")
+	tenant := "t-groupby"
+	sc := store.Scope{Tenant: tenant, Dataset: ds}
+
+	// Two dataTypes, two sources under the first and one under the second.
+	rows := []struct {
+		dataType, dataSource string
+		n                    int
+	}{
+		{"firewall", "fw-01", 5},
+		{"firewall", "fw-02", 3},
+		{"linux", "srv-01", 2},
+	}
+	for _, r := range rows {
+		for i := 0; i < r.n; i++ {
+			doc := fmt.Sprintf(`{"@timestamp":%q,"dataType":%q,"dataSource":%q,"x":1}`,
+				time.Now().UTC().Format("2006-01-02 15:04:05.000"), r.dataType, r.dataSource)
+			if err := d.Insert(ctx, sc, "", json.RawMessage(doc)); err != nil {
+				t.Fatalf("Insert: %v", err)
+			}
+		}
+	}
+
+	groups, err := d.GroupBy(ctx, sc, []string{"dataType", "dataSource"}, nil, store.GroupOpts{Limit: 100})
+	if err != nil {
+		t.Fatalf("GroupBy: %v", err)
+	}
+	if len(groups) != 2 {
+		t.Fatalf("top level = %d groups, want 2", len(groups))
+	}
+
+	// Biggest first, and a parent totals its children.
+	if groups[0].Key != "firewall" || groups[0].Count != 8 {
+		t.Errorf("first group = %q/%d, want firewall/8", groups[0].Key, groups[0].Count)
+	}
+	if len(groups[0].Children) != 2 {
+		t.Fatalf("firewall has %d children, want 2", len(groups[0].Children))
+	}
+	if groups[0].Children[0].Field != "dataSource" {
+		t.Errorf("child field = %q, want dataSource", groups[0].Children[0].Field)
+	}
+	if groups[0].Children[0].Key != "fw-01" || groups[0].Children[0].Count != 5 {
+		t.Errorf("first child = %q/%d, want fw-01/5", groups[0].Children[0].Key, groups[0].Children[0].Count)
+	}
+	if groups[1].Key != "linux" || groups[1].Count != 2 || len(groups[1].Children) != 1 {
+		t.Errorf("second group = %q/%d with %d children", groups[1].Key, groups[1].Count, len(groups[1].Children))
+	}
+}
+
 // DescribeFields joins the declared columns with the paths found inside the
 // JSON, which is how a caller learns about fields nobody declared.
 func TestLiveDescribeFindsJSONPaths(t *testing.T) {
 	d := newLive(t)
 
 	seed(t, d, "tenant-describe", map[string]any{
-		"data_type": "wineventlog", "data_source": "DC01",
+		"dataType": "wineventlog", "dataSource": "DC01",
 		"log": map[string]any{"event_id": 4625},
 	})
 
@@ -208,7 +267,7 @@ func TestLiveDescribeFindsJSONPaths(t *testing.T) {
 
 	var sawColumn, sawJSONPath bool
 	for _, f := range fields {
-		if f.Name == "tenant_id" {
+		if f.Name == "tenantId" {
 			sawColumn = true
 		}
 		if f.Name == "log.event_id" {
@@ -228,10 +287,21 @@ func TestLiveDescribeFindsJSONPaths(t *testing.T) {
 // move to cold storage and nothing would say so — the data would just stop
 // leaving the hot disk until it filled.
 func TestLiveSetRetentionRefusesToFlattenATier(t *testing.T) {
-	d := newLive(t)
 	ctx := context.Background()
+	const ds store.Dataset = "tiered"
 
-	before, err := d.Retention(ctx, dsAlerts)
+	// Its own tiered table. The product tables ship flat, so depending on one of
+	// them being tiered would make this test pass or fail on a deployment
+	// choice rather than on the behaviour it is about.
+	tiered := newLiveTable(t, ds, "logs_tiered")
+	if err := tiered.EnableTiering(ctx, ds, "hot_cold", store.Retention{
+		Keep:      730 * 24 * time.Hour,
+		ColdAfter: 90 * 24 * time.Hour,
+	}); err != nil {
+		t.Fatalf("EnableTiering: %v", err)
+	}
+
+	before, err := tiered.Retention(ctx, ds)
 	if err != nil {
 		t.Fatalf("Retention: %v", err)
 	}
@@ -239,18 +309,56 @@ func TestLiveSetRetentionRefusesToFlattenATier(t *testing.T) {
 		t.Fatalf("the tiered table reports no cold tier: %+v", before)
 	}
 
-	err = d.SetRetention(ctx, dsAlerts, store.Retention{Keep: 30 * 24 * time.Hour})
+	err = tiered.SetRetention(ctx, ds, store.Retention{Keep: 30 * 24 * time.Hour})
 	if err == nil {
 		t.Fatal("a flat retention was accepted on a tiered table")
 	}
 
-	after, err := d.Retention(ctx, dsAlerts)
+	after, err := tiered.Retention(ctx, ds)
 	if err != nil {
 		t.Fatalf("Retention: %v", err)
 	}
 	if after.ColdAfter != before.ColdAfter || after.Keep != before.Keep {
 		t.Fatalf("retention changed despite the refusal: before=%v after=%v", before, after)
 	}
+}
+
+// newLiveTable creates a throwaway table following the partitioning standard
+// and returns a driver pointed at it. Partitioning by month with the tenant in
+// the sorting key rather than the partition key is what the product tables do;
+// a fixture that diverged would be testing a layout nothing ships.
+func newLiveTable(t *testing.T, ds store.Dataset, name string) *ch.Driver {
+	t.Helper()
+	ctx := context.Background()
+	d := newLive(t)
+
+	if err := d.Exec(ctx, `CREATE TABLE IF NOT EXISTS utmstack.`+name+` (
+		tenantId LowCardinality(String),
+		`+"`@timestamp`"+` DateTime64(3,'UTC'),
+		dataType LowCardinality(String) DEFAULT '',
+		dataSource String DEFAULT '',
+		x UInt8
+	) ENGINE = MergeTree
+	PARTITION BY toYYYYMM(`+"`@timestamp`"+`)
+	ORDER BY (tenantId, `+"`@timestamp`"+`)
+	TTL toDateTime(`+"`@timestamp`"+`) + INTERVAL 730 DAY DELETE
+	SETTINGS ttl_only_drop_parts = 1`); err != nil {
+		t.Fatalf("creating %s: %v", name, err)
+	}
+	t.Cleanup(func() { _ = d.Exec(ctx, "DROP TABLE IF EXISTS utmstack."+name) })
+
+	out, err := ch.New(ch.Config{
+		Addr:         []string{os.Getenv("CLICKHOUSE_ADDR")},
+		Database:     "utmstack",
+		Username:     "default",
+		Password:     os.Getenv("CLICKHOUSE_PASSWORD"),
+		Tables:       map[store.Dataset]string{ds: name},
+		TenantColumn: "tenantId",
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return out
 }
 
 func TestLiveRetentionRoundTrip(t *testing.T) {
@@ -295,6 +403,10 @@ func TestSetRetentionRejectsAColdTierLongerThanKeep(t *testing.T) {
 // The three datasets are separate tables because their shapes, volumes and
 // lifetimes differ. This checks the driver reaches each one and that the
 // retention each was created with is what comes back.
+//
+// No cold tier is expected: the shipped schema keeps everything on local disk,
+// and object storage is opt-in, added later by EnableTiering. A deployment that
+// took it up is not what this asserts.
 func TestLiveTheThreeDatasets(t *testing.T) {
 	d := newLive(t)
 	ctx := context.Background()
@@ -304,9 +416,9 @@ func TestLiveTheThreeDatasets(t *testing.T) {
 		keepDays int
 		coldDays int
 	}{
-		{dsLogs, 730, 90},
-		{dsAlerts, 730, 90},
-		{dsStatistics, 1095, 0}, // small, self-contained, never moved
+		{dsLogs, 730, 0},
+		{dsAlerts, 730, 0},
+		{dsStatistics, 1095, 0},
 	} {
 		t.Run(string(tc.ds), func(t *testing.T) {
 			if _, err := d.Count(ctx, store.Scope{Tenant: store.AllTenants, Dataset: tc.ds}, nil); err != nil {
@@ -356,17 +468,20 @@ func TestLiveWriteToEachDataset(t *testing.T) {
 
 	docs := map[store.Dataset]map[string]any{
 		dsLogs: {
-			"@timestamp": now, "data_type": "linux", "data_source": "h1",
+			"@timestamp": now, "dataType": "linux", "dataSource": "h1",
 			"log": map[string]any{"cmd": "id"}, "raw": "uid=0",
 		},
 		dsAlerts: {
-			"@timestamp": now, "name": "Suspicious logon", "data_type": "wineventlog",
-			"data_source": "DC01", "severity": "high",
-			"alert": map[string]any{"technique": "T1078"},
+			// severity is numeric in a stored alert: the plugin's AlertFields
+			// declares its own int, which shadows the protobuf's "low"/"medium"/
+			// "high". A string here is not what the table receives.
+			"@timestamp": now, "name": "Suspicious logon", "dataType": "wineventlog",
+			"dataSource": "DC01", "severity": 3, "severityLabel": "High",
+			"technique": "T1078",
 		},
 		dsStatistics: {
-			"@timestamp": now, "type": "enqueue_success", "data_type": "linux",
-			"data_source": "h1", "count": 42, "bytes": 8192,
+			"@timestamp": now, "type": "enqueue_success", "dataType": "linux",
+			"dataSource": "h1", "count": 42, "bytes": 8192,
 		},
 	}
 
@@ -393,22 +508,12 @@ func TestLiveWriteToEachDataset(t *testing.T) {
 // no object storage, and adds tiering later without rebuilding the table or
 // losing what it already holds.
 func TestLiveEnableTieringOnAnExistingTable(t *testing.T) {
-	d := newLive(t)
 	ctx := context.Background()
 	const ds store.Dataset = "simple"
 
-	simple, err := ch.New(ch.Config{
-		Addr:         []string{os.Getenv("CLICKHOUSE_ADDR")},
-		Database:     "utmstack",
-		Username:     "default",
-		Password:     os.Getenv("CLICKHOUSE_PASSWORD"),
-		Tables:       map[store.Dataset]string{ds: "logs_simple"},
-		TenantColumn: "tenant_id",
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	_ = d
+	// Its own table, created plain and dropped afterwards, so the test does not
+	// depend on one another test left behind.
+	simple := newLiveTable(t, ds, "logs_simple")
 
 	before, err := simple.Count(ctx, store.Scope{Tenant: store.AllTenants, Dataset: ds}, nil)
 	if err != nil {
