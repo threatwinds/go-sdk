@@ -341,12 +341,19 @@ func (d *Driver) Retention(ctx context.Context, dataset store.Dataset) (store.Re
 	if err != nil {
 		return store.Retention{}, err
 	}
-	age, archive := policyRetention(policy)
+	age, coldAge := policyRetention(policy)
 	keep, err := parseIndexAge(age)
 	if err != nil {
 		return store.Retention{}, err
 	}
-	return store.Retention{Keep: keep, Archive: archive}, nil
+
+	var cold time.Duration
+	if coldAge != "" {
+		if cold, err = parseIndexAge(coldAge); err != nil {
+			return store.Retention{}, err
+		}
+	}
+	return store.Retention{Keep: keep, ColdAfter: cold}, nil
 }
 
 func (d *Driver) Health(ctx context.Context) (store.Health, error) {

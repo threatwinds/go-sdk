@@ -127,9 +127,11 @@ type DatasetUsage struct {
 }
 
 type Retention struct {
-	Keep    time.Duration
-	Archive bool
+	Keep      time.Duration
+	ColdAfter time.Duration
 }
+
+func (r Retention) Tiered() bool { return r.ColdAfter > 0 }
 
 type HealthStatus string
 

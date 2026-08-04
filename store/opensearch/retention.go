@@ -49,25 +49,29 @@ func (d *Driver) readPolicy(ctx context.Context) (*ismPolicy, error) {
 	return &p, nil
 }
 
-// policyRetention reads the age of whichever transition deletes, and infers
-// archiving from a transition into a snapshot state.
-func policyRetention(p *ismPolicy) (age string, archive bool) {
+// policyRetention reads the age of whichever transition deletes, and the age of
+// whichever moves an index off hot storage. The second is the tiering: on this
+// engine a colder tier is a separate state the index transitions into.
+func policyRetention(p *ismPolicy) (age, coldAge string) {
 	for _, st := range p.Policy.States {
 		for _, tr := range st.Transitions {
+			minAge := ""
+			if tr.Conditions != nil {
+				minAge = tr.Conditions.MinIndexAge
+			}
 			switch tr.StateName {
 			case "delete", "safe_delete":
-				if tr.Conditions != nil && tr.Conditions.MinIndexAge != "" {
-					age = tr.Conditions.MinIndexAge
+				if minAge != "" {
+					age = minAge
 				}
-				if tr.StateName == "safe_delete" {
-					archive = true
+			case "warm", "cold", "backup":
+				if minAge != "" && coldAge == "" {
+					coldAge = minAge
 				}
-			case "backup":
-				archive = true
 			}
 		}
 	}
-	return age, archive
+	return age, coldAge
 }
 
 // parseIndexAge exists because time.ParseDuration rejects the "d" unit that
@@ -133,8 +137,11 @@ func (d *Driver) SetRetention(ctx context.Context, dataset store.Dataset, r stor
 	if err := json.Unmarshal(body, &current); err != nil {
 		return fmt.Errorf("opensearch: decoding ISM policy: %w", err)
 	}
-	if _, archive := policyRetention(&current); archive != r.Archive {
-		return fmt.Errorf("%w: SetRetention cannot rewire archiving, only Keep", store.ErrUnsupported)
+	// Tiering here means adding or removing states in the policy document, which
+	// is more than patching an age. Refusing keeps a caller from believing the
+	// tier changed when only the deletion age did.
+	if _, coldAge := policyRetention(&current); (coldAge != "") != r.Tiered() {
+		return fmt.Errorf("%w: SetRetention cannot add or remove a cold tier, only change Keep", store.ErrUnsupported)
 	}
 
 	if n := patchDeleteAge(policy, formatIndexAge(r.Keep)); n == 0 {
