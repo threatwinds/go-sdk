@@ -38,6 +38,28 @@ const (
 	OpContains    Op = "contains"
 	OpNotContains Op = "not_contains"
 	OpExists      Op = "exists" // Value ignored
+
+	// Anchored matching. A prefix or suffix is not the same question as
+	// "contains", and answering one as the other returns rows the caller did
+	// not ask for.
+	OpStartsWith    Op = "starts_with"
+	OpNotStartsWith Op = "not_starts_with"
+	OpEndsWith      Op = "ends_with"
+	OpNotEndsWith   Op = "not_ends_with"
+
+	// The negations of the two above them.
+	OpNotExists  Op = "not_exists" // Value ignored
+	OpNotBetween Op = "not_between"
+
+	// OpSearch matches anywhere in the record rather than in a field, which is
+	// what a search box asks. Field is ignored; a dataset that has no text to
+	// search is an error rather than a query that matches nothing.
+	OpSearch    Op = "search"
+	OpNotSearch Op = "not_search"
+
+	// Value is a list: matches if any of them is contained.
+	OpContainsAny    Op = "contains_any"
+	OpNotContainsAny Op = "not_contains_any"
 )
 
 // Filter is one predicate. Filters in a slice are ANDed; there is no OR and no

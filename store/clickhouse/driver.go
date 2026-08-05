@@ -39,6 +39,11 @@ type Config struct {
 	// wrong.
 	TenantColumn string
 
+	// TextColumns names, per dataset, the column holding the whole record as
+	// text — what OpSearch looks in. A dataset with no entry cannot be searched
+	// that way, which is an error at call time rather than a silent no-match.
+	TextColumns map[store.Dataset]string
+
 	// TimeColumn bounds Scope.From/To. Defaults to "@timestamp".
 	TimeColumn string
 
@@ -159,7 +164,7 @@ func (d *Driver) where(s store.Scope, filters []store.Filter) (string, []any, er
 	}
 
 	for _, f := range filters {
-		c, a, err := renderFilter(f)
+		c, a, err := renderFilter(f, d.cfg.TextColumns[s.Dataset])
 		if err != nil {
 			return "", nil, err
 		}

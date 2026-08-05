@@ -10,7 +10,21 @@ import (
 // renderFilter turns one predicate into SQL. Values always become bound
 // parameters; only the field name is interpolated, and quoteIdent is what makes
 // that safe.
-func renderFilter(f store.Filter) (string, []any, error) {
+func renderFilter(f store.Filter, textCol string) (string, []any, error) {
+	// A search reads the whole record, so it is the one filter that does not
+	// name a field.
+	switch f.Op {
+	case store.OpSearch, store.OpNotSearch:
+		if textCol == "" {
+			return "", nil, fmt.Errorf("clickhouse: this dataset has no text to search")
+		}
+		col := quoteIdent(textCol)
+		if f.Op == store.OpNotSearch {
+			return "positionCaseInsensitive(" + col + ", ?) = 0", []any{f.Value}, nil
+		}
+		return "positionCaseInsensitive(" + col + ", ?) > 0", []any{f.Value}, nil
+	}
+
 	if f.Field == "" {
 		return "", nil, fmt.Errorf("clickhouse: filter has no field")
 	}
@@ -54,10 +68,13 @@ func renderFilter(f store.Filter) (string, []any, error) {
 		}
 		return fmt.Sprintf("%s %s (%s)", col, op, placeholders(len(vals))), vals, nil
 
-	case store.OpBetween:
+	case store.OpBetween, store.OpNotBetween:
 		lo, hi, err := toPair(f.Value)
 		if err != nil {
 			return "", nil, err
+		}
+		if f.Op == store.OpNotBetween {
+			return col + " NOT BETWEEN ? AND ?", []any{lo, hi}, nil
 		}
 		return col + " BETWEEN ? AND ?", []any{lo, hi}, nil
 
@@ -66,10 +83,40 @@ func renderFilter(f store.Filter) (string, []any, error) {
 	case store.OpNotContains:
 		return "positionCaseInsensitive(toString(" + col + "), ?) = 0", []any{f.Value}, nil
 
+	// Anchored matching is case-insensitive like Contains is, so a filter built
+	// in a UI behaves the same whichever of the two the user picked.
+	case store.OpStartsWith:
+		return "startsWith(lower(toString(" + col + ")), lower(?))", []any{f.Value}, nil
+	case store.OpNotStartsWith:
+		return "NOT startsWith(lower(toString(" + col + ")), lower(?))", []any{f.Value}, nil
+	case store.OpEndsWith:
+		return "endsWith(lower(toString(" + col + ")), lower(?))", []any{f.Value}, nil
+	case store.OpNotEndsWith:
+		return "NOT endsWith(lower(toString(" + col + ")), lower(?))", []any{f.Value}, nil
+
+	case store.OpContainsAny, store.OpNotContainsAny:
+		vals, err := toSlice(f.Value)
+		if err != nil {
+			return "", nil, err
+		}
+		if len(vals) == 0 {
+			if f.Op == store.OpContainsAny {
+				return "0", nil, nil
+			}
+			return "1", nil, nil
+		}
+		expr := "multiSearchAnyCaseInsensitive(toString(" + col + "), ?)"
+		if f.Op == store.OpNotContainsAny {
+			expr = "NOT " + expr
+		}
+		return expr, []any{vals}, nil
+
 	case store.OpExists:
 		// A JSON path that was never written reads as NULL; a plain column
 		// reads as its zero value, so emptiness is the closest shared meaning.
 		return col + " IS NOT NULL", nil, nil
+	case store.OpNotExists:
+		return col + " IS NULL", nil, nil
 
 	default:
 		return "", nil, fmt.Errorf("clickhouse: unsupported operator %q", f.Op)
