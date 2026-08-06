@@ -182,6 +182,7 @@ type Alert struct {
 	Errors        []string               `protobuf:"bytes,20,rep,name=errors,proto3" json:"errors,omitempty"`
 	ParentId      string                 `protobuf:"bytes,21,opt,name=parentId,proto3" json:"parentId,omitempty"`
 	GroupBy       []string               `protobuf:"bytes,22,rep,name=groupBy,proto3" json:"groupBy,omitempty"`
+	LastEvent     *Event                 `protobuf:"bytes,23,opt,name=lastEvent,proto3" json:"lastEvent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -366,6 +367,13 @@ func (x *Alert) GetParentId() string {
 func (x *Alert) GetGroupBy() []string {
 	if x != nil {
 		return x.GroupBy
+	}
+	return nil
+}
+
+func (x *Alert) GetLastEvent() *Event {
+	if x != nil {
+		return x.LastEvent
 	}
 	return nil
 }
@@ -3460,7 +3468,7 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\x05topic\x18\x03 \x01(\tR\x05topic\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\"\x1d\n" +
 	"\x03Ack\x12\x16\n" +
-	"\x06lastId\x18\x01 \x01(\tR\x06lastId\"\xb5\x05\n" +
+	"\x06lastId\x18\x01 \x01(\tR\x06lastId\"\xe3\x05\n" +
 	"\x05Alert\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\ttimestamp\x18\x02 \x01(\tR\n" +
@@ -3493,7 +3501,8 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\rdeduplicateBy\x18\x13 \x03(\tR\rdeduplicateBy\x12\x16\n" +
 	"\x06errors\x18\x14 \x03(\tR\x06errors\x12\x1a\n" +
 	"\bparentId\x18\x15 \x01(\tR\bparentId\x12\x18\n" +
-	"\agroupBy\x18\x16 \x03(\tR\agroupBy\"t\n" +
+	"\agroupBy\x18\x16 \x03(\tR\agroupBy\x12,\n" +
+	"\tlastEvent\x18\x17 \x01(\v2\x0e.plugins.EventR\tlastEvent\"t\n" +
 	"\x06Impact\x12(\n" +
 	"\x0fconfidentiality\x18\x01 \x01(\rR\x0fconfidentiality\x12\x1c\n" +
 	"\tintegrity\x18\x02 \x01(\rR\tintegrity\x12\"\n" +
@@ -3890,71 +3899,72 @@ var file_plugins_plugins_proto_depIdxs = []int32{
 	6,  // 1: plugins.Alert.adversary:type_name -> plugins.Side
 	6,  // 2: plugins.Alert.target:type_name -> plugins.Side
 	4,  // 3: plugins.Alert.events:type_name -> plugins.Event
-	37, // 4: plugins.Event.log:type_name -> plugins.Event.LogEntry
-	6,  // 5: plugins.Event.target:type_name -> plugins.Side
-	6,  // 6: plugins.Event.origin:type_name -> plugins.Side
-	38, // 7: plugins.Event.compliance:type_name -> plugins.Event.ComplianceEntry
-	8,  // 8: plugins.Side.geolocation:type_name -> plugins.Geolocation
-	7,  // 9: plugins.Side.disks:type_name -> plugins.DiskInfo
-	10, // 10: plugins.Transform.draft:type_name -> plugins.Draft
-	12, // 11: plugins.Transform.step:type_name -> plugins.Step
-	17, // 12: plugins.Step.kv:type_name -> plugins.Kv
-	15, // 13: plugins.Step.grok:type_name -> plugins.Grok
-	22, // 14: plugins.Step.trim:type_name -> plugins.Trim
-	18, // 15: plugins.Step.json:type_name -> plugins.Json
-	20, // 16: plugins.Step.csv:type_name -> plugins.Csv
-	24, // 17: plugins.Step.rename:type_name -> plugins.Rename
-	25, // 18: plugins.Step.cast:type_name -> plugins.Cast
-	14, // 19: plugins.Step.reformat:type_name -> plugins.Reformat
-	23, // 20: plugins.Step.delete:type_name -> plugins.Delete
-	26, // 21: plugins.Step.drop:type_name -> plugins.Drop
-	27, // 22: plugins.Step.add:type_name -> plugins.Add
-	13, // 23: plugins.Step.dynamic:type_name -> plugins.Dynamic
-	21, // 24: plugins.Step.xml:type_name -> plugins.Xml
-	39, // 25: plugins.Dynamic.params:type_name -> plugins.Dynamic.ParamsEntry
-	16, // 26: plugins.Grok.patterns:type_name -> plugins.Pattern
-	40, // 27: plugins.Add.params:type_name -> plugins.Add.ParamsEntry
-	31, // 28: plugins.Config.pipeline:type_name -> plugins.Pipeline
-	29, // 29: plugins.Config.tenants:type_name -> plugins.Tenant
-	41, // 30: plugins.Config.patterns:type_name -> plugins.Config.PatternsEntry
-	42, // 31: plugins.Config.plugins:type_name -> plugins.Config.PluginsEntry
-	32, // 32: plugins.Config.env:type_name -> plugins.Env
-	30, // 33: plugins.Tenant.assets:type_name -> plugins.Asset
-	12, // 34: plugins.Pipeline.steps:type_name -> plugins.Step
-	3,  // 35: plugins.Rule.impact:type_name -> plugins.Impact
-	35, // 36: plugins.Rule.afterEvents:type_name -> plugins.SearchRequest
-	35, // 37: plugins.Rule.correlation:type_name -> plugins.SearchRequest
-	36, // 38: plugins.SearchRequest.with:type_name -> plugins.Expression
-	35, // 39: plugins.SearchRequest.or:type_name -> plugins.SearchRequest
-	43, // 40: plugins.Expression.value:type_name -> google.protobuf.Value
-	43, // 41: plugins.Event.LogEntry.value:type_name -> google.protobuf.Value
-	5,  // 42: plugins.Event.ComplianceEntry.value:type_name -> plugins.ComplianceValues
-	43, // 43: plugins.Dynamic.ParamsEntry.value:type_name -> google.protobuf.Value
-	43, // 44: plugins.Add.ParamsEntry.value:type_name -> google.protobuf.Value
-	43, // 45: plugins.Config.PluginsEntry.value:type_name -> google.protobuf.Value
-	9,  // 46: plugins.Engine.Input:input_type -> plugins.Log
-	0,  // 47: plugins.Engine.Notify:input_type -> plugins.Message
-	11, // 48: plugins.Parsing.ParseLog:input_type -> plugins.Transform
-	4,  // 49: plugins.Analysis.Analyze:input_type -> plugins.Event
-	2,  // 50: plugins.Correlation.Correlate:input_type -> plugins.Alert
-	0,  // 51: plugins.Notification.Notify:input_type -> plugins.Message
-	9,  // 52: plugins.Integration.ProcessLog:input_type -> plugins.Log
-	4,  // 53: plugins.Output.EventOutput:input_type -> plugins.Event
-	2,  // 54: plugins.Output.AlertOutput:input_type -> plugins.Alert
-	1,  // 55: plugins.Engine.Input:output_type -> plugins.Ack
-	1,  // 56: plugins.Engine.Notify:output_type -> plugins.Ack
-	10, // 57: plugins.Parsing.ParseLog:output_type -> plugins.Draft
-	2,  // 58: plugins.Analysis.Analyze:output_type -> plugins.Alert
-	44, // 59: plugins.Correlation.Correlate:output_type -> google.protobuf.Empty
-	44, // 60: plugins.Notification.Notify:output_type -> google.protobuf.Empty
-	1,  // 61: plugins.Integration.ProcessLog:output_type -> plugins.Ack
-	44, // 62: plugins.Output.EventOutput:output_type -> google.protobuf.Empty
-	44, // 63: plugins.Output.AlertOutput:output_type -> google.protobuf.Empty
-	55, // [55:64] is the sub-list for method output_type
-	46, // [46:55] is the sub-list for method input_type
-	46, // [46:46] is the sub-list for extension type_name
-	46, // [46:46] is the sub-list for extension extendee
-	0,  // [0:46] is the sub-list for field type_name
+	4,  // 4: plugins.Alert.lastEvent:type_name -> plugins.Event
+	37, // 5: plugins.Event.log:type_name -> plugins.Event.LogEntry
+	6,  // 6: plugins.Event.target:type_name -> plugins.Side
+	6,  // 7: plugins.Event.origin:type_name -> plugins.Side
+	38, // 8: plugins.Event.compliance:type_name -> plugins.Event.ComplianceEntry
+	8,  // 9: plugins.Side.geolocation:type_name -> plugins.Geolocation
+	7,  // 10: plugins.Side.disks:type_name -> plugins.DiskInfo
+	10, // 11: plugins.Transform.draft:type_name -> plugins.Draft
+	12, // 12: plugins.Transform.step:type_name -> plugins.Step
+	17, // 13: plugins.Step.kv:type_name -> plugins.Kv
+	15, // 14: plugins.Step.grok:type_name -> plugins.Grok
+	22, // 15: plugins.Step.trim:type_name -> plugins.Trim
+	18, // 16: plugins.Step.json:type_name -> plugins.Json
+	20, // 17: plugins.Step.csv:type_name -> plugins.Csv
+	24, // 18: plugins.Step.rename:type_name -> plugins.Rename
+	25, // 19: plugins.Step.cast:type_name -> plugins.Cast
+	14, // 20: plugins.Step.reformat:type_name -> plugins.Reformat
+	23, // 21: plugins.Step.delete:type_name -> plugins.Delete
+	26, // 22: plugins.Step.drop:type_name -> plugins.Drop
+	27, // 23: plugins.Step.add:type_name -> plugins.Add
+	13, // 24: plugins.Step.dynamic:type_name -> plugins.Dynamic
+	21, // 25: plugins.Step.xml:type_name -> plugins.Xml
+	39, // 26: plugins.Dynamic.params:type_name -> plugins.Dynamic.ParamsEntry
+	16, // 27: plugins.Grok.patterns:type_name -> plugins.Pattern
+	40, // 28: plugins.Add.params:type_name -> plugins.Add.ParamsEntry
+	31, // 29: plugins.Config.pipeline:type_name -> plugins.Pipeline
+	29, // 30: plugins.Config.tenants:type_name -> plugins.Tenant
+	41, // 31: plugins.Config.patterns:type_name -> plugins.Config.PatternsEntry
+	42, // 32: plugins.Config.plugins:type_name -> plugins.Config.PluginsEntry
+	32, // 33: plugins.Config.env:type_name -> plugins.Env
+	30, // 34: plugins.Tenant.assets:type_name -> plugins.Asset
+	12, // 35: plugins.Pipeline.steps:type_name -> plugins.Step
+	3,  // 36: plugins.Rule.impact:type_name -> plugins.Impact
+	35, // 37: plugins.Rule.afterEvents:type_name -> plugins.SearchRequest
+	35, // 38: plugins.Rule.correlation:type_name -> plugins.SearchRequest
+	36, // 39: plugins.SearchRequest.with:type_name -> plugins.Expression
+	35, // 40: plugins.SearchRequest.or:type_name -> plugins.SearchRequest
+	43, // 41: plugins.Expression.value:type_name -> google.protobuf.Value
+	43, // 42: plugins.Event.LogEntry.value:type_name -> google.protobuf.Value
+	5,  // 43: plugins.Event.ComplianceEntry.value:type_name -> plugins.ComplianceValues
+	43, // 44: plugins.Dynamic.ParamsEntry.value:type_name -> google.protobuf.Value
+	43, // 45: plugins.Add.ParamsEntry.value:type_name -> google.protobuf.Value
+	43, // 46: plugins.Config.PluginsEntry.value:type_name -> google.protobuf.Value
+	9,  // 47: plugins.Engine.Input:input_type -> plugins.Log
+	0,  // 48: plugins.Engine.Notify:input_type -> plugins.Message
+	11, // 49: plugins.Parsing.ParseLog:input_type -> plugins.Transform
+	4,  // 50: plugins.Analysis.Analyze:input_type -> plugins.Event
+	2,  // 51: plugins.Correlation.Correlate:input_type -> plugins.Alert
+	0,  // 52: plugins.Notification.Notify:input_type -> plugins.Message
+	9,  // 53: plugins.Integration.ProcessLog:input_type -> plugins.Log
+	4,  // 54: plugins.Output.EventOutput:input_type -> plugins.Event
+	2,  // 55: plugins.Output.AlertOutput:input_type -> plugins.Alert
+	1,  // 56: plugins.Engine.Input:output_type -> plugins.Ack
+	1,  // 57: plugins.Engine.Notify:output_type -> plugins.Ack
+	10, // 58: plugins.Parsing.ParseLog:output_type -> plugins.Draft
+	2,  // 59: plugins.Analysis.Analyze:output_type -> plugins.Alert
+	44, // 60: plugins.Correlation.Correlate:output_type -> google.protobuf.Empty
+	44, // 61: plugins.Notification.Notify:output_type -> google.protobuf.Empty
+	1,  // 62: plugins.Integration.ProcessLog:output_type -> plugins.Ack
+	44, // 63: plugins.Output.EventOutput:output_type -> google.protobuf.Empty
+	44, // 64: plugins.Output.AlertOutput:output_type -> google.protobuf.Empty
+	56, // [56:65] is the sub-list for method output_type
+	47, // [47:56] is the sub-list for method input_type
+	47, // [47:47] is the sub-list for extension type_name
+	47, // [47:47] is the sub-list for extension extendee
+	0,  // [0:47] is the sub-list for field type_name
 }
 
 func init() { file_plugins_plugins_proto_init() }

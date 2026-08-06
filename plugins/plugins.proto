@@ -41,6 +41,7 @@ message Alert {
   repeated string errors = 20;
   string parentId = 21;
   repeated string groupBy = 22;
+  Event lastEvent = 23;
 }
 
 message Impact {
