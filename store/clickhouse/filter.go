@@ -66,6 +66,10 @@ func renderFilter(f store.Filter, textCol string) (string, []any, error) {
 		if f.Op == store.OpNotIn {
 			op = "NOT IN"
 		}
+
+		if isJSONPath(f.Field) {
+			return fmt.Sprintf("toString(%s) %s (%s)", col, op, placeholders(len(vals))), toStrings(vals), nil
+		}
 		return fmt.Sprintf("%s %s (%s)", col, op, placeholders(len(vals))), vals, nil
 
 	case store.OpBetween, store.OpNotBetween:
@@ -179,4 +183,18 @@ func toPair(v any) (any, any, error) {
 	default:
 		return nil, nil, fmt.Errorf("clickhouse: between needs a pair, got %T", v)
 	}
+}
+
+func isJSONPath(field string) bool { return strings.Contains(field, ".") }
+
+func toStrings(vals []any) []any {
+	out := make([]any, len(vals))
+	for i, v := range vals {
+		if s, ok := v.(string); ok {
+			out[i] = s
+			continue
+		}
+		out[i] = fmt.Sprint(v)
+	}
+	return out
 }

@@ -106,3 +106,66 @@ func TestTheFieldIsStillQuoted(t *testing.T) {
 		t.Errorf("field was not quoted: %q", sql)
 	}
 }
+
+// IN is the one comparison ClickHouse refuses on a JSON subcolumn: the column
+// reads as Dynamic and the set needs a concrete type. Without the cast every
+// "field is one of these" filter fails at query time — the second most common
+// shape the API speaks.
+func TestInCastsAJSONSubcolumn(t *testing.T) {
+	sql, args, err := renderFilter(store.Filter{
+		Field: "log.eventID", Op: store.OpIn, Value: []any{"4624", "4672"},
+	}, "raw")
+	if err != nil {
+		t.Fatalf("renderFilter: %v", err)
+	}
+	if !strings.Contains(sql, "toString(`log`.`eventID`) IN") {
+		t.Errorf("rendered %q, want the subcolumn cast before IN", sql)
+	}
+	if len(args) != 2 {
+		t.Fatalf("args = %v, want the two set members", args)
+	}
+}
+
+// A declared column is usually in the sort key, and wrapping one in a function
+// is how an index stops being read. The cast belongs to the JSON half only.
+func TestInLeavesADeclaredColumnAlone(t *testing.T) {
+	sql, _, err := renderFilter(store.Filter{
+		Field: "dataType", Op: store.OpIn, Value: []any{"wineventlog"},
+	}, "raw")
+	if err != nil {
+		t.Fatalf("renderFilter: %v", err)
+	}
+	if strings.Contains(sql, "toString") {
+		t.Errorf("rendered %q: a declared column was cast, defeating its index", sql)
+	}
+}
+
+// Both sides have to be String or the set has no common supertype, so a filter
+// written with numbers must still render against the cast column.
+func TestInStringifiesItsSetForAJSONSubcolumn(t *testing.T) {
+	_, args, err := renderFilter(store.Filter{
+		Field: "log.eventID", Op: store.OpIn, Value: []any{4624, 4672},
+	}, "raw")
+	if err != nil {
+		t.Fatalf("renderFilter: %v", err)
+	}
+	for _, a := range args {
+		if _, ok := a.(string); !ok {
+			t.Errorf("arg %v is %T, want a string to match the cast column", a, a)
+		}
+	}
+}
+
+// Ordering is not string comparison. Casting these would make "9" > "10", which
+// is a wrong answer rather than an error — the kind nobody goes looking for.
+func TestOrderingOperatorsAreNotCast(t *testing.T) {
+	for _, op := range []store.Op{store.OpGt, store.OpGte, store.OpLt, store.OpLte} {
+		sql, _, err := renderFilter(store.Filter{Field: "log.bytes", Op: op, Value: 100}, "raw")
+		if err != nil {
+			t.Fatalf("%s: %v", op, err)
+		}
+		if strings.Contains(sql, "toString") {
+			t.Errorf("%s rendered %q: a numeric comparison became lexicographic", op, sql)
+		}
+	}
+}
