@@ -287,7 +287,7 @@ var subnet = Definition{
 	Type:        "cidr",
 	Description: "A public network segment",
 	DataType:    CIDR,
-	Attributes:  []Definition{country, city, latitude, longitude, asn, aso},
+	Attributes:  []Definition{country, city, latitude, longitude, accuracyRadius, asn, aso},
 	Label:       "Public Subnet",
 }
 
