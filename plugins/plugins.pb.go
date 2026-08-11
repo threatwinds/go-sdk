@@ -2815,8 +2815,12 @@ type Tenant struct {
 	Assets            []*Asset               `protobuf:"bytes,3,rep,name=assets,proto3" json:"assets,omitempty"`
 	DisabledRules     []string               `protobuf:"bytes,4,rep,name=disabledRules,proto3" json:"disabledRules,omitempty"`
 	DisabledPipelines []string               `protobuf:"bytes,5,rep,name=disabledPipelines,proto3" json:"disabledPipelines,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Pipeline names, in the order this tenant wants them applied. Names not
+	// listed keep the order declared in their own file, after the listed ones.
+	// Empty means this tenant never reordered anything and inherits the default.
+	PipelineOrder []string `protobuf:"bytes,6,rep,name=pipelineOrder,proto3" json:"pipelineOrder,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Tenant) Reset() {
@@ -2880,6 +2884,13 @@ func (x *Tenant) GetDisabledRules() []string {
 func (x *Tenant) GetDisabledPipelines() []string {
 	if x != nil {
 		return x.DisabledPipelines
+	}
+	return nil
+}
+
+func (x *Tenant) GetPipelineOrder() []string {
+	if x != nil {
+		return x.PipelineOrder
 	}
 	return nil
 }
@@ -3756,13 +3767,14 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aR\n" +
 	"\fPluginsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
-	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\"\xa8\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\"\xce\x01\n" +
 	"\x06Tenant\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12&\n" +
 	"\x06assets\x18\x03 \x03(\v2\x0e.plugins.AssetR\x06assets\x12$\n" +
 	"\rdisabledRules\x18\x04 \x03(\tR\rdisabledRules\x12,\n" +
-	"\x11disabledPipelines\x18\x05 \x03(\tR\x11disabledPipelines\"\xb7\x01\n" +
+	"\x11disabledPipelines\x18\x05 \x03(\tR\x11disabledPipelines\x12$\n" +
+	"\rpipelineOrder\x18\x06 \x03(\tR\rpipelineOrder\"\xb7\x01\n" +
 	"\x05Asset\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\thostnames\x18\x02 \x03(\tR\thostnames\x12\x10\n" +

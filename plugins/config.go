@@ -309,6 +309,9 @@ func updateCfg(processName string) {
 	cfg.Plugins = tmpCfg.Plugins
 	cfg.Env = tmpCfg.Env
 
+	// Resolve the per-tenant view once per load, not once per event.
+	buildPipelineIndex(cfg.Pipeline, cfg.Tenants)
+
 	cfgMutex.Unlock()
 
 	statesMutex.Lock()

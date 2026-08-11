@@ -357,6 +357,7 @@ message Tenant {
   repeated Asset assets = 3;
   repeated string disabledRules = 4;
   repeated string disabledPipelines = 5;
+  repeated string pipelineOrder = 6;
 }
 
 message Asset {
