@@ -287,7 +287,7 @@ var subnet = Definition{
 	Type:        "cidr",
 	Description: "A public network segment",
 	DataType:    CIDR,
-	Attributes:  []Definition{country, city, latitude, longitude, accuracyRadius, asn, aso},
+	Attributes:  []Definition{country, city, latitude, longitude, accuracyRadius, asn, aso, link},
 	Label:       "Public Subnet",
 }
 
@@ -330,7 +330,7 @@ var domain = Definition{
 	Type:        "domain",
 	Description: "A human-readable address that points to a specific website or server on the internet",
 	DataType:    FQDN,
-	Attributes:  []Definition{whoIsRegistrant, whoIsRegistrar},
+	Attributes:  []Definition{whoIsRegistrant, whoIsRegistrar, link},
 	Label:       "Domain",
 }
 
@@ -565,7 +565,7 @@ var ipAddr = Definition{
 	Type:        "ip",
 	Description: "An unique numerical identifier assigned to every device connected to a network that uses the internet protocol. It's like a digital address that helps deliver information to the right place on the internet",
 	DataType:    IP,
-	Attributes:  []Definition{subnet},
+	Attributes:  []Definition{subnet, link},
 	Label:       "IP",
 }
 
