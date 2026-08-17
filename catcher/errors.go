@@ -78,6 +78,24 @@ func (e SdkError) SecureString() string {
 //		"code_override" (string) → overrides the error code in the JSON body
 //		"param" (string)       → included as "param" in the JSON error detail
 //
+// # This package logs at construction, not at handling
+//
+// If cause is already an *SdkError, Error does NOT construct a new error and
+// does NOT log anything: it returns cause unchanged, exactly as built and
+// logged the first time it was constructed. msg, args, and any
+// args["status"] override are silently ignored in that case — the returned
+// error's identity, Code, Severity and Args must stay stable as it
+// propagates back up through however many call sites already have it, and
+// re-logging it once per layer on the way up is not something this
+// function does.
+//
+// This means passing an existing *SdkError as cause is never the right way
+// to add logged context. To log context about an error you already have,
+// pass nil as cause and fold the error text into args instead:
+//
+//	sdkErr := catcher.ToSdkError(err)
+//	catcher.Error("context about the failure", nil, map[string]any{"cause": sdkErr.Error()})
+//
 // Returns:
 // *SdkError: the error. This type implements the Go error interface.
 func Error(msg string, cause error, args map[string]any) *SdkError {

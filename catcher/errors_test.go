@@ -468,6 +468,84 @@ func TestErrorConstructPath(t *testing.T) {
 	}
 }
 
+// TestErrorShortCircuitPreservesIdentityAndDoesNotLog covers the branch
+// where cause is already an *SdkError. This package logs at construction,
+// not at handling: once the original *SdkError was built, its line was
+// already written, and a later wrap can never reach back and edit that
+// line — the only way to "add" to it would be a second line, which is
+// exactly the noise this contract avoids. So the short-circuit returns
+// cause unchanged and logs nothing: msg and args at this call site are
+// silently ignored (see the doc comment on Error for the correct way to
+// log context about an existing error).
+func TestErrorShortCircuitPreservesIdentityAndDoesNotLog(t *testing.T) {
+	original := Error("original failure", errors.New("root cause"), map[string]any{"status": 503})
+	if original == nil {
+		t.Fatal("setup: expected a constructed original error")
+	}
+	if original.Severity != "CRITICAL" {
+		t.Fatalf("setup: expected original severity CRITICAL, got %s", original.Severity)
+	}
+
+	var annotated *SdkError
+	output := captureStdout(t, func() {
+		annotated = Error("layer msg", original, map[string]any{"extra": "value"})
+	})
+
+	// Identity: same pointer, not a copy or a new error.
+	if annotated != original {
+		t.Fatalf("expected Error() to return the same *SdkError pointer, got a different one")
+	}
+	// The returned value's own fields must be untouched by this call.
+	if annotated.Msg != "original failure" {
+		t.Errorf("returned error's Msg must not change, got %q", annotated.Msg)
+	}
+	if annotated.Code != original.Code {
+		t.Errorf("returned error's Code must not change")
+	}
+	if annotated.Severity != "CRITICAL" {
+		t.Errorf("returned error's Severity must not change, got %s", annotated.Severity)
+	}
+	if len(annotated.Args) != 1 || annotated.Args["status"] != 503 {
+		t.Errorf("returned error's Args must not change, got %v", annotated.Args)
+	}
+
+	// This call's msg/args must be silently ignored, including not logging
+	// anything — no line, annotation or otherwise, is emitted here.
+	if got := strings.TrimSpace(output); got != "" {
+		t.Errorf("expected no log output for a short-circuited *SdkError cause, got %q", got)
+	}
+}
+
+// TestErrorNLayersNeverLog pins the N-layers case: re-raising an
+// already-*SdkError through three call sites must not produce any log
+// output at any layer, and every call must still return the original
+// pointer unchanged. This is what stops the discard fix from being
+// re-implemented as per-layer annotation logging later without someone
+// deliberately deciding to pay for it again — the earlier version of this
+// fix did exactly that, and it was reverted because N re-raises produced N
+// log lines for a single failure, which is real, billable noise across 18
+// services.
+func TestErrorNLayersNeverLog(t *testing.T) {
+	original := Error("layer 0", errors.New("root cause"), nil)
+
+	var layer1, layer2, layer3 *SdkError
+	output := captureStdout(t, func() {
+		layer1 = Error("layer 1", original, nil)
+		layer2 = Error("layer 2", layer1, nil)
+		layer3 = Error("layer 3", layer2, nil)
+	})
+
+	for i, e := range []*SdkError{layer1, layer2, layer3} {
+		if e != original {
+			t.Fatalf("layer %d: expected the original pointer to be returned unchanged", i+1)
+		}
+	}
+
+	if got := strings.TrimSpace(output); got != "" {
+		t.Errorf("expected zero log lines across all 3 re-raises, got %q", got)
+	}
+}
+
 // TestErrorStatusArgSeverityConstructPath covers args["status"] in the
 // branch of Error() that builds a brand new *SdkError — including with a
 // typed-nil *SdkError cause, to confirm the crash fix in ToSdkError doesn't
@@ -492,6 +570,31 @@ func TestErrorStatusArgSeverityConstructPath(t *testing.T) {
 				t.Errorf("expected severity %s, got %s", tt.expected, got.Severity)
 			}
 		})
+	}
+}
+
+// TestErrorStatusArgSeverityAnnotatePath covers args["status"] in the
+// short-circuit branch, where it is ignored entirely along with msg and the
+// rest of args: the returned pointer's Severity stays pinned to the
+// original error's severity, and nothing is logged.
+func TestErrorStatusArgSeverityAnnotatePath(t *testing.T) {
+	original := Error("original", nil, map[string]any{"status": 503}) // CRITICAL
+	if original.Severity != "CRITICAL" {
+		t.Fatalf("setup: expected CRITICAL, got %s", original.Severity)
+	}
+
+	var annotated *SdkError
+	output := captureStdout(t, func() {
+		// 400 would compute to WARNING if it were applied here; it must not be.
+		annotated = Error("layer", original, map[string]any{"status": 400})
+	})
+
+	if annotated.Severity != "CRITICAL" {
+		t.Errorf("status arg must not change the returned error's severity, got %s", annotated.Severity)
+	}
+
+	if got := strings.TrimSpace(output); got != "" {
+		t.Errorf("expected no log output when short-circuiting on an existing *SdkError, got %q", got)
 	}
 }
 
