@@ -320,7 +320,14 @@ func sdkErrorFrom(remote *RemoteError) *catcher.SdkError {
 	// both the *RemoteError and this *SdkError sees one incident rather than
 	// two. Args["error_id"] is deliberately left alone: it records that the
 	// upstream told us the id, which stays true only in the adopted case.
-	err.ErrorID = remote.CatcherErrorID()
+	//
+	// Guarded rather than assigned unconditionally: remoteErrorFrom always
+	// leaves an id to donate, but an *SdkError with an empty ErrorID is the one
+	// state catcher guarantees can never exist, and a future change to
+	// CatcherErrorID must not be able to produce one from here.
+	if id := remote.CatcherErrorID(); id != "" {
+		err.ErrorID = id
+	}
 
 	// The trace catcher captures here is this process's stack — DoReq and its
 	// caller — which describes where the response was *received*, not where
