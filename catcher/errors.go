@@ -47,6 +47,23 @@ type SdkError struct {
 	// cause and Unwraps to nil, which is correct — the original error value
 	// was never transmitted, only its rendered text in Cause.
 	cause error
+
+	// logged records whether Log has already emitted this error's line, so
+	// a second call — from Error's own construction-time log, an explicit
+	// Log() call at a handling boundary, or GinError's boundary log — is a
+	// no-op. Deliberately unexported for the same reason as cause: the wire
+	// format above is unchanged, and an SdkError decoded from JSON starts
+	// with logged == false regardless of whether the original was ever
+	// logged, which is fine — decoding never runs Log.
+	//
+	// This is a plain bool, not a sync.Once or a per-instance mutex,
+	// specifically so SdkError stays copyable: go vet's copylocks check
+	// would flag every value-receiver method below (Error, JSON,
+	// SecureString, GinError) the moment the struct embeds a lock. Log
+	// guards reads and writes of this field with the package-level mu
+	// instead. See Log's doc comment for what that means for a caller
+	// holding an SdkError value rather than a *SdkError.
+	logged bool
 }
 
 // Error returns the error message.
@@ -83,6 +100,52 @@ func (e *SdkError) Unwrap() error {
 		return nil
 	}
 	return e.cause
+}
+
+// Log emits this error's log line — exactly the line Error() emits at
+// construction — and records that it has done so. A second call, on the
+// same *SdkError, is a no-op: this idempotency is the whole basis of a safe
+// migration away from "log at construction". During the transition an
+// error may end up logged at construction (Error), at an explicit handling
+// boundary (Log), or at the HTTP boundary (GinError) — sometimes more than
+// one of those will run against the same pointer — and it must never
+// produce two lines for one error.
+//
+// Log takes a pointer receiver, unlike Error, JSON, SecureString and
+// GinError below (which stay on value receivers for backwards
+// compatibility). Log has to mutate the logged flag so the next call sees
+// it; a value receiver could only ever flip its own throwaway copy. That
+// has a real consequence: if a caller holds an SdkError *value* — e.g. one
+// produced by dereferencing a *SdkError, or by decoding JSON into a plain
+// SdkError — calling Log() on it addresses that value's own copy of the
+// struct, not the pointer any other code may hold to "the same" logical
+// error. Its logged flag starts false independently, so it logs
+// independently, and flipping it does nothing for anyone else's pointer.
+// In this codebase that is reachable only by a caller going out of its way
+// to copy the struct; every constructor here (Error, New) and every real
+// call site hands back and passes around *SdkError, never SdkError.
+//
+// Safe to call on a nil *SdkError: it returns without doing anything,
+// rather than panicking, matching the nil-safety already established for
+// Unwrap and ToSdkError in this file.
+func (e *SdkError) Log() {
+	if e == nil {
+		return
+	}
+
+	mu.Lock()
+	if e.logged {
+		mu.Unlock()
+		return
+	}
+	e.logged = true
+	mu.Unlock()
+
+	if beauty {
+		printLog(fmt.Sprint(GetSeverityIcon(e.Severity), " ", e.JSON()), e.Severity)
+	} else {
+		printLog(e.JSON(), e.Severity)
+	}
 }
 
 // JSON returns the JSON string representation of the SdkError.

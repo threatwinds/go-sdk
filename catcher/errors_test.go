@@ -844,3 +844,40 @@ func TestErrorAlreadySdkErrorStillShortCircuits(t *testing.T) {
 		t.Errorf("expected no log output, got %q", output)
 	}
 }
+
+// TestLogTwiceEmitsOnce is the core idempotency contract Log() exists for:
+// during the migration an error may be logged more than once by accident
+// (construction plus an explicit boundary Log(), or two boundaries), and it
+// must never produce two lines. Built directly rather than via New()/Error()
+// so this test only exercises Log() itself.
+func TestLogTwiceEmitsOnce(t *testing.T) {
+	err := &SdkError{Msg: "log twice", Severity: "ERROR"}
+
+	output := captureStdout(t, func() {
+		err.Log()
+		err.Log()
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("expected exactly one log line from two Log() calls, got %d: %q", len(lines), output)
+	}
+
+	line := lastJSONLine(t, output)
+	if line["msg"] != "log twice" {
+		t.Errorf("expected logged msg %q, got %v", "log twice", line["msg"])
+	}
+}
+
+// TestLogNilReceiverDoesNotPanic covers the required nil-safety: three
+// nil-pointer crashes were already fixed in this file, and Log must not be
+// a fourth.
+func TestLogNilReceiverDoesNotPanic(t *testing.T) {
+	var e *SdkError
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Log() panicked on nil receiver: %v", r)
+		}
+	}()
+	e.Log()
+}
