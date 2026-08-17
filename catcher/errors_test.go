@@ -1526,3 +1526,173 @@ func TestErrorIDNotInheritedFromPlainCause(t *testing.T) {
 		t.Errorf("expected a generated UUID, got %q", err.ErrorID)
 	}
 }
+
+// The tests below cover the two additions that let a foreign error type donate
+// its id: *SdkError's own implementation of ErrorIDCarrier (and the field/method
+// name collision it had to work around), and AdoptErrorID, the shared guard both
+// transports apply before letting a remote-supplied value become an occurrence
+// id.
+
+// The collision: SdkError has an ErrorID *field* that is serialized, read off
+// the wire and written into the x-error-id header, and a CatcherErrorID
+// *method* that exposes the same value. Both must coexist — a method named
+// ErrorID would not compile alongside the field, and renaming the field would
+// break every consumer that reads "error_id".
+func TestSdkErrorFieldAndCarrierMethodCoexist(t *testing.T) {
+	err := New("collision", nil, nil)
+
+	if err.CatcherErrorID() != err.ErrorID {
+		t.Errorf("expected the method to expose the field, got %q vs %q", err.CatcherErrorID(), err.ErrorID)
+	}
+
+	// The field is still the serialized one, under its documented name.
+	var decoded map[string]any
+	if jsonErr := json.Unmarshal([]byte(err.JSON()), &decoded); jsonErr != nil {
+		t.Fatalf("expected valid JSON: %v", jsonErr)
+	}
+	if decoded["error_id"] != err.ErrorID {
+		t.Errorf("expected error_id %q in the JSON, got %v", err.ErrorID, decoded["error_id"])
+	}
+
+	// And the interface is satisfied by the pointer type, which is what every
+	// constructor in this package returns.
+	var carrier ErrorIDCarrier = err
+	if carrier.CatcherErrorID() != err.ErrorID {
+		t.Errorf("expected the carrier to donate %q, got %q", err.ErrorID, carrier.CatcherErrorID())
+	}
+}
+
+// A nil *SdkError reached through errors.As — this package produces typed-nil
+// ones — must answer "" rather than panic. Four nil-pointer crashes have been
+// fixed in this SDK already.
+func TestSdkErrorCatcherErrorIDNilSafe(t *testing.T) {
+	var nilErr *SdkError
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("a nil *SdkError must not panic: %v", r)
+		}
+	}()
+
+	if got := nilErr.CatcherErrorID(); got != "" {
+		t.Errorf("expected an empty id from a nil receiver, got %q", got)
+	}
+
+	// ...and the same value handed to build as a cause: ToSdkError rejects the
+	// typed nil, so it falls through to the carrier branch, where isNilPointer
+	// has to stop the method being called on it.
+	if got := New("typed nil sdk cause", nilErr, nil).ErrorID; uuid.Validate(got) != nil {
+		t.Errorf("expected a generated UUID, got %q", got)
+	}
+}
+
+// An *SdkError cause short-circuits build before the carrier is ever consulted:
+// it keeps its identity, its id and everything else, and the wrapping call's
+// msg and args are discarded. Implementing ErrorIDCarrier on it must not have
+// changed that.
+func TestSdkErrorCauseStillShortCircuitsRatherThanDonating(t *testing.T) {
+	inner := New("inner", nil, map[string]any{"status": 404})
+
+	outer := New("outer", inner, map[string]any{"status": 500})
+
+	if outer != inner {
+		t.Fatal("expected the short-circuit to return the same error")
+	}
+	if outer.Msg != "inner" || outer.Args["status"] != 404 {
+		t.Errorf("expected the inner error unchanged, got msg %q args %v", outer.Msg, outer.Args)
+	}
+	if outer.ErrorID != inner.ErrorID {
+		t.Errorf("expected the id to stay %q, got %q", inner.ErrorID, outer.ErrorID)
+	}
+}
+
+// The id survives an arbitrary number of wraps: whichever layer logs it, the
+// occurrence is one occurrence.
+func TestErrorIDSurvivesRepeatedWrapping(t *testing.T) {
+	cause := &carrierError{id: "5d08563a-9053-4e8e-ae8e-22781939a12b"}
+
+	first := New("service call failed", cause, map[string]any{"status": 502})
+	second := New("handler failed", first, map[string]any{"status": 500})
+	third := New("outermost", second, nil)
+
+	if first.ErrorID != cause.id {
+		t.Errorf("expected the first wrap to inherit %q, got %q", cause.id, first.ErrorID)
+	}
+	if second.ErrorID != cause.id || third.ErrorID != cause.id {
+		t.Errorf("expected the id to survive the short-circuit, got %q and %q", second.ErrorID, third.ErrorID)
+	}
+}
+
+// errors.As walks the chain, so depth does not matter: a carrier several
+// fmt.Errorf layers down is still found.
+func TestErrorIDInheritedFromDeeplyNestedCarrier(t *testing.T) {
+	cause := &carrierError{id: "5d08563a-9053-4e8e-ae8e-22781939a12b"}
+
+	deep := fmt.Errorf("layer one: %w",
+		fmt.Errorf("layer two: %w",
+			fmt.Errorf("layer three: %w", cause)))
+
+	if got := New("outer", deep, nil).ErrorID; got != cause.id {
+		t.Errorf("expected the id to be inherited from depth, got %q", got)
+	}
+}
+
+// The full precedence order in one place: explicit args beat a carrier, a
+// carrier beats generation, and generation always produces a well-formed UUID.
+func TestErrorIDPrecedenceOrder(t *testing.T) {
+	const explicit = "8c2f0f5c-1c8f-4a7e-9a5f-0a1b2c3d4e5f"
+	const carried = "5d08563a-9053-4e8e-ae8e-22781939a12b"
+
+	withBoth := New("both", &carrierError{id: carried}, map[string]any{"error_id": explicit})
+	if withBoth.ErrorID != explicit {
+		t.Errorf("explicit args must win, got %q", withBoth.ErrorID)
+	}
+
+	withCarrier := New("carrier only", &carrierError{id: carried}, nil)
+	if withCarrier.ErrorID != carried {
+		t.Errorf("a carrier must beat generation, got %q", withCarrier.ErrorID)
+	}
+
+	withNeither := New("neither", errors.New("boom"), nil)
+	if uuid.Validate(withNeither.ErrorID) != nil {
+		t.Errorf("expected a generated UUID, got %q", withNeither.ErrorID)
+	}
+
+	// An empty or non-string args["error_id"] is not an id; it falls through.
+	emptyArg := New("empty arg", &carrierError{id: carried}, map[string]any{"error_id": ""})
+	if emptyArg.ErrorID != carried {
+		t.Errorf("an empty args id must fall through to the carrier, got %q", emptyArg.ErrorID)
+	}
+	wrongType := New("wrong type", &carrierError{id: carried}, map[string]any{"error_id": 42})
+	if wrongType.ErrorID != carried {
+		t.Errorf("a non-string args id must fall through to the carrier, got %q", wrongType.ErrorID)
+	}
+}
+
+func TestAdoptErrorID(t *testing.T) {
+	canonical := uuid.NewString()
+
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"canonical uuid is adopted", canonical, canonical},
+		{"empty is rejected", "", ""},
+		{"md5 code is rejected", "c72b9698fa1927e1dd12d3cf26ed84b2", ""},
+		{"braced form is rejected", "{5d08563a-9053-4e8e-ae8e-22781939a12b}", ""},
+		{"urn form is rejected", "urn:uuid:5d08563a-9053-4e8e-ae8e-22781939a12b", ""},
+		{"undashed form is rejected", "5d08563a90534e8eae8e22781939a12b", ""},
+		{"right length but not a uuid is rejected", strings.Repeat("z", 36), ""},
+		{"oversized value is rejected", strings.Repeat("a", 64*1024), ""},
+		{"trailing whitespace is rejected", canonical + " ", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := AdoptErrorID(tc.in); got != tc.want {
+				t.Errorf("AdoptErrorID(%.40q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

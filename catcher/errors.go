@@ -248,8 +248,9 @@ func (e SdkError) SecureString() string {
 }
 
 // ErrorIDCarrier is implemented by an error that already carries a catcher
-// error id minted somewhere else — in practice by utils.RemoteError, which
-// reads it from an upstream ThreatWinds service's x-error-id response header.
+// error id minted somewhere else — by utils.RemoteError and client.APIError,
+// which read it from an upstream ThreatWinds service's x-error-id response
+// header, and by *SdkError itself.
 //
 // It exists so a failure can keep one occurrence id across a service boundary
 // without the transport helper having to return an *SdkError to achieve it.
@@ -266,8 +267,87 @@ func (e SdkError) SecureString() string {
 //
 // An implementation returning "" means "no id to donate" and is treated as if
 // the interface were not implemented at all.
+//
+// # Why the method is not called ErrorID()
+//
+// The obvious spelling for this method is ErrorID() string, matching the field
+// it exposes. It cannot be: SdkError already has an ErrorID *field*, and Go
+// forbids a type from declaring a field and a method of the same name, so
+// *SdkError — the type most in need of satisfying this interface uniformly —
+// could never implement it. The field is the half that cannot move. It is
+// serialized as "error_id" (see its json tag), read out of log lines and off
+// the wire by consumers, and written into the x-error-id response header by
+// GinError; renaming it would break every one of those readers, to buy nothing.
+// So the method takes the disambiguating prefix instead, and every
+// implementation in the SDK spells it the same way.
+//
+// The dependency stays inverted through this interface: catcher imports
+// neither utils nor client, and never will. An error type opts in by declaring
+// the method; nothing else about it has to change.
 type ErrorIDCarrier interface {
 	CatcherErrorID() string
+}
+
+// CatcherErrorID implements ErrorIDCarrier, returning this error's occurrence
+// id — the same value as the ErrorID field, which stays the serialized,
+// consumer-visible one. See ErrorIDCarrier's doc for why the method carries a
+// prefix the field does not.
+//
+// build never reaches this on an *SdkError cause: ToSdkError short-circuits
+// first, so an existing *SdkError is returned by identity rather than donating
+// its id to a second error. The method exists so that code outside this package
+// can ask "which occurrence is this?" of any error the SDK produces — an
+// *SdkError and a transport-level carrier alike — without type-switching over
+// every error type in the SDK.
+//
+// Pointer receiver, and nil-safe, for the same reason as Unwrap and Log: this
+// package produces typed-nil *SdkError values in the wild (see ToSdkError), and
+// errors.As matches on type alone, so an interface method can be reached on a
+// nil receiver by a routine errors.As walk.
+func (e *SdkError) CatcherErrorID() string {
+	if e == nil {
+		return ""
+	}
+
+	return e.ErrorID
+}
+
+var _ ErrorIDCarrier = (*SdkError)(nil)
+
+// AdoptErrorID guards the one path by which a foreign, remote-controlled value
+// enters the field this package otherwise mints itself. It returns id when id
+// may be adopted as an occurrence id, and "" when it may not — in which case
+// the caller falls through to build's own uuid.NewString, so the error still
+// gets an id and only the false correlation is lost.
+//
+// Only a canonical 36-character UUID is accepted: the shape this package always
+// mints, and therefore the only shape a ThreatWinds service can legitimately
+// send in x-error-id. Without the guard, a buggy or hostile endpoint can hand
+// over an id already in use by an unrelated in-flight failure — which breaks
+// the single property ErrorID exists to provide, that grepping one id finds the
+// lines of exactly one incident — or an id megabytes long, since
+// http.Transport.MaxResponseHeaderBytes allows 10MB of headers. The adopted
+// value is echoed straight back out in the adopting service's own x-error-id
+// response header and in every log line about the failure, so neither is
+// hypothetical.
+//
+// It lives here, rather than once per transport package, because this package
+// owns the id's format: it is the only thing that mints one, and the only thing
+// that has to keep every id in the logs the same shape. Both transports that
+// adopt (utils.DoReq, client.APIError) call it, so the two cannot drift apart.
+func AdoptErrorID(id string) string {
+	// uuid.Parse also accepts the urn:, braced and undashed forms; requiring
+	// exactly 36 characters restricts it to the canonical one, so the value
+	// written back out is the same shape every other id in the logs has.
+	if len(id) != 36 {
+		return ""
+	}
+
+	if _, err := uuid.Parse(id); err != nil {
+		return ""
+	}
+
+	return id
 }
 
 // inheritedErrorID returns the occurrence id carried by cause, or "" if there
