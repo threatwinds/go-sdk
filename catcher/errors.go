@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"net/http"
 	"runtime"
@@ -21,6 +22,7 @@ type errorParam struct {
 	Message string `json:"message"`
 	Type    string `json:"type"`
 	Code    string `json:"code"`
+	ErrorID string `json:"error_id"`
 	Param   string `json:"param,omitempty"`
 }
 
@@ -31,13 +33,23 @@ type errorResponse struct {
 
 // SdkError is a struct that implements the Go error interface.
 type SdkError struct {
-	Timestamp string         `json:"timestamp"`
-	Code      string         `json:"code"`
-	Trace     []string       `json:"trace,omitempty"`
-	Msg       string         `json:"msg"`
-	Cause     *string        `json:"cause,omitempty"`
-	Args      map[string]any `json:"args,omitempty"`
-	Severity  string         `json:"severity"`
+	Timestamp string `json:"timestamp"`
+	Code      string `json:"code"`
+	// ErrorID identifies this error *occurrence*, as opposed to Code, which
+	// identifies the error's *type* (an md5 of the message, shared by every
+	// occurrence of the same message anywhere). ErrorID is meant to be
+	// carried unchanged by every service that handles the same failure as it
+	// propagates — gateway to ai-api to auth-api, say — so an operator can
+	// grep one value across every service's logs and find every log line
+	// that pertains to one specific failure. See build's args["error_id"]
+	// handling for how it is populated, and the short-circuit branch of
+	// build for why it stays fixed once set.
+	ErrorID  string         `json:"error_id"`
+	Trace    []string       `json:"trace,omitempty"`
+	Msg      string         `json:"msg"`
+	Cause    *string        `json:"cause,omitempty"`
+	Args     map[string]any `json:"args,omitempty"`
+	Severity string         `json:"severity"`
 
 	// cause holds the original error this SdkError was built from, so that
 	// Unwrap can expose it to errors.Is/errors.As. It is deliberately
@@ -236,17 +248,33 @@ func (e SdkError) SecureString() string {
 
 // build implements the construction shared by Error and New: the
 // short-circuit when cause is already an *SdkError, trace capture, the code
-// hash, and severity derivation from args["status"]. It never logs — Error
-// and New each decide independently whether the result gets logged, and
-// how. Keeping this in one place is what stops the two constructors from
-// drifting apart.
+// hash, error-id adoption/generation, and severity derivation from
+// args["status"]. It never logs — Error and New each decide independently
+// whether the result gets logged, and how. Keeping this in one place is what
+// stops the two constructors from drifting apart.
 //
 // skip is passed to runtime.Callers so the recorded trace starts at the
 // caller of Error/New rather than at build or at Error/New itself; both
 // exported constructors are exactly one frame above build, so both pass 3.
 func build(msg string, cause error, args map[string]any, skip int) *SdkError {
 	if err := ToSdkError(cause); err != nil {
+		// Short-circuit: err already carries the error id it was built
+		// with. args["error_id"] on *this* call is deliberately never
+		// consulted here — see ErrorID's field doc and Error's doc comment
+		// on the short-circuit contract.
 		return err
+	}
+
+	// error_id is reserved, alongside status: when the caller supplies one
+	// (e.g. a downstream service re-raising a failure it received from an
+	// upstream call, carrying forward the id that upstream already minted),
+	// it is adopted verbatim so the same occurrence keeps the same id
+	// across every service that touches it. When absent, a fresh UUID is
+	// generated here so every *SdkError this package ever constructs has
+	// one, whether or not any caller asked for it.
+	errorID, ok := args["error_id"].(string)
+	if !ok || errorID == "" {
+		errorID = uuid.NewString()
 	}
 
 	var trace []string
@@ -290,6 +318,7 @@ func build(msg string, cause error, args map[string]any, skip int) *SdkError {
 	err := &SdkError{
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Code:      hex.EncodeToString(sum[:]),
+		ErrorID:   errorID,
 		Trace:     trace,
 		Args:      args,
 		Msg:       msg,
@@ -322,10 +351,17 @@ func build(msg string, cause error, args map[string]any, skip int) *SdkError {
 // cause: the error that caused this error.
 // args: a map of additional information. Recognized keys when used with GinError():
 //
-//		"status" (int)         → HTTP status code (default 500)
-//		"retry" (int)          → Retry-After header value in seconds
-//		"code_override" (string) → overrides the error code in the JSON body
-//		"param" (string)       → included as "param" in the JSON error detail
+//	"status" (int)         → HTTP status code (default 500)
+//	"retry" (int)          → Retry-After header value in seconds
+//	"code_override" (string) → overrides the error code in the JSON body
+//	"param" (string)       → included as "param" in the JSON error detail
+//	"error_id" (string)    → identifies this error occurrence; adopted
+//	                         verbatim if supplied, otherwise generated as
+//	                         a UUID. Meant to be carried unchanged by
+//	                         every service that re-raises the same
+//	                         failure so it can be traced across
+//	                         services. Ignored in the short-circuit case
+//	                         below, same as msg and every other arg.
 //
 // # This package logs at construction, not at handling
 //
@@ -421,8 +457,14 @@ func ToSdkError(err error) *SdkError {
 }
 
 // GinError is a helper function to return an error to the client using Gin framework context.
-// It sets the headers x-error and x-error-id with the error message and UUID respectively,
-// writes a JSON error body, and sets the status code.
+// It sets the headers x-error and x-error-id with the error message and the
+// error's UUID (ErrorID) respectively — restoring this doc comment's
+// long-standing claim, which the code had drifted away from by sending Code
+// (a hash of the message, shared by every occurrence of that message) in
+// x-error-id instead of a per-occurrence id. It also writes a JSON error
+// body — which now includes error_id alongside the existing code, for a
+// caller that reads the body rather than headers — and sets the status
+// code.
 //
 // Before writing anything, it logs the error if it has not already been
 // logged — the same line Log() would emit. This gives every HTTP path a
@@ -460,11 +502,13 @@ func ToSdkError(err error) *SdkError {
 //   - "retry": N — sets the Retry-After header to N seconds.
 //   - "code_override": string — overrides the error code in the response body.
 //   - "param": string — included as "param" in the response error detail.
+//   - "error_id": string — see build's doc comment; reflected in the
+//     x-error-id header and the response body's error_id, not the code.
 func (e SdkError) GinError(c *gin.Context) {
 	(&e).Log()
 
 	secureMsg := e.SecureString()
-	c.Header("x-error-id", e.Code)
+	c.Header("x-error-id", e.ErrorID)
 	c.Header("x-error", secureMsg)
 
 	if retryVal, ok := e.Args["retry"]; ok {
@@ -479,6 +523,7 @@ func (e SdkError) GinError(c *gin.Context) {
 			Message: secureMsg,
 			Type:    e.Severity,
 			Code:    e.Code,
+			ErrorID: e.ErrorID,
 		},
 	}
 

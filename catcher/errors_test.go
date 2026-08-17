@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // captureStdout redirects os.Stdout for the duration of fn and returns
@@ -262,8 +263,8 @@ func TestGinErrorResponseBody(t *testing.T) {
 			t.Errorf("expected status 400, got %d", w.Code)
 		}
 
-		if w.Header().Get("x-error-id") != err.Code {
-			t.Errorf("expected x-error-id header to be %s, got %s", err.Code, w.Header().Get("x-error-id"))
+		if w.Header().Get("x-error-id") != err.ErrorID {
+			t.Errorf("expected x-error-id header to be %s, got %s", err.ErrorID, w.Header().Get("x-error-id"))
 		}
 
 		if w.Header().Get("x-error") == "" {
@@ -1259,5 +1260,182 @@ func TestLogConcurrentGoroutinesLogOnce(t *testing.T) {
 	line := lastJSONLine(t, output)
 	if line["msg"] != "concurrent log" {
 		t.Errorf("expected logged msg %q, got %v", "concurrent log", line["msg"])
+	}
+}
+
+// The tests below cover the reserved args["error_id"] key and the
+// SdkError.ErrorID field it populates: an id identifying one error
+// *occurrence*, as opposed to Code (an md5 of the message, shared by every
+// occurrence of the same message anywhere).
+
+// TestErrorIDSuppliedInArgsUsedVerbatim covers the adopt half of the
+// contract: when args["error_id"] is supplied, build uses it verbatim
+// rather than generating one — e.g. a downstream service carrying forward
+// the id an upstream service already minted for the same failure.
+func TestErrorIDSuppliedInArgsUsedVerbatim(t *testing.T) {
+	err := New("supplied error id", nil, map[string]any{"error_id": "req-12345"})
+	if err.ErrorID != "req-12345" {
+		t.Errorf("expected ErrorID %q, got %q", "req-12345", err.ErrorID)
+	}
+}
+
+// TestErrorIDAbsentGeneratesWellFormedUUID covers the generate half: when
+// args["error_id"] is absent, build generates one as a UUID via the
+// module's existing github.com/google/uuid dependency.
+func TestErrorIDAbsentGeneratesWellFormedUUID(t *testing.T) {
+	err := New("no error id supplied", nil, nil)
+
+	if err.ErrorID == "" {
+		t.Fatal("expected a generated, non-empty ErrorID")
+	}
+	if parseErr := uuid.Validate(err.ErrorID); parseErr != nil {
+		t.Errorf("expected a well-formed UUID, got %q: %v", err.ErrorID, parseErr)
+	}
+}
+
+// TestErrorIDsDifferAcrossSeparateConstructions covers the "occurrence, not
+// type" distinction ErrorID exists for: two independently constructed
+// errors, even with an identical message (and therefore an identical Code),
+// must not collide on ErrorID.
+func TestErrorIDsDifferAcrossSeparateConstructions(t *testing.T) {
+	err1 := New("same message", nil, nil)
+	err2 := New("same message", nil, nil)
+
+	if err1.Code != err2.Code {
+		t.Fatalf("setup: expected identical Code for identical messages, got %q and %q", err1.Code, err2.Code)
+	}
+	if err1.ErrorID == err2.ErrorID {
+		t.Errorf("expected different ErrorID values for two separate constructions, both got %q", err1.ErrorID)
+	}
+}
+
+// TestErrorIDShortCircuitPreservesOriginalEvenWithDifferentArg covers
+// requirement (5): the short-circuit branch (cause is already an *SdkError)
+// must return the original unchanged — including its ErrorID — even when
+// the new call supplies a *different* error_id in args. The original
+// already carries the id from where it was created, and that identity is
+// exactly what must survive as the error propagates up through a service.
+func TestErrorIDShortCircuitPreservesOriginalEvenWithDifferentArg(t *testing.T) {
+	original := New("original failure", nil, map[string]any{"error_id": "original-id"})
+
+	annotated := New("layer msg", original, map[string]any{"error_id": "a-different-id"})
+
+	if annotated != original {
+		t.Fatal("expected the short-circuit to return the same *SdkError pointer")
+	}
+	if annotated.ErrorID != "original-id" {
+		t.Errorf("expected ErrorID to stay %q, got %q", "original-id", annotated.ErrorID)
+	}
+}
+
+// TestNewAndErrorProduceSameErrorIDBehaviour pins requirement (4): the id is
+// set in the shared build() helper, so New and Error must behave
+// identically — both adopt a supplied error_id verbatim, and both generate
+// one when absent.
+func TestNewAndErrorProduceSameErrorIDBehaviour(t *testing.T) {
+	t.Run("supplied verbatim", func(t *testing.T) {
+		var fromError *SdkError
+		captureStdout(t, func() {
+			fromError = Error("compare supplied", nil, map[string]any{"error_id": "shared-id"})
+		})
+		fromNew := New("compare supplied", nil, map[string]any{"error_id": "shared-id"})
+
+		if fromError.ErrorID != "shared-id" {
+			t.Errorf("Error(): expected ErrorID %q, got %q", "shared-id", fromError.ErrorID)
+		}
+		if fromNew.ErrorID != "shared-id" {
+			t.Errorf("New(): expected ErrorID %q, got %q", "shared-id", fromNew.ErrorID)
+		}
+	})
+
+	t.Run("generated when absent", func(t *testing.T) {
+		var fromError *SdkError
+		captureStdout(t, func() {
+			fromError = Error("compare generated", nil, nil)
+		})
+		fromNew := New("compare generated", nil, nil)
+
+		if fromError.ErrorID == "" || uuid.Validate(fromError.ErrorID) != nil {
+			t.Errorf("Error(): expected a generated well-formed UUID, got %q", fromError.ErrorID)
+		}
+		if fromNew.ErrorID == "" || uuid.Validate(fromNew.ErrorID) != nil {
+			t.Errorf("New(): expected a generated well-formed UUID, got %q", fromNew.ErrorID)
+		}
+	})
+}
+
+// TestGinErrorSetsXErrorIDHeaderToErrorIDNotCode covers requirement (6):
+// GinError's x-error-id header must carry ErrorID, not Code — restoring the
+// function's own doc comment claim that it sends "the error message and
+// UUID respectively", which the code had drifted away from by sending Code.
+// It also covers the JSON body: error_id must appear alongside the existing
+// code, not in place of it.
+func TestGinErrorSetsXErrorIDHeaderToErrorIDNotCode(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	err := New("gin error id header", nil, map[string]any{"error_id": "distinct-from-code"})
+	err.GinError(c)
+
+	got := w.Header().Get("x-error-id")
+	if got != err.ErrorID {
+		t.Errorf("expected x-error-id header %q, got %q", err.ErrorID, got)
+	}
+	if got == err.Code {
+		t.Fatal("setup invalid: ErrorID and Code must differ for this test to be meaningful")
+	}
+
+	var resp map[string]any
+	if jsonErr := json.Unmarshal(w.Body.Bytes(), &resp); jsonErr != nil {
+		t.Fatalf("failed to unmarshal response body: %v", jsonErr)
+	}
+	errorObj, ok := resp["error"].(map[string]any)
+	if !ok {
+		t.Fatal("expected 'error' key in response body")
+	}
+	if errorObj["error_id"] != err.ErrorID {
+		t.Errorf("expected response body error_id %q, got %v", err.ErrorID, errorObj["error_id"])
+	}
+	if errorObj["code"] != err.Code {
+		t.Errorf("expected response body code to remain Code %q, got %v", err.Code, errorObj["code"])
+	}
+}
+
+// TestErrorIDSurvivesJSONRoundTrip covers requirement (2): ErrorID is
+// exported with a json tag specifically so it can cross service boundaries
+// in the JSON body.
+func TestErrorIDSurvivesJSONRoundTrip(t *testing.T) {
+	original := New("round trip error id", nil, map[string]any{"error_id": "round-trip-id"})
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var decoded SdkError
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if decoded.ErrorID != original.ErrorID {
+		t.Errorf("expected ErrorID to survive JSON round-trip as %q, got %q", original.ErrorID, decoded.ErrorID)
+	}
+}
+
+// TestErrorIDAppearsInLogLine covers requirement (8): the id must appear in
+// the emitted log line. Log's output is e.JSON(), so this pins that
+// error_id's json tag is actually reachable from the struct that gets
+// logged, not merely present on the type.
+func TestErrorIDAppearsInLogLine(t *testing.T) {
+	var err *SdkError
+	output := captureStdout(t, func() {
+		err = Error("error id in log line", nil, map[string]any{"error_id": "logged-id"})
+	})
+
+	line := lastJSONLine(t, output)
+	if line["error_id"] != err.ErrorID {
+		t.Errorf("expected logged error_id %q, got %v", err.ErrorID, line["error_id"])
+	}
+	if err.ErrorID != "logged-id" {
+		t.Errorf("expected ErrorID %q, got %q", "logged-id", err.ErrorID)
 	}
 }
