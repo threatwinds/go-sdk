@@ -652,3 +652,195 @@ func TestToSdkErrorDirect(t *testing.T) {
 		}
 	})
 }
+
+// TestErrorsIsFindsSentinelThroughSdkError covers the primary motivation for
+// implementing Unwrap: a sentinel error wrapped by catcher.Error must still
+// be discoverable with errors.Is through the *SdkError layer.
+func TestErrorsIsFindsSentinelThroughSdkError(t *testing.T) {
+	sentinel := errors.New("sentinel: not found")
+
+	wrapped := Error("lookup failed", sentinel, nil)
+
+	if !errors.Is(wrapped, sentinel) {
+		t.Error("expected errors.Is to find the sentinel beneath the SdkError")
+	}
+}
+
+// customError is a concrete error type distinct from errors.errorString,
+// used to exercise errors.As beneath an SdkError.
+type customError struct {
+	code int
+}
+
+func (e *customError) Error() string {
+	return fmt.Sprintf("custom error %d", e.code)
+}
+
+// TestErrorsAsFindsConcreteTypeThroughSdkError covers errors.As reaching a
+// concrete custom error type beneath an SdkError via the new Unwrap method.
+func TestErrorsAsFindsConcreteTypeThroughSdkError(t *testing.T) {
+	original := &customError{code: 42}
+
+	wrapped := Error("operation failed", original, nil)
+
+	var target *customError
+	if !errors.As(wrapped, &target) {
+		t.Fatal("expected errors.As to find the customError beneath the SdkError")
+	}
+	if target.code != 42 {
+		t.Errorf("expected code 42, got %d", target.code)
+	}
+}
+
+// TestUnwrapNilCases covers Unwrap's two "nothing to traverse into" cases:
+// a zero-value SdkError that was never passed through catcher.Error, and
+// one round-tripped through JSON (whose unexported cause field can never be
+// populated by json.Unmarshal in the first place).
+func TestUnwrapNilCases(t *testing.T) {
+	t.Run("zero-value SdkError", func(t *testing.T) {
+		e := &SdkError{}
+		if got := e.Unwrap(); got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+
+	t.Run("round-tripped through JSON", func(t *testing.T) {
+		original := Error("round trip", errors.New("root cause"), map[string]any{"status": 500})
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("failed to marshal: %v", err)
+		}
+
+		var decoded SdkError
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		if got := decoded.Unwrap(); got != nil {
+			t.Errorf("expected nil after JSON round-trip, got %v", got)
+		}
+	})
+
+	t.Run("nil *SdkError receiver", func(t *testing.T) {
+		var e *SdkError
+		if got := e.Unwrap(); got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+}
+
+// TestErrorDoesNotPanicOnNilCause covers the latent bug fixed alongside
+// Unwrap: Error() used to dereference e.Cause unconditionally, so a
+// zero-value SdkError, or one decoded from JSON without a "cause" key,
+// panicked on .Error().
+func TestErrorDoesNotPanicOnNilCause(t *testing.T) {
+	t.Run("zero-value SdkError", func(t *testing.T) {
+		e := SdkError{}
+		var msg string
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf(".Error() panicked: %v", r)
+				}
+			}()
+			msg = e.Error()
+		}()
+		if msg == "" {
+			t.Error("expected a non-empty error message")
+		}
+	})
+
+	t.Run("Cause explicitly nil", func(t *testing.T) {
+		e := SdkError{Msg: "something broke", Cause: nil}
+		var msg string
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf(".Error() panicked: %v", r)
+				}
+			}()
+			msg = e.Error()
+		}()
+		if msg == "" {
+			t.Error("expected a non-empty error message")
+		}
+	})
+}
+
+// TestTwoLevelChainShortCircuitAndUnwrap is the two-level chain requested
+// explicitly: catcher.Error(msg, catcher.Error(msg2, sentinel, nil), nil).
+//
+// The inner call constructs a fresh *SdkError whose unexported cause is the
+// sentinel. The outer call passes that *SdkError as cause: ToSdkError finds
+// it immediately (errors.As matches *SdkError at the very first node it
+// examines, the inner error itself, because assignability is checked before
+// Unwrap is ever consulted — see the reasoning below), so Error()
+// short-circuits and returns the inner pointer unchanged, exactly as it did
+// before this change. No second SdkError layer is ever built.
+//
+// errors.Is(outer, sentinel) still succeeds, but not because errors.As/Is
+// traversed "through" one SdkError to a nested one beneath it — there is no
+// nested SdkError-under-SdkError to traverse through, by construction (see
+// TestErrorConstructPath and the comment on the construct branch: this
+// package never sets the unexported cause field to another *SdkError,
+// because that branch is only reached when ToSdkError already proved the
+// cause does not resolve to one). outer *is* inner, and inner's own cause
+// (set at its own construction) is the sentinel. Unwrap exposes exactly one
+// level, and outer == inner means that one level is all errors.Is needs.
+func TestTwoLevelChainShortCircuitAndUnwrap(t *testing.T) {
+	sentinel := errors.New("sentinel: deep cause")
+
+	var inner *SdkError
+	output := captureStdout(t, func() {
+		inner = Error("inner failure", sentinel, nil)
+	})
+	if strings.TrimSpace(output) == "" {
+		t.Fatal("setup: expected the inner construct to log")
+	}
+
+	var outer *SdkError
+	output = captureStdout(t, func() {
+		outer = Error("outer failure", inner, nil)
+	})
+
+	// The short-circuit contract (pre-existing, unaffected by Unwrap):
+	// identity preserved, nothing logged for the outer call.
+	if outer != inner {
+		t.Fatal("expected the short-circuit to return the inner pointer unchanged")
+	}
+	if strings.TrimSpace(output) != "" {
+		t.Errorf("expected no log output for the short-circuited outer call, got %q", output)
+	}
+
+	// The new behavior under test: errors.Is reaches the sentinel.
+	if !errors.Is(outer, sentinel) {
+		t.Error("expected errors.Is(outer, sentinel) to succeed")
+	}
+
+	// Confirm there is exactly one level to unwrap, not two: unwrapping
+	// once from outer reaches the sentinel directly.
+	if got := errors.Unwrap(outer); got != sentinel {
+		t.Errorf("expected a single Unwrap to reach the sentinel directly, got %v", got)
+	}
+}
+
+// TestErrorAlreadySdkErrorStillShortCircuits pins the existing contract
+// (unchanged by adding Unwrap): passing an *SdkError as cause returns the
+// same pointer and logs nothing, regardless of how deep an unwrap chain
+// that *SdkError itself carries.
+func TestErrorAlreadySdkErrorStillShortCircuits(t *testing.T) {
+	original := Error("pinned original", errors.New("root cause"), map[string]any{"status": 418})
+
+	var got *SdkError
+	output := captureStdout(t, func() {
+		got = Error("layer msg", original, map[string]any{"extra": "value"})
+	})
+
+	if got != original {
+		t.Fatal("expected the same *SdkError pointer back")
+	}
+	if strings.TrimSpace(output) != "" {
+		t.Errorf("expected no log output, got %q", output)
+	}
+}

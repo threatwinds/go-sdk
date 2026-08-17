@@ -37,13 +37,52 @@ type SdkError struct {
 	Cause     *string        `json:"cause,omitempty"`
 	Args      map[string]any `json:"args,omitempty"`
 	Severity  string         `json:"severity"`
+
+	// cause holds the original error this SdkError was built from, so that
+	// Unwrap can expose it to errors.Is/errors.As. It is deliberately
+	// unexported: the wire format (JSON tags above) is unchanged, so every
+	// existing consumer that reads .Cause as a string, or round-trips an
+	// SdkError through JSON, keeps working exactly as before. An SdkError
+	// decoded from JSON (e.g. received from another service) has a nil
+	// cause and Unwraps to nil, which is correct — the original error value
+	// was never transmitted, only its rendered text in Cause.
+	cause error
 }
 
 // Error returns the error message.
 func (e SdkError) Error() string {
 	args, _ := json.Marshal(e.Args)
 
-	return fmt.Sprintf("%s: %s. Args: %s", e.Msg, *e.Cause, args)
+	causeText := "unknown cause"
+	if e.Cause != nil {
+		causeText = *e.Cause
+	}
+
+	return fmt.Sprintf("%s: %s. Args: %s", e.Msg, causeText, args)
+}
+
+// Unwrap returns the original error this SdkError was constructed from, if
+// any, so errors.Is and errors.As can traverse beneath it.
+//
+// This uses a pointer receiver, unlike Error, JSON and SecureString below
+// (which stay on value receivers for backwards compatibility — changing
+// them would stop a bare SdkError value, as opposed to *SdkError, from
+// satisfying the error interface). errors.Is/errors.As call Unwrap on every
+// node of a chain without a nil check first. A value receiver has to
+// dereference the receiver to build its copy, which panics immediately when
+// called on a typed-nil *SdkError — and this package already produces
+// exactly that value in the wild (see ToSdkError's typed-nil handling
+// below). A pointer receiver instead returns nil for a nil receiver,
+// matching Unwrap's documented contract of "no further error", so a routine
+// errors.Is/As call can never turn into a panic. Since Error() (below)
+// returns *SdkError everywhere in this package, *SdkError's method set —
+// which includes both this pointer-receiver method and the value-receiver
+// ones — is what every real caller's error chain actually carries.
+func (e *SdkError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
 }
 
 // JSON returns the JSON string representation of the SdkError.
@@ -118,26 +157,35 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 			}
 		}
 		sum := md5.Sum([]byte(msg))
+
+		// effectiveCause normalizes cause to nil in the two cases that must
+		// not participate in the chain: a genuinely nil cause, and a
+		// non-nil `error` interface wrapping a nil *SdkError (see
+		// ToSdkError). Both render as "unknown cause" in the Cause string
+		// below, and for the same reason both must Unwrap to nil rather
+		// than to a nil pointer: calling cause.Error() on a typed-nil
+		// *SdkError would dereference a nil receiver (Error() has a value
+		// receiver) and panic, and handing that same nil pointer out via
+		// Unwrap would only defer the panic to whatever errors.Is/As caller
+		// eventually calls a method on it.
+		effectiveCause := cause
+		if sdkCause, ok := cause.(*SdkError); ok && sdkCause == nil {
+			effectiveCause = nil
+		}
+
+		causeText := "unknown cause"
+		if effectiveCause != nil {
+			causeText = effectiveCause.Error()
+		}
+
 		err = &SdkError{
 			Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 			Code:      hex.EncodeToString(sum[:]),
 			Trace:     trace,
 			Args:      args,
 			Msg:       msg,
-			Cause: func() *string {
-				// cause can be a non-nil `error` interface wrapping a nil
-				// *SdkError (see ToSdkError). ToSdkError already treats that
-				// as "no SdkError to short-circuit to", so it is treated the
-				// same way here: calling cause.Error() on it would dereference
-				// a nil receiver (Error() has a value receiver) and panic.
-				if cause == nil {
-					return pointerOf("unknown cause")
-				}
-				if sdkCause, ok := cause.(*SdkError); ok && sdkCause == nil {
-					return pointerOf("unknown cause")
-				}
-				return pointerOf(cause.Error())
-			}(),
+			Cause:     pointerOf(causeText),
+			cause:     effectiveCause,
 		}
 
 		statusCode, ok := args["status"]
