@@ -44,18 +44,27 @@ func GetMainIP() (string, error) {
 
 // CheckConnectivity checks if a given URL is reachable within the specified timeout.
 // It sends a HEAD request to minimize bandwidth usage.
+//
+// The URL is whatever the caller wants reached — a ThreatWinds service, a
+// vendor's endpoint, a captive-portal probe — so no error header is read: this
+// function has no way to know it is talking to a peer that runs
+// catcher.GinError, and adopting an x-error-id on the strength of the header
+// name alone would let any endpoint name one of this org's occurrences. Both
+// failures below therefore carry a locally generated id instead, which is
+// honest about where the id came from and still gives an operator one value to
+// grep by. A HEAD response has no body to read a richer detail from in any case.
 func CheckConnectivity(url string, timeout time.Duration) error {
 	client := &http.Client{
 		Timeout: timeout,
 	}
 	resp, err := client.Head(url)
 	if err != nil {
-		return err
+		return withGeneratedErrorID(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("server returned status: %s", resp.Status)
+		return withGeneratedErrorID(fmt.Errorf("server returned status: %s", resp.Status))
 	}
 
 	return nil

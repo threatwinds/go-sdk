@@ -3,11 +3,14 @@ package utils
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -604,4 +607,255 @@ func TestDoReq_UpstreamStatusDoesNotDictateCallerStatus(t *testing.T) {
 	// "your credentials are bad" for a client whose credentials were fine.
 	assert.Equal(t, http.StatusInternalServerError, wrapped.Args["status"])
 	assert.Equal(t, "ERROR", wrapped.Severity)
+}
+
+// The tests below cover the other half of the rule: a ThreatWinds peer's id is
+// adopted when it sends one, and every path that has no id to adopt — because
+// no response arrived, or because the endpoint is a third party that never
+// sends one — generates one rather than leaving the failure unidentifiable.
+
+// A ThreatWinds peer that sent no id: the failure still has exactly one, and
+// the caller's wrap uses that one rather than minting a second.
+func TestDoReq_RemoteErrorCarriesGeneratedIDWhenUpstreamSuppliesNone(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	_, _, err := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+
+	var remote *RemoteError
+	assert.True(t, errors.As(err, &remote))
+
+	// ID keeps meaning "what the upstream told us", which was nothing...
+	assert.Empty(t, remote.ID)
+	// ...but the failure is still identified, and identified only once.
+	assert.NoError(t, uuid.Validate(remote.CatcherErrorID()))
+
+	wrapped := catcher.New("calling auth-api failed", err, map[string]any{"status": 500})
+	assert.Equal(t, remote.CatcherErrorID(), wrapped.ErrorID)
+}
+
+// An adopted id still wins over the generated fallback.
+func TestDoReq_AdoptedIDBeatsGeneratedFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-error-id", upstreamErrorID)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	_, _, err := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+
+	var remote *RemoteError
+	assert.True(t, errors.As(err, &remote))
+	assert.Equal(t, upstreamErrorID, remote.ID)
+	assert.Equal(t, upstreamErrorID, remote.CatcherErrorID())
+}
+
+// A failure with no response at all has nothing to adopt from, and used to
+// reach the caller carrying nothing to grep by.
+func TestDoReq_TransportFailureCarriesGeneratedID(t *testing.T) {
+	closed := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	closedURL := closed.URL
+	closed.Close()
+
+	_, _, err := DoReq[map[string]any](closedURL, nil, "GET", nil, false)
+	assert.Error(t, err)
+
+	var carrier catcher.ErrorIDCarrier
+	assert.True(t, errors.As(err, &carrier))
+	assert.NoError(t, uuid.Validate(carrier.CatcherErrorID()))
+
+	// The id is in the rendered text too, so a caller that only logs the error
+	// still has the value the caller that wraps it would log.
+	assert.Contains(t, err.Error(), carrier.CatcherErrorID())
+
+	wrapped := catcher.New("sendEntity failed", err, map[string]any{"status": 500})
+	assert.Equal(t, carrier.CatcherErrorID(), wrapped.ErrorID)
+}
+
+// A body that is not the type the caller asked for is a failure of this call,
+// not of the upstream, so it gets an id of its own.
+func TestDoReq_UnmarshalFailureCarriesGeneratedID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`not json`))
+	}))
+	defer server.Close()
+
+	_, _, err := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+	assert.Error(t, err)
+
+	var carrier catcher.ErrorIDCarrier
+	assert.True(t, errors.As(err, &carrier))
+	assert.NoError(t, uuid.Validate(carrier.CatcherErrorID()))
+}
+
+// Two failures are two occurrences. An id shared between them would be worse
+// than none: grepping it would return both.
+func TestDoReq_DistinctFailuresGetDistinctIDs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	_, _, first := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+	_, _, second := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+
+	var a, b catcher.ErrorIDCarrier
+	assert.True(t, errors.As(first, &a))
+	assert.True(t, errors.As(second, &b))
+	assert.NotEqual(t, a.CatcherErrorID(), b.CatcherErrorID())
+}
+
+// The original error stays reachable underneath the id wrapper, so a caller
+// matching on a sentinel or a concrete transport type is unaffected.
+func TestGeneratedIDErrorKeepsTheChainWalkable(t *testing.T) {
+	sentinel := errors.New("sentinel")
+	err := withGeneratedErrorID(fmt.Errorf("context: %w", sentinel))
+
+	assert.True(t, errors.Is(err, sentinel))
+	assert.Contains(t, err.Error(), "context: sentinel")
+}
+
+// Nil in every position: a nil error must not become a non-nil one, and a
+// typed-nil wrapper reached by errors.As must not panic.
+func TestGeneratedIDErrorNilSafety(t *testing.T) {
+	assert.Nil(t, withGeneratedErrorID(nil))
+
+	var nilWrapper *generatedIDError
+	assert.NotPanics(t, func() {
+		assert.Equal(t, "<nil>", nilWrapper.Error())
+		assert.Nil(t, nilWrapper.Unwrap())
+		assert.Empty(t, nilWrapper.CatcherErrorID())
+	})
+
+	// A wrapper around a nil error still renders, rather than dereferencing it.
+	empty := &generatedIDError{id: upstreamErrorID}
+	assert.Contains(t, empty.Error(), upstreamErrorID)
+
+	// And catcher survives being handed the typed nil as a cause.
+	assert.NotPanics(t, func() {
+		assert.NoError(t, uuid.Validate(catcher.New("typed nil cause", nilWrapper, nil).ErrorID))
+	})
+}
+
+// DownloadStream targets arbitrary third-party URLs. It must not read
+// x-error-id off one: catcher.GinError is what emits that header, and nothing
+// outside this org runs it, so adopting it would let any endpoint name one of
+// this org's occurrences.
+func TestDownloadStream_DoesNotAdoptThirdPartyErrorID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-error-id", upstreamErrorID)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	_, err := DownloadStream(server.URL)
+	assert.Error(t, err)
+
+	var carrier catcher.ErrorIDCarrier
+	assert.True(t, errors.As(err, &carrier))
+
+	// Generated, not adopted.
+	assert.NotEqual(t, upstreamErrorID, carrier.CatcherErrorID())
+	assert.NoError(t, uuid.Validate(carrier.CatcherErrorID()))
+	assert.NotContains(t, err.Error(), upstreamErrorID)
+
+	// Still traceable: the id is in the text and inherited by a catcher wrap.
+	assert.Contains(t, err.Error(), carrier.CatcherErrorID())
+	wrapped := catcher.New("failed to download feed", err, map[string]any{"status": 502})
+	assert.Equal(t, carrier.CatcherErrorID(), wrapped.ErrorID)
+	assert.Equal(t, "failed to download feed", wrapped.Msg)
+}
+
+func TestDownloadStream_TransportFailureCarriesGeneratedID(t *testing.T) {
+	closed := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	closedURL := closed.URL
+	closed.Close()
+
+	_, err := DownloadStream(closedURL)
+	assert.Error(t, err)
+
+	var carrier catcher.ErrorIDCarrier
+	assert.True(t, errors.As(err, &carrier))
+	assert.NoError(t, uuid.Validate(carrier.CatcherErrorID()))
+}
+
+// Download returns DownloadStream's error unchanged, so one failed download is
+// one occurrence, not two.
+func TestDownload_PropagatesTheStreamsID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	err := Download(server.URL, filepath.Join(t.TempDir(), "out.bin"))
+	assert.Error(t, err)
+
+	var carrier catcher.ErrorIDCarrier
+	assert.True(t, errors.As(err, &carrier))
+	assert.NoError(t, uuid.Validate(carrier.CatcherErrorID()))
+	assert.Contains(t, err.Error(), carrier.CatcherErrorID())
+}
+
+// CheckConnectivity probes an arbitrary URL, so the same rule applies as for
+// DownloadStream.
+func TestCheckConnectivity_GeneratesIDAndDoesNotAdopt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-error-id", upstreamErrorID)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	err := CheckConnectivity(server.URL, 5*time.Second)
+	assert.Error(t, err)
+
+	var carrier catcher.ErrorIDCarrier
+	assert.True(t, errors.As(err, &carrier))
+	assert.NotEqual(t, upstreamErrorID, carrier.CatcherErrorID())
+	assert.NoError(t, uuid.Validate(carrier.CatcherErrorID()))
+
+	wrapped := catcher.New("upstream unreachable", err, map[string]any{"status": 502})
+	assert.Equal(t, carrier.CatcherErrorID(), wrapped.ErrorID)
+}
+
+func TestCheckConnectivity_SuccessIsStillNil(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	assert.NoError(t, CheckConnectivity(server.URL, 5*time.Second))
+}
+
+// One response yields one occurrence id, whichever of the two error types is
+// derived from it.
+func TestOneResponseYieldsOneErrorID(t *testing.T) {
+	t.Run("upstream supplied none", func(t *testing.T) {
+		resp := &http.Response{StatusCode: http.StatusInternalServerError, Header: http.Header{}}
+
+		remote := remoteErrorFrom(resp, nil)
+		sdkErr := sdkErrorFrom(remote)
+
+		assert.Empty(t, remote.ID)
+		assert.NoError(t, uuid.Validate(remote.CatcherErrorID()))
+		assert.Equal(t, remote.CatcherErrorID(), sdkErr.ErrorID)
+		// Args records only what the upstream actually told us, which was
+		// nothing — the generated id is this process's, not the upstream's.
+		assert.NotContains(t, sdkErr.Args, "error_id")
+	})
+
+	t.Run("upstream supplied one", func(t *testing.T) {
+		header := http.Header{}
+		header.Set("x-error-id", upstreamErrorID)
+		resp := &http.Response{StatusCode: http.StatusInternalServerError, Header: header}
+
+		remote := remoteErrorFrom(resp, nil)
+		sdkErr := sdkErrorFrom(remote)
+
+		assert.Equal(t, upstreamErrorID, remote.ID)
+		assert.Equal(t, upstreamErrorID, sdkErr.ErrorID)
+		assert.Equal(t, upstreamErrorID, sdkErr.Args["error_id"])
+	})
 }

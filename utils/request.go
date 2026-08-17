@@ -81,14 +81,26 @@ type RemoteError struct {
 
 	// ID is the upstream's x-error-id when it supplied a well-formed one: the
 	// occurrence id that lets one failure be grepped across every service's
-	// logs. Empty otherwise, in which case catcher mints a fresh UUID exactly
-	// as it would for any locally-raised error.
+	// logs. Empty when the upstream sent none, or sent one catcher.AdoptErrorID
+	// refused — this field means "the id the upstream gave us" and nothing
+	// else, so that a caller can tell an inherited occurrence from a local one.
+	// CatcherErrorID is what donates an id either way; see it for the fallback.
 	ID string
 
 	// Detail is the upstream's own error text — the first maxErrorDetailSize
 	// bytes of its response body, or its x-error header when the body is
 	// empty. Never the whole of an arbitrarily large body.
 	Detail string
+
+	// localID is minted when the upstream supplied no usable id, so that every
+	// failure this package reports carries exactly one occurrence id from the
+	// moment it is created — whether or not the caller ever hands it to
+	// catcher. Unexported, and deliberately not folded into ID: ID's contract
+	// above is what distinguishes "the upstream told us which occurrence this
+	// is" from "we named it ourselves", and a caller reading ID to decide
+	// whether a hop is traceable end to end must not be told yes when the
+	// answer is no.
+	localID string
 }
 
 // Error renders the failure in the exact shape DoReq has always produced, so
@@ -111,15 +123,91 @@ func (e *RemoteError) Error() string {
 // this error with catcher.Error or catcher.New builds its own error — its
 // message, its args, its status — that nonetheless inherits the upstream's
 // occurrence id, rather than minting a second, unrelated id for one failure.
+//
+// It falls back to the id minted for this response when the upstream supplied
+// none, so the answer to "which occurrence is this?" is never empty. The
+// difference between the two cases is not lost — it is exactly what ID reports
+// — but it is not the caller's problem at the point of wrapping: either way
+// this failure has one id, and the caller's error gets that one rather than a
+// second.
 func (e *RemoteError) CatcherErrorID() string {
 	if e == nil {
 		return ""
 	}
 
-	return e.ID
+	if e.ID != "" {
+		return e.ID
+	}
+
+	return e.localID
 }
 
 var _ catcher.ErrorIDCarrier = (*RemoteError)(nil)
+
+// generatedIDError attaches a locally minted occurrence id to a failure that
+// has no upstream id to adopt — a transport error where no response was ever
+// received, a malformed response body, or a response from an endpoint that is
+// not a ThreatWinds service and therefore never sends x-error-id.
+//
+// The point is not to pretend an id was adopted. It is that a failure with no
+// id is untraceable: an operator reading "bad status downloading from …" in one
+// service's log has nothing to grep for it by. Minting here rather than leaving
+// it to catcher also means the id in the rendered text and the id in the
+// SdkError a caller builds around it are the same value, instead of the text
+// having none and the log line having one the text cannot be matched to.
+//
+// It wraps rather than replaces: Unwrap keeps the original error reachable to
+// errors.Is and errors.As, so a caller matching on os.ErrDeadlineExceeded or a
+// *url.Error still finds it.
+type generatedIDError struct {
+	err error
+	id  string
+}
+
+// withGeneratedErrorID wraps err so it carries an occurrence id of its own.
+// A nil error is returned unchanged — wrapping one would turn "no failure" into
+// a non-nil error interface holding a nil-ish value, which is how a success
+// path starts being reported as a failure.
+func withGeneratedErrorID(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return &generatedIDError{err: err, id: uuid.NewString()}
+}
+
+// Error renders the wrapped error's text with the occurrence id appended, so a
+// caller that only ever logs the error — rather than wrapping it with catcher —
+// still has something to grep by.
+func (e *generatedIDError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+
+	if e.err == nil {
+		return fmt.Sprintf("unknown cause (error_id=%s)", e.id)
+	}
+
+	return fmt.Sprintf("%s (error_id=%s)", e.err.Error(), e.id)
+}
+
+func (e *generatedIDError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+
+	return e.err
+}
+
+func (e *generatedIDError) CatcherErrorID() string {
+	if e == nil {
+		return ""
+	}
+
+	return e.id
+}
+
+var _ catcher.ErrorIDCarrier = (*generatedIDError)(nil)
 
 // SdkErrorFromResponse turns a failed HTTP response into a *catcher.SdkError,
 // reading only the status line and the error headers catcher.GinError sets on
@@ -189,6 +277,14 @@ func remoteErrorFrom(resp *http.Response, body []byte) *RemoteError {
 	}
 
 	remote.ID = adoptErrorID(headerValue(header, "x-error-id"))
+	if remote.ID == "" {
+		// Nothing to adopt: the upstream sent no id, sent a malformed one, or
+		// is not a ThreatWinds service at all. This response still gets exactly
+		// one occurrence id, minted here so that both errors derivable from it
+		// — the *RemoteError DoReq returns and the *SdkError
+		// SdkErrorFromResponse builds — agree on which occurrence it is.
+		remote.localID = uuid.NewString()
+	}
 
 	// The body is the richer of the two and the only one a non-ThreatWinds
 	// endpoint supplies; x-error is the fallback for a response whose body was
@@ -216,6 +312,15 @@ func sdkErrorFrom(remote *RemoteError) *catcher.SdkError {
 	}
 
 	err := catcher.New(remoteErrorMessage, cause, args)
+
+	// One response, one occurrence id. When the upstream supplied one it is
+	// already in args and this assignment is an identity; when it did not,
+	// catcher minted its own a moment ago and this replaces it with the id
+	// remoteErrorFrom minted for the same response, so that a caller holding
+	// both the *RemoteError and this *SdkError sees one incident rather than
+	// two. Args["error_id"] is deliberately left alone: it records that the
+	// upstream told us the id, which stays true only in the adopted case.
+	err.ErrorID = remote.CatcherErrorID()
 
 	// The trace catcher captures here is this process's stack — DoReq and its
 	// caller — which describes where the response was *received*, not where
@@ -259,32 +364,16 @@ func relayStatus(status int) int {
 }
 
 // adoptErrorID accepts an upstream's x-error-id only when it is a canonical
-// 36-character UUID — the shape catcher itself always mints (uuid.NewString)
-// and therefore the only shape a ThreatWinds service can legitimately send.
+// 36-character UUID — the shape catcher itself always mints and therefore the
+// only shape a ThreatWinds service can legitimately send. See
+// catcher.AdoptErrorID for why a remote-controlled id cannot be taken on trust.
 //
-// This is the one path by which a foreign, remote-controlled value enters the
-// field catcher otherwise mints itself, and it is echoed straight back out in
-// this service's own x-error-id response header and in every log line about the
-// failure. Without a guard, a buggy or hostile endpoint can hand us an id
-// already in use by an unrelated in-flight failure — which breaks the single
-// property ErrorID exists to provide, that grepping one id finds the lines of
-// exactly one incident — or an id megabytes long, since
-// http.Transport.MaxResponseHeaderBytes allows 10MB of headers. Rejecting a
-// malformed id simply falls through to catcher's own uuid.NewString, so the
-// error still gets an id; only the false correlation is lost.
+// The rule lives in catcher because catcher owns the id's format: it is the
+// only thing that mints one and the only thing that has to keep every id in the
+// logs the same shape. This package and client both defer to it so the two
+// cannot drift apart. The name is kept here for the call site's sake.
 func adoptErrorID(id string) string {
-	// uuid.Parse also accepts the urn:, braced and undashed forms; requiring
-	// exactly 36 characters restricts it to the canonical one, so the value
-	// written back out is the same shape every other id in the logs has.
-	if len(id) != 36 {
-		return ""
-	}
-
-	if _, err := uuid.Parse(id); err != nil {
-		return ""
-	}
-
-	return id
+	return catcher.AdoptErrorID(id)
 }
 
 // truncateDetail bounds upstream-supplied text to maxErrorDetailSize; see that
@@ -382,13 +471,18 @@ func calcSeverityFromStatus(status int) string {
 func DoReq[response any](url string, data []byte, method string, headers map[string]string, skipTlsVerification bool) (response, int, error) {
 	var result response
 
+	// Every error returned below carries an occurrence id: adopted from the
+	// upstream's x-error-id where there is one to adopt (the *RemoteError
+	// branch), generated where there is not. These branches are the latter —
+	// they fail before any response exists, or on a response that could not be
+	// read — so there is no id to inherit and nothing to read a header from.
 	if len(data) > maxMessageSize {
-		return result, http.StatusBadRequest, fmt.Errorf("cannot convert to object: data size exceeds limit (size=%d bytes, limit=%d bytes)", len(data), maxMessageSize)
+		return result, http.StatusBadRequest, withGeneratedErrorID(fmt.Errorf("cannot convert to object: data size exceeds limit (size=%d bytes, limit=%d bytes)", len(data), maxMessageSize))
 	}
 
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(data))
 	if err != nil {
-		return result, http.StatusInternalServerError, fmt.Errorf("error creating request: %w", err)
+		return result, http.StatusInternalServerError, withGeneratedErrorID(fmt.Errorf("error creating request: %w", err))
 	}
 
 	for k, v := range headers {
@@ -411,7 +505,7 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return result, http.StatusInternalServerError, fmt.Errorf("error doing request: %w", err)
+		return result, http.StatusInternalServerError, withGeneratedErrorID(fmt.Errorf("error doing request: %w", err))
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -438,7 +532,7 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return result, http.StatusInternalServerError, fmt.Errorf("error reading response body: %w", err)
+		return result, http.StatusInternalServerError, withGeneratedErrorID(fmt.Errorf("error reading response body: %w", err))
 	}
 
 	if resp.StatusCode == http.StatusNoContent {
@@ -447,7 +541,7 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return result, resp.StatusCode, fmt.Errorf("error parsing response: %w", err)
+		return result, resp.StatusCode, withGeneratedErrorID(fmt.Errorf("error parsing response: %w", err))
 	}
 
 	return result, resp.StatusCode, nil
@@ -501,12 +595,21 @@ func Download(url, file string, opts ...DownloadOption) error {
 		opt(config)
 	}
 
+	// The two filesystem errors in this function are left as plain errors on
+	// purpose. Creating a file and writing to it are local operations with no
+	// remote involved and no request in flight, so there is nothing to
+	// correlate across a service boundary — an occurrence id on them would be a
+	// value only ever seen once, in one process, by the caller that already has
+	// the error in hand. The HTTP half of the download is DownloadStream's, and
+	// its errors carry one.
 	out, err := os.Create(file)
 	if err != nil {
 		return fmt.Errorf("error creating file %s: %w", file, err)
 	}
 	defer func() { _ = out.Close() }()
 
+	// Returned unchanged: it already carries the id DownloadStream generated
+	// for it, and re-wrapping would mint a second one for one failure.
 	resp, err := DownloadStream(url, opts...)
 	if err != nil {
 		return err
@@ -539,9 +642,18 @@ func DownloadStream(url string, opts ...DownloadOption) (io.ReadCloser, error) {
 		opt(config)
 	}
 
+	// No error header is read anywhere in this function, and that is not an
+	// omission. The URL here is a third party's — a feed, a MaxMind archive, a
+	// vendor's CDN — not a ThreatWinds service, so there is no x-error-id to
+	// adopt: catcher.GinError is what emits that header, and nothing outside
+	// this org runs it. Reading it anyway would mean adopting a stranger's
+	// value as this org's occurrence id on the strength of the header name
+	// alone. Every error below therefore carries a locally generated id
+	// instead, which is honest about where the id came from and still gives an
+	// operator one value to grep the failure by.
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
+		return nil, withGeneratedErrorID(fmt.Errorf("error creating request: %w", err))
 	}
 
 	for k, v := range config.headers {
@@ -563,7 +675,7 @@ func DownloadStream(url string, opts ...DownloadOption) (io.ReadCloser, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error downloading from %s: %w", url, err)
+		return nil, withGeneratedErrorID(fmt.Errorf("error downloading from %s: %w", url, err))
 	}
 
 	// Deliberately not routed through SdkErrorFromResponse. This predicate is
@@ -578,7 +690,7 @@ func DownloadStream(url string, opts ...DownloadOption) (io.ReadCloser, error) {
 	// not a refactor.
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("bad status downloading from %s: %s", url, resp.Status)
+		return nil, withGeneratedErrorID(fmt.Errorf("bad status downloading from %s: %s", url, resp.Status))
 	}
 
 	return resp.Body, nil
