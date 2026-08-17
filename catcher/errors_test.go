@@ -968,3 +968,65 @@ func TestLogNilReceiverDoesNotPanic(t *testing.T) {
 	}()
 	e.Log()
 }
+
+// TestGinErrorLogsUnloggedNewError is the headline scenario GinError's
+// boundary log exists for: an *SdkError built with New() never logged
+// anything on its own, so every HTTP path ending at GinError needs to be
+// the guaranteed place it finally gets a line, with no handler changes.
+// Uses the default (unset) status so severity is ERROR and printLog's
+// synchronous path makes the capture deterministic (see captureStdout).
+func TestGinErrorLogsUnloggedNewError(t *testing.T) {
+	err := New("gin boundary log", nil, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	output := captureStdout(t, func() {
+		err.GinError(c)
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("expected exactly one log line from GinError, got %d: %q", len(lines), output)
+	}
+	line := lastJSONLine(t, output)
+	if line["msg"] != "gin boundary log" {
+		t.Errorf("expected logged msg %q, got %v", "gin boundary log", line["msg"])
+	}
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", w.Code)
+	}
+	var resp map[string]any
+	if jsonErr := json.Unmarshal(w.Body.Bytes(), &resp); jsonErr != nil {
+		t.Fatalf("failed to unmarshal response body: %v", jsonErr)
+	}
+	if _, ok := resp["error"]; !ok {
+		t.Fatal("expected 'error' key in response body")
+	}
+}
+
+// TestGinErrorAfterErrorLogsOnce covers the other half: Error() already
+// logged this error at construction, so GinError's boundary check must see
+// that and not add a second line, even though GinError only ever sees a
+// copy of the SdkError (value receiver) — see GinError's doc comment for
+// why the copy still carries the correct logged state for this call.
+func TestGinErrorAfterErrorLogsOnce(t *testing.T) {
+	var err *SdkError
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	output := captureStdout(t, func() {
+		err = Error("error then gin", nil, nil)
+		err.GinError(c)
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("expected exactly one log line total (construction only), got %d: %q", len(lines), output)
+	}
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", w.Code)
+	}
+}

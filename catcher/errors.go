@@ -349,11 +349,38 @@ func ToSdkError(err error) *SdkError {
 // GinError is a helper function to return an error to the client using Gin framework context.
 // It sets the headers x-error and x-error-id with the error message and UUID respectively,
 // writes a JSON error body, and sets the status code.
+//
+// Before writing anything, it logs the error if it has not already been
+// logged — the same line Log() would emit. This gives every HTTP path a
+// guaranteed boundary log with no handler changes required: an *SdkError
+// built with New() (which does not log) is still logged the moment it
+// reaches GinError, and one built with Error() or already Log()'d is not
+// logged a second time.
+//
+// GinError keeps its value receiver for backwards compatibility (see
+// Error, JSON and SecureString above), so it only ever holds a *copy* of
+// the SdkError, not the caller's pointer. It honours the logged flag by
+// taking the address of that local copy and calling Log() on it: the copy
+// was made at the moment GinError was invoked, so it carries whatever
+// logged was on the caller's pointer at that instant, and the check/set
+// happens correctly for this call. What does not happen is the reverse —
+// GinError cannot write back through a value receiver, so the caller's
+// original *SdkError is never marked logged by this call. In the ordinary
+// case (GinError is the terminal call in a request) that is invisible: the
+// line has been written, and nothing else in this codebase acts on that
+// pointer afterward. It only matters if the same *SdkError were logged via
+// GinError and then separately Log()'d (or passed through GinError again)
+// afterward — that would double-log, because from the original pointer's
+// point of view the flag was never actually flipped. A value receiver
+// cannot close that gap; doing so would require changing GinError to a
+// pointer receiver, which this task does not permit.
 // Additional Args keys:
 //   - "retry": N — sets the Retry-After header to N seconds.
 //   - "code_override": string — overrides the error code in the response body.
 //   - "param": string — included as "param" in the response error detail.
 func (e SdkError) GinError(c *gin.Context) {
+	(&e).Log()
+
 	secureMsg := e.SecureString()
 	c.Header("x-error-id", e.Code)
 	c.Header("x-error", secureMsg)
