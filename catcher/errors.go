@@ -107,10 +107,18 @@ func Error(msg string, cause error, args map[string]any) *SdkError {
 			Args:      args,
 			Msg:       msg,
 			Cause: func() *string {
-				if cause != nil {
-					return pointerOf(cause.Error())
+				// cause can be a non-nil `error` interface wrapping a nil
+				// *SdkError (see ToSdkError). ToSdkError already treats that
+				// as "no SdkError to short-circuit to", so it is treated the
+				// same way here: calling cause.Error() on it would dereference
+				// a nil receiver (Error() has a value receiver) and panic.
+				if cause == nil {
+					return pointerOf("unknown cause")
 				}
-				return pointerOf("unknown cause")
+				if sdkCause, ok := cause.(*SdkError); ok && sdkCause == nil {
+					return pointerOf("unknown cause")
+				}
+				return pointerOf(cause.Error())
 			}(),
 		}
 
@@ -155,18 +163,25 @@ func calculateSeverity(value interface{}) string {
 
 // ToSdkError tries to cast an error to a SdkError.
 // If the error isn't an SdkError, it returns nil.
+//
+// It also returns nil when err's dynamic value is a nil *SdkError boxed in a
+// non-nil error interface — e.g. a function declared to return *SdkError that
+// returns nil, then gets assigned to an `error` variable. errors.As matches
+// that case (the concrete type is right) and sets the target to that nil
+// pointer; returning it as-is would hand callers a *SdkError that is not
+// == nil as a concrete pointer but panics the moment any value-receiver
+// method (Error, JSON, SecureString) is called on it.
 func ToSdkError(err error) *SdkError {
 	if err == nil {
 		return nil
 	}
 
 	var sdkError *SdkError
-	switch {
-	case errors.As(err, &sdkError):
-		return err.(*SdkError)
-	default:
-		return nil
+	if errors.As(err, &sdkError) && sdkError != nil {
+		return sdkError
 	}
+
+	return nil
 }
 
 // GinError is a helper function to return an error to the client using Gin framework context.

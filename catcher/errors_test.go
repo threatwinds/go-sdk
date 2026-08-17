@@ -1,15 +1,72 @@
 package catcher
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+// captureStdout redirects os.Stdout for the duration of fn and returns
+// everything written to it. Modeled on the same os.Pipe technique used by
+// log_test.go and exit_log_test.go. It only produces deterministic results
+// for synchronous writes — ERROR severity and above (see printLog in log.go)
+// — since lower severities are handed to an async channel drained by a
+// goroutine that may flush after os.Stdout has already been restored.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	original := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	os.Stdout = w
+
+	fn()
+
+	w.Close()
+	os.Stdout = original
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	return buf.String()
+}
+
+// lastJSONLine parses the last non-empty line of output as JSON. Every
+// assertion in this file that needs log content produces exactly one line
+// per captured call, but taking the last line (rather than assuming there is
+// only one) matches the defensive pattern already used in log_test.go.
+//
+// beauty (package-level, toggled by other tests via Configure and never
+// reset) may prefix the line with a severity icon and a space ahead of the
+// JSON object; the prefix is stripped by locating the opening brace rather
+// than by asserting beauty's current value, so this helper works regardless
+// of what earlier tests left it set to.
+func lastJSONLine(t *testing.T, output string) map[string]any {
+	t.Helper()
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	last := lines[len(lines)-1]
+
+	if i := strings.IndexByte(last, '{'); i > 0 {
+		last = last[i:]
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(last), &parsed); err != nil {
+		t.Fatalf("expected a JSON log line, got %q: %v", last, err)
+	}
+	return parsed
+}
 
 func TestTrace(t *testing.T) {
 	t.Run("test error", func(t *testing.T) {
@@ -339,6 +396,156 @@ func TestGinErrorRetryAfter(t *testing.T) {
 		retryAfter := w.Header().Get("Retry-After")
 		if retryAfter != "" {
 			t.Errorf("expected no Retry-After when retry=0, got %q", retryAfter)
+		}
+	})
+}
+
+// TestErrorConstructPath covers the branch of Error() that builds a brand
+// new *SdkError: a nil cause, a plain (non-SdkError) cause, and — the
+// regression case for the "typed-nil pointer" crash — a cause whose static
+// type is *SdkError but whose value is nil, boxed into a non-nil `error`
+// interface. All three must construct a fresh error, log exactly one line,
+// and must never panic.
+func TestErrorConstructPath(t *testing.T) {
+	var typedNilCause *SdkError // nil *SdkError, boxed into `error` below
+
+	tests := []struct {
+		name          string
+		cause         error
+		expectedCause string
+	}{
+		{
+			name:          "nil cause",
+			cause:         nil,
+			expectedCause: "unknown cause",
+		},
+		{
+			name:          "plain error cause",
+			cause:         errors.New("boom"),
+			expectedCause: "boom",
+		},
+		{
+			name:          "typed-nil *SdkError cause",
+			cause:         typedNilCause,
+			expectedCause: "unknown cause",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got *SdkError
+			var recovered any
+
+			output := captureStdout(t, func() {
+				defer func() { recovered = recover() }()
+				got = Error("construct path: "+tt.name, tt.cause, nil)
+			})
+
+			if recovered != nil {
+				t.Fatalf("Error() panicked: %v", recovered)
+			}
+			if got == nil {
+				t.Fatal("expected a constructed *SdkError, got nil")
+			}
+			if got.Cause == nil || *got.Cause != tt.expectedCause {
+				t.Errorf("expected Cause %q, got %v", tt.expectedCause, got.Cause)
+			}
+			if got.Severity != "ERROR" {
+				t.Errorf("expected default severity ERROR, got %s", got.Severity)
+			}
+
+			line := lastJSONLine(t, output)
+			if line["msg"] != got.Msg {
+				t.Errorf("expected logged msg %q, got %v", got.Msg, line["msg"])
+			}
+			if line["cause"] != tt.expectedCause {
+				t.Errorf("expected logged cause %q, got %v", tt.expectedCause, line["cause"])
+			}
+			if line["code"] != got.Code {
+				t.Errorf("expected logged code %q, got %v", got.Code, line["code"])
+			}
+		})
+	}
+}
+
+// TestErrorStatusArgSeverityConstructPath covers args["status"] in the
+// branch of Error() that builds a brand new *SdkError — including with a
+// typed-nil *SdkError cause, to confirm the crash fix in ToSdkError doesn't
+// also disturb normal severity calculation on that path.
+func TestErrorStatusArgSeverityConstructPath(t *testing.T) {
+	var typedNilCause *SdkError
+
+	tests := []struct {
+		name     string
+		cause    error
+		status   int
+		expected string
+	}{
+		{"nil cause", nil, 503, "CRITICAL"},
+		{"plain error cause", errors.New("boom"), 400, "WARNING"},
+		{"typed-nil *SdkError cause", typedNilCause, 510, "ALERT"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Error("status test", tt.cause, map[string]any{"status": tt.status})
+			if got.Severity != tt.expected {
+				t.Errorf("expected severity %s, got %s", tt.expected, got.Severity)
+			}
+		})
+	}
+}
+
+// TestToSdkErrorDirect exercises ToSdkError in isolation, including the
+// regression cases for the typed-nil-pointer defect: returning a typed-nil
+// pointer instead of nil, and panicking on an *SdkError wrapped via
+// fmt.Errorf("%w", ...) because it re-asserted on the outer wrapper instead
+// of using the pointer errors.As already unwrapped.
+func TestToSdkErrorDirect(t *testing.T) {
+	t.Run("nil error", func(t *testing.T) {
+		if got := ToSdkError(nil); got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+
+	t.Run("plain error", func(t *testing.T) {
+		if got := ToSdkError(errors.New("boom")); got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+
+	t.Run("*SdkError", func(t *testing.T) {
+		sdkErr := Error("direct sdk error", nil, nil)
+		got := ToSdkError(sdkErr)
+		if got != sdkErr {
+			t.Errorf("expected the same pointer back, got %v", got)
+		}
+	})
+
+	t.Run("typed-nil *SdkError", func(t *testing.T) {
+		var nilSdk *SdkError
+		var recovered any
+		var got *SdkError
+
+		func() {
+			defer func() { recovered = recover() }()
+			got = ToSdkError(nilSdk)
+		}()
+
+		if recovered != nil {
+			t.Fatalf("ToSdkError panicked: %v", recovered)
+		}
+		if got != nil {
+			t.Errorf("expected nil for a typed-nil *SdkError, got %v", got)
+		}
+	})
+
+	t.Run("*SdkError wrapped via fmt.Errorf", func(t *testing.T) {
+		sdkErr := Error("wrapped sdk error", nil, nil)
+		wrapped := fmt.Errorf("context: %w", sdkErr)
+
+		got := ToSdkError(wrapped)
+		if got != sdkErr {
+			t.Errorf("expected ToSdkError to unwrap to the original pointer, got %v", got)
 		}
 	})
 }
