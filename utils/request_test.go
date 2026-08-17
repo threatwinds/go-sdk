@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,17 +23,30 @@ func TestSdkErrorFromResponse(t *testing.T) {
 	sdkErr := SdkErrorFromResponse(resp)
 
 	assert.NotNil(t, sdkErr)
-	assert.Equal(t, "abc123def456", sdkErr.Code)
 	assert.Equal(t, "remote service error", sdkErr.Msg)
 	assert.NotNil(t, sdkErr.Cause)
 	assert.Equal(t, "connection timeout", *sdkErr.Cause)
 	assert.Equal(t, "ERROR", sdkErr.Severity)
 	assert.Nil(t, sdkErr.Trace)
 	assert.Contains(t, sdkErr.Args, "status")
-	assert.Equal(t, float64(500), sdkErr.Args["status"])
-	assert.Contains(t, sdkErr.Args, "error_code")
-	assert.Equal(t, "abc123def456", sdkErr.Args["error_code"])
+	assert.Equal(t, 500, sdkErr.Args["status"])
 	assert.NotEmpty(t, sdkErr.Timestamp)
+
+	// The upstream's x-error-id is an *occurrence* id, so it lands in ErrorID
+	// — the field an operator greps across every service's logs to reconstruct
+	// one failure — and in Args["error_id"], the key catcher.build reserves
+	// for exactly this adoption.
+	assert.Equal(t, "abc123def456", sdkErr.ErrorID)
+	assert.Contains(t, sdkErr.Args, "error_id")
+	assert.Equal(t, "abc123def456", sdkErr.Args["error_id"])
+
+	// Code is the error's *type*, not this occurrence: an md5 of the message,
+	// identical for every remote error this helper builds. It must therefore
+	// be exactly what catcher itself derives for that message, and must not be
+	// the upstream's id — putting a per-occurrence id in Code is the
+	// conflation catcher.GinError was fixed to remove.
+	assert.Equal(t, catcher.New("remote service error", nil, nil).Code, sdkErr.Code)
+	assert.NotEqual(t, "abc123def456", sdkErr.Code)
 
 	// Verify it implements error via ToSdkError
 	assert.NotNil(t, catcher.ToSdkError(sdkErr))
@@ -53,6 +67,12 @@ func TestSdkErrorFromResponse_MissingHeaders(t *testing.T) {
 	assert.Equal(t, "ERROR", sdkErr.Severity)
 	assert.Nil(t, sdkErr.Trace)
 	assert.NotEmpty(t, sdkErr.Code)
+
+	// No id to adopt, so catcher mints one — every SdkError has an occurrence
+	// id whether or not an upstream supplied it — and nothing is left in
+	// Args under the reserved key to suggest otherwise.
+	assert.NotEmpty(t, sdkErr.ErrorID)
+	assert.NotContains(t, sdkErr.Args, "error_id")
 }
 
 func TestSdkErrorFromResponse_PartialHeaders(t *testing.T) {
@@ -69,7 +89,15 @@ func TestSdkErrorFromResponse_PartialHeaders(t *testing.T) {
 	assert.Equal(t, "service unavailable", *sdkErr.Cause)
 	assert.Equal(t, "CRITICAL", sdkErr.Severity)
 	assert.NotEmpty(t, sdkErr.Code)
-	assert.Equal(t, "service unavailable", sdkErr.Args["error_code"])
+
+	// x-error carries a human message, x-error-id an id. With only the former
+	// present there is no id to adopt, so one is minted: an occurrence id is
+	// never derived from error text — two unrelated services both answering
+	// "service unavailable" would otherwise share an id and appear, to anyone
+	// grepping it, to be one failure.
+	assert.NotEmpty(t, sdkErr.ErrorID)
+	assert.NotEqual(t, "service unavailable", sdkErr.ErrorID)
+	assert.NotContains(t, sdkErr.Args, "error_id")
 }
 
 func TestSdkErrorFromResponse_SeverityMapping(t *testing.T) {
@@ -93,7 +121,7 @@ func TestSdkErrorFromResponse_SeverityMapping(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(string(rune(tt.status)), func(t *testing.T) {
+		t.Run(strconv.Itoa(tt.status), func(t *testing.T) {
 			resp := &http.Response{
 				StatusCode: tt.status,
 				Header:     make(http.Header),
@@ -129,7 +157,7 @@ func TestCalcSeverityFromStatus(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run("", func(t *testing.T) {
+		t.Run(strconv.Itoa(tt.status), func(t *testing.T) {
 			result := calcSeverityFromStatus(tt.status)
 			assert.Equal(t, tt.expected, result, "calcSeverityFromStatus(%d) = %s, want %s", tt.status, result, tt.expected)
 		})
@@ -156,6 +184,58 @@ func TestSdkErrorFromResponse_JsonMarshallable(t *testing.T) {
 	err = json.Unmarshal(jBytes, &unmarshaled)
 	assert.NoError(t, err)
 	assert.Equal(t, sdkErr.Code, unmarshaled.Code)
+
+	// The occurrence id has to survive the wire too — it is the value the next
+	// service re-raises and an operator quotes from a support ticket.
+	assert.Equal(t, "test-code-99", unmarshaled.ErrorID)
+}
+
+func TestSdkErrorFromResponse_NilSafety(t *testing.T) {
+	t.Run("nil response", func(t *testing.T) {
+		sdkErr := SdkErrorFromResponse(nil)
+
+		assert.NotNil(t, sdkErr)
+		assert.Equal(t, "remote service error", sdkErr.Msg)
+		assert.Equal(t, "unknown cause", *sdkErr.Cause)
+		// No response at all is a local failure; 500 is what catcher would
+		// default to anyway, and keeps GinError from writing status 0.
+		assert.Equal(t, http.StatusInternalServerError, sdkErr.Args["status"])
+		assert.Equal(t, "ERROR", sdkErr.Severity)
+		assert.NotEmpty(t, sdkErr.ErrorID)
+	})
+
+	t.Run("nil header map", func(t *testing.T) {
+		sdkErr := SdkErrorFromResponse(&http.Response{StatusCode: 404})
+
+		assert.NotNil(t, sdkErr)
+		assert.Equal(t, "unknown cause", *sdkErr.Cause)
+		assert.Equal(t, 404, sdkErr.Args["status"])
+		assert.Equal(t, "WARNING", sdkErr.Severity)
+		assert.NotEmpty(t, sdkErr.ErrorID)
+	})
+
+	t.Run("canonical header keys", func(t *testing.T) {
+		// What a response that came off the wire actually carries: net/http
+		// canonicalizes on read, so the keys are X-Error / X-Error-Id.
+		resp := &http.Response{StatusCode: 502, Header: http.Header{}}
+		resp.Header.Set("x-error", "upstream refused")
+		resp.Header.Set("x-error-id", "canonical-id-7")
+
+		sdkErr := SdkErrorFromResponse(resp)
+
+		assert.Equal(t, "upstream refused", *sdkErr.Cause)
+		assert.Equal(t, "canonical-id-7", sdkErr.ErrorID)
+		assert.Equal(t, "CRITICAL", sdkErr.Severity)
+	})
+}
+
+func TestSdkErrorFromResponse_DoesNotReadBody(t *testing.T) {
+	// The body may already be consumed, or nil on a hand-built response; it is
+	// the caller's to read and to close. Reading a nil Body here would panic.
+	resp := &http.Response{StatusCode: 500, Header: make(http.Header)}
+
+	assert.NotPanics(t, func() { _ = SdkErrorFromResponse(resp) })
+	assert.Nil(t, resp.Body)
 }
 
 // DoReq's non-2xx path is what lets an error id survive a service-to-service

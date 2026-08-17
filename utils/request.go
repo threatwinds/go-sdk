@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,146 @@ import (
 
 	"github.com/threatwinds/go-sdk/catcher"
 )
+
+// remoteErrorMessage is the message carried by every error SdkErrorFromResponse
+// builds. It is deliberately constant and carries no upstream detail:
+// catcher.SecureString returns Msg verbatim — and only Msg — for a status >=
+// 500, so anything folded into it crosses the next service boundary
+// unfiltered. The remote's own text goes to Cause, its status to
+// Args["status"], and its occurrence id to ErrorID.
+const remoteErrorMessage = "remote service error"
+
+// SdkErrorFromResponse turns a failed HTTP response into a *catcher.SdkError,
+// reading only the status line and the error headers catcher.GinError sets on
+// the way out of a ThreatWinds service:
+//
+//	x-error-id → ErrorID (and Args["error_id"]), adopted verbatim so one
+//	             failure keeps a single id across every service that touches
+//	             it. Absent (a non-ThreatWinds endpoint, or an error from an
+//	             intermediary) → catcher mints a fresh UUID, exactly as it
+//	             would for any locally-raised error.
+//	x-error    → Cause, the remote's own rendered error text. Absent →
+//	             "unknown cause", the same text catcher itself uses.
+//	status     → Args["status"] (an int, as everywhere else in the SDK) and
+//	             Severity, via calcSeverityFromStatus.
+//
+// It never touches resp.Body: the body may already have been consumed, may be
+// nil on a hand-built response, and is the caller's to read and to close.
+//
+// The error is built with catcher.New, not catcher.Error, so nothing is logged
+// inside a transport helper — the error is logged once, wherever the caller
+// ends up handling it (or automatically, if it reaches catcher.GinError).
+//
+// Code is *not* the upstream's id. Code identifies the error's type (an md5 of
+// the message, per catcher.SdkError's field doc) and is therefore the same for
+// every error this function builds; the per-occurrence, greppable id is
+// ErrorID. Conflating the two is precisely the drift catcher.GinError was
+// fixed to remove.
+//
+// A nil response, a nil Header map and absent headers are all handled: a nil
+// response is reported as a 500, since "no response at all" is a local
+// failure and 500 is the status catcher would otherwise default to.
+func SdkErrorFromResponse(resp *http.Response) *catcher.SdkError {
+	return sdkErrorFromResponse(resp, remoteErrorMessage)
+}
+
+// sdkErrorFromResponse is the single place an HTTP response is translated into
+// an *SdkError. The message is a parameter only so DoReq can keep its
+// long-standing text (which embeds the response body it has already read);
+// every other field — status, severity, cause, adopted error id — is derived
+// here, so the two call sites cannot drift apart.
+func sdkErrorFromResponse(resp *http.Response, msg string) *catcher.SdkError {
+	status := http.StatusInternalServerError
+
+	var header http.Header
+	if resp != nil {
+		status = resp.StatusCode
+		header = resp.Header
+	}
+
+	args := map[string]any{"status": status}
+	if errorID := headerValue(header, "x-error-id"); errorID != "" {
+		args["error_id"] = errorID
+	}
+
+	var cause error
+	if causeText := headerValue(header, "x-error"); causeText != "" {
+		cause = errors.New(causeText)
+	}
+
+	err := catcher.New(msg, cause, args)
+
+	// The trace catcher captures here is this process's stack — DoReq and its
+	// caller — which describes where the response was *received*, not where
+	// the failure happened. The frames that explain the failure are in the
+	// upstream service's own log line, findable by ErrorID. Clearing it also
+	// makes the result deterministic rather than dependent on CATCHER_NO_TRACE
+	// (which already omits traces by default).
+	err.Trace = nil
+
+	// Severity is stated here rather than left to catcher's derivation from
+	// args["status"]: the two ladders agree today (calcSeverityFromStatus
+	// mirrors catcher.calculateSeverity, which is unexported and so cannot be
+	// called from here), and stating it keeps this helper's contract —
+	// severity follows the HTTP status of the response — true regardless of
+	// how catcher chooses to read its args.
+	err.Severity = calcSeverityFromStatus(status)
+
+	return err
+}
+
+// headerValue reads a header value, tolerating a Header map whose keys were
+// never canonicalized. http.Header.Get canonicalizes the *lookup* key
+// (textproto.CanonicalMIMEHeaderKey), so it finds "X-Error-Id" — what net/http
+// stores for any response that came off the wire — but silently misses an
+// entry a caller stored under the literal key "x-error-id", which is legal
+// since http.Header is a plain map and is what hand-built responses (mocks,
+// round-trippers, cached responses) tend to contain. Missing it would drop the
+// upstream's error id, so both spellings are checked.
+func headerValue(h http.Header, key string) string {
+	if len(h) == 0 {
+		return ""
+	}
+
+	if v := h.Get(key); v != "" {
+		return v
+	}
+
+	for _, v := range h[key] {
+		if v != "" {
+			return v
+		}
+	}
+
+	return ""
+}
+
+// calcSeverityFromStatus maps an HTTP status code to a catcher severity level.
+//
+// It mirrors catcher.calculateSeverity, which is unexported. The duplication is
+// deliberate and narrow: it takes a plain int rather than an interface{} that
+// needs casting, and it keeps the severity of a response-derived error pinned
+// by this package's own tests.
+func calcSeverityFromStatus(status int) string {
+	switch {
+	case status >= 100 && status < 200:
+		return "DEBUG"
+	case status >= 200 && status < 300:
+		return "INFO"
+	case status >= 300 && status < 400:
+		return "NOTICE"
+	case status >= 400 && status < 500:
+		return "WARNING"
+	case status >= 500 && status < 502:
+		return "ERROR"
+	case status >= 502 && status < 509:
+		return "CRITICAL"
+	case status >= 509 && status < 511:
+		return "ALERT"
+	}
+
+	return "ERROR"
+}
 
 // DoReq sends an HTTP request and processes the response.
 //
@@ -77,19 +218,17 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 	}
 
 	if resp.StatusCode >= 400 {
-		// Adopt the upstream's error id (x-error-id, set by catcher.GinError)
-		// so this failure keeps one id across every service that touches it.
-		// When the header is absent — a non-ThreatWinds endpoint, or an error
-		// from an intermediary — args["error_id"] is left unset and catcher
-		// generates a fresh id, same as it would for any other new error.
+		// One extraction path: SdkErrorFromResponse adopts the upstream's
+		// x-error-id as ErrorID, its x-error as Cause, and derives status and
+		// severity — see its doc comment. Only the message is supplied here,
+		// byte-for-byte the text this call site has always produced, because
+		// it embeds the body DoReq has already read (SdkErrorFromResponse
+		// never reads a body itself).
 		//
-		// catcher.New (not catcher.Error) so DoReq never logs: this error is
+		// catcher.New under the hood, so DoReq never logs: this error is
 		// logged, once, wherever the caller ends up handling it.
-		args := map[string]any{"status": resp.StatusCode}
-		if errorID := resp.Header.Get("x-error-id"); errorID != "" {
-			args["error_id"] = errorID
-		}
-		return result, resp.StatusCode, catcher.New(fmt.Sprintf("error response (status=%d): %s", resp.StatusCode, string(body)), nil, args)
+		return result, resp.StatusCode, sdkErrorFromResponse(resp,
+			fmt.Sprintf("error response (status=%d): %s", resp.StatusCode, string(body)))
 	}
 
 	if resp.StatusCode == http.StatusNoContent {
@@ -217,6 +356,16 @@ func DownloadStream(url string, opts ...DownloadOption) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("error downloading from %s: %w", url, err)
 	}
 
+	// Deliberately not routed through SdkErrorFromResponse. This predicate is
+	// not "the response is an error", it is "the response is not the exact
+	// success this function requires": 204, 206 and every 3xx land here too.
+	// Feeding those to SdkErrorFromResponse would stamp Severity INFO/NOTICE
+	// on a failure and put a 2xx/3xx into Args["status"], which
+	// catcher.GinError then uses as the HTTP status — a relaying handler would
+	// answer 206 with an error envelope. Tightening the predicate to >= 400 is
+	// what would make the two the same shape, and that is a behavioural change
+	// to who gets a file written (Download would start accepting a 3xx body),
+	// not a refactor.
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
 		return nil, fmt.Errorf("bad status downloading from %s: %s", url, resp.Status)
