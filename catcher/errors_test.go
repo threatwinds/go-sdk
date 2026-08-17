@@ -1,13 +1,11 @@
 package catcher
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -17,90 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
-
-// captureStdout redirects os.Stdout for the duration of fn and returns
-// everything written to it. Modeled on the same os.Pipe technique used by
-// log_test.go and exit_log_test.go.
-//
-// It first takes the package out of async mode for the duration of the
-// capture, and restores it afterward. Without that, this helper cannot be
-// deterministic for *any* test, whatever severity that test itself writes at:
-// the async writer goroutine (started by catcher's init, since async defaults
-// to on) resolves the package-level os.Stdout at the moment it writes each
-// queued line, so a line queued by an *earlier* test can be flushed into a
-// later test's pipe — landing inside a capture window belonging to code that
-// never wrote it. Every assertion here that counts lines, or requires the
-// output to be empty, is one stray flush away from failing, and the failure
-// moves from test to test between runs because it depends only on when the
-// goroutine happens to be scheduled.
-//
-// Configure(_, false, _) is what makes this work rather than merely narrow the
-// window: its disable path stops the writer and waits for it to finish
-// draining before returning (see catcher.go), so on return there is no
-// goroutine left that could write to the os.Stdout this function is about to
-// replace. Async is restored only after os.Stdout is put back, so the restored
-// writer can never see the pipe either.
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-
-	mu.Lock()
-	b, wasAsync, nt := beauty, async, noTrace
-	mu.Unlock()
-
-	if wasAsync {
-		Configure(b, false, nt)
-	}
-
-	original := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		if wasAsync {
-			Configure(b, true, nt)
-		}
-		t.Fatalf("failed to create pipe: %v", err)
-	}
-	os.Stdout = w
-
-	fn()
-
-	w.Close()
-	os.Stdout = original
-
-	if wasAsync {
-		Configure(b, true, nt)
-	}
-
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	return buf.String()
-}
-
-// lastJSONLine parses the last non-empty line of output as JSON. Every
-// assertion in this file that needs log content produces exactly one line
-// per captured call, but taking the last line (rather than assuming there is
-// only one) matches the defensive pattern already used in log_test.go.
-//
-// beauty (package-level, toggled by other tests via Configure and never
-// reset) may prefix the line with a severity icon and a space ahead of the
-// JSON object; the prefix is stripped by locating the opening brace rather
-// than by asserting beauty's current value, so this helper works regardless
-// of what earlier tests left it set to.
-func lastJSONLine(t *testing.T, output string) map[string]any {
-	t.Helper()
-
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	last := lines[len(lines)-1]
-
-	if i := strings.IndexByte(last, '{'); i > 0 {
-		last = last[i:]
-	}
-
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(last), &parsed); err != nil {
-		t.Fatalf("expected a JSON log line, got %q: %v", last, err)
-	}
-	return parsed
-}
 
 func TestTrace(t *testing.T) {
 	t.Run("test error", func(t *testing.T) {
@@ -1253,17 +1167,15 @@ func TestGinErrorOnNilFlagValueDoesNotCloseGapForOriginalPointer(t *testing.T) {
 // the same *SdkError must produce exactly one line, never zero and never
 // more than one. Intended to be run with -race.
 //
-// withSyncLogging (defined in retry_test.go) disables the package's async
-// logging goroutine for this test and restores it afterward. This test's
-// own writes are ERROR severity, which printLog already always writes
-// synchronously regardless of async (see printLog's doc comment in
-// log.go) — but async messages left queued by earlier tests are still
-// drained by a background goroutine that reads the package-level
-// os.Stdout var without synchronization, which is a pre-existing,
-// unrelated data race against captureStdout's swap of os.Stdout (it
-// reproduces on baseline main, independent of this fix). withSyncLogging
-// stops that goroutine for the duration of this test, so a run under
-// -race reports only what this test actually exercises.
+// withSyncLogging (defined in harness_test.go) disables the package's async
+// logging goroutine for the whole test, not just the captured span. This
+// test's own writes are ERROR severity, which printLog already always writes
+// synchronously regardless of async (see printLog's doc comment in log.go),
+// so the sync mode is not what makes the line count deterministic — the
+// atomic.Bool under test is. What it does buy is that the assertion counts
+// only this test's lines: with async on, a line queued by an earlier test
+// could still be sitting in the channel, and the drain would put it inside
+// this capture.
 func TestLogConcurrentGoroutinesLogOnce(t *testing.T) {
 	withSyncLogging(t)
 

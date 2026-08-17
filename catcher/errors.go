@@ -206,7 +206,15 @@ func (e *SdkError) Log() {
 		return
 	}
 
-	if beauty {
+	// Snapshotted under mu because Configure writes beauty under mu, and a
+	// read racing that write is a data race however benign the value looks.
+	// Log is the one config read on this path that was left unguarded; Log
+	// in log.go has always taken the lock for exactly this (see log.go).
+	mu.Lock()
+	b := beauty
+	mu.Unlock()
+
+	if b {
 		printLog(fmt.Sprint(GetSeverityIcon(e.Severity), " ", e.JSON()), e.Severity)
 	} else {
 		printLog(e.JSON(), e.Severity)
@@ -520,8 +528,15 @@ func build(msg string, cause error, args map[string]any, skip int) *SdkError {
 		errorID = uuid.NewString()
 	}
 
+	// Snapshotted under mu for the same reason as beauty in Log above:
+	// Configure writes noTrace under mu, so reading it unguarded from a
+	// goroutine that is constructing an error races that write.
+	mu.Lock()
+	nt := noTrace
+	mu.Unlock()
+
 	var trace []string
-	if !noTrace {
+	if !nt {
 		pc := make([]uintptr, 25)
 		n := runtime.Callers(skip, pc)
 		frames := runtime.CallersFrames(pc[:n])

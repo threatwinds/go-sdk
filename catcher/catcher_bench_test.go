@@ -4,15 +4,11 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"os"
 	"testing"
 )
 
 func BenchmarkCatcherInfoAsyncNoTrace(b *testing.B) {
-	Configure(false, true, true)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, true, true)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -22,10 +18,7 @@ func BenchmarkCatcherInfoAsyncNoTrace(b *testing.B) {
 }
 
 func BenchmarkCatcherErrorAsyncNoTrace(b *testing.B) {
-	Configure(false, true, true)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, true, true)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -35,10 +28,7 @@ func BenchmarkCatcherErrorAsyncNoTrace(b *testing.B) {
 }
 
 func BenchmarkCatcherInfoSyncNoTrace(b *testing.B) {
-	Configure(false, false, true)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, false, true)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -47,10 +37,7 @@ func BenchmarkCatcherInfoSyncNoTrace(b *testing.B) {
 }
 
 func BenchmarkCatcherErrorSyncNoTrace(b *testing.B) {
-	Configure(false, false, true)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, false, true)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -59,10 +46,7 @@ func BenchmarkCatcherErrorSyncNoTrace(b *testing.B) {
 }
 
 func BenchmarkCatcherInfoSyncWithTrace(b *testing.B) {
-	Configure(false, false, false)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, false, false)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -71,10 +55,7 @@ func BenchmarkCatcherInfoSyncWithTrace(b *testing.B) {
 }
 
 func BenchmarkCatcherErrorSyncWithTrace(b *testing.B) {
-	Configure(false, false, false)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, false, false)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -83,12 +64,9 @@ func BenchmarkCatcherErrorSyncWithTrace(b *testing.B) {
 }
 
 func BenchmarkSlogJSON(b *testing.B) {
-	// Para ser justos con catcher que usa os.Stdout, slog debería usar os.Stdout redirigido a DevNull
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
-
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	// To be fair to catcher, which writes to a discarded stdout, slog writes
+	// to a discarded destination too.
+	logger := slog.New(slog.NewJSONHandler(devNull(b), nil))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		logger.Info("benchmark message", "key", "value")
@@ -96,11 +74,9 @@ func BenchmarkSlogJSON(b *testing.B) {
 }
 
 func BenchmarkStandardLog(b *testing.B) {
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
-
-	log.SetOutput(os.Stdout)
+	originalOutput := log.Writer()
+	log.SetOutput(devNull(b))
+	b.Cleanup(func() { log.SetOutput(originalOutput) })
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		log.Println("benchmark message key=value")
@@ -124,10 +100,7 @@ func deepCallSlog(level int, logger *slog.Logger) error {
 }
 
 func BenchmarkCatcherNestedErrors3(b *testing.B) {
-	Configure(false, true, true)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, true, true)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -137,10 +110,7 @@ func BenchmarkCatcherNestedErrors3(b *testing.B) {
 }
 
 func BenchmarkCatcherNestedErrors6(b *testing.B) {
-	Configure(false, true, true)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, true, true)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -150,11 +120,7 @@ func BenchmarkCatcherNestedErrors6(b *testing.B) {
 }
 
 func BenchmarkSlogNestedErrors3(b *testing.B) {
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
-
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewJSONHandler(devNull(b), nil))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err := deepCallSlog(3, logger)
@@ -163,11 +129,7 @@ func BenchmarkSlogNestedErrors3(b *testing.B) {
 }
 
 func BenchmarkSlogNestedErrors6(b *testing.B) {
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
-
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewJSONHandler(devNull(b), nil))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err := deepCallSlog(6, logger)
@@ -176,10 +138,7 @@ func BenchmarkSlogNestedErrors6(b *testing.B) {
 }
 
 func BenchmarkCatcherInfoAsyncParallel(b *testing.B) {
-	Configure(false, true, true)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, true, true)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -197,10 +156,7 @@ func BenchmarkCatcherInfoAsyncParallel(b *testing.B) {
 }
 
 func BenchmarkCatcherErrorAsyncParallel(b *testing.B) {
-	Configure(false, true, true)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, true, true)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -218,10 +174,7 @@ func BenchmarkCatcherErrorAsyncParallel(b *testing.B) {
 }
 
 func BenchmarkCatcherInfoSyncParallel(b *testing.B) {
-	Configure(false, false, true)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, false, true)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -238,10 +191,7 @@ func BenchmarkCatcherInfoSyncParallel(b *testing.B) {
 }
 
 func BenchmarkCatcherErrorSyncParallel(b *testing.B) {
-	Configure(false, false, true)
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
+	benchToDevNull(b, false, false, true)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -258,11 +208,7 @@ func BenchmarkCatcherErrorSyncParallel(b *testing.B) {
 }
 
 func BenchmarkSlogJSONParallel(b *testing.B) {
-	originalStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	defer func() { os.Stdout = originalStdout }()
-
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewJSONHandler(devNull(b), nil))
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0

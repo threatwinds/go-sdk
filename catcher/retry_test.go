@@ -423,25 +423,6 @@ func TestRetryWithBackoff(t *testing.T) {
 	})
 }
 
-// withSyncLogging disables async logging for the duration of the calling
-// test and restores whatever Configure state was in effect before it,
-// afterward. It exists because captureStdout only produces deterministic
-// results for synchronous writes (see its doc comment in errors_test.go);
-// InfiniteLoop's termination log is INFO severity, which would otherwise
-// race the async drain goroutine exactly like the already-flaky TestInfo.
-func withSyncLogging(t *testing.T) {
-	t.Helper()
-
-	mu.Lock()
-	b, a, nt := beauty, async, noTrace
-	mu.Unlock()
-
-	Configure(b, false, nt)
-	t.Cleanup(func() {
-		Configure(b, a, nt)
-	})
-}
-
 func TestInfiniteLoop(t *testing.T) {
 	t.Run("non-exception errors are swallowed silently, however many iterations run", func(t *testing.T) {
 		withSyncLogging(t)
