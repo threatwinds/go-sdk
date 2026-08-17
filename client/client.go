@@ -211,11 +211,15 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body, out inte
 		return err
 	}
 
-	// Handle error responses.
+	// Handle error responses. These three are the headers catcher.GinError
+	// writes on the way out of a ThreatWinds service, which is what this client
+	// talks to; x-error-id in particular is the occurrence id that lets one
+	// failure be grepped across every service's logs, and it reaches catcher
+	// through APIError.CatcherErrorID.
 	if resp.StatusCode >= 400 {
-		message := resp.Header.Get("X-Error")
-		errorID := resp.Header.Get("X-Error-Id")
-		retryAfter := resp.Header.Get("Retry-After")
+		message := headerValue(resp.Header, "x-error")
+		errorID := headerValue(resp.Header, "x-error-id")
+		retryAfter := headerValue(resp.Header, "retry-after")
 		return newAPIError(method, path, resp.StatusCode, message, errorID, retryAfter, respBody)
 	}
 
@@ -232,6 +236,40 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body, out inte
 	}
 
 	return nil
+}
+
+// headerValue reads a response header, tolerating a Header map whose keys were
+// never canonicalized.
+//
+// http.Header.Get canonicalizes the *lookup* key
+// (textproto.CanonicalMIMEHeaderKey), so it finds "X-Error-Id" — what net/http
+// stores for any response that came off the wire — but silently misses an entry
+// stored under the literal key "x-error-id", which is legal since http.Header
+// is a plain map and is what a hand-built response contains: a test double, a
+// cached response, or a custom http.RoundTripper installed through
+// WithHTTPClient. Missing it would drop the upstream's error id, so both
+// spellings are checked. Callers pass the lowercase spelling, so Get covers the
+// canonical form and the map lookup covers the literal one.
+//
+// The same reasoning, and the same shape, as utils.headerValue. The duplication
+// is deliberate: this package deliberately depends on nothing in the SDK but
+// catcher, and a six-line accessor for an http.Header is not catcher's business.
+func headerValue(h http.Header, key string) string {
+	if len(h) == 0 {
+		return ""
+	}
+
+	if v := h.Get(key); v != "" {
+		return v
+	}
+
+	for _, v := range h[key] {
+		if v != "" {
+			return v
+		}
+	}
+
+	return ""
 }
 
 // applyAuth sets the appropriate authentication headers on the request.
