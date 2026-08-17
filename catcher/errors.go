@@ -166,6 +166,79 @@ func (e SdkError) SecureString() string {
 	return e.Error()
 }
 
+// build implements the construction shared by Error and New: the
+// short-circuit when cause is already an *SdkError, trace capture, the code
+// hash, and severity derivation from args["status"]. It never logs — Error
+// and New each decide independently whether the result gets logged, and
+// how. Keeping this in one place is what stops the two constructors from
+// drifting apart.
+//
+// skip is passed to runtime.Callers so the recorded trace starts at the
+// caller of Error/New rather than at build or at Error/New itself; both
+// exported constructors are exactly one frame above build, so both pass 3.
+func build(msg string, cause error, args map[string]any, skip int) *SdkError {
+	if err := ToSdkError(cause); err != nil {
+		return err
+	}
+
+	var trace []string
+	if !noTrace {
+		pc := make([]uintptr, 25)
+		n := runtime.Callers(skip, pc)
+		frames := runtime.CallersFrames(pc[:n])
+
+		trace = make([]string, 0, 10)
+		for {
+			frame, more := frames.Next()
+
+			trace = append(trace, fmt.Sprint(frame.Function, " ", frame.Line))
+			if !more {
+				break
+			}
+		}
+	}
+	sum := md5.Sum([]byte(msg))
+
+	// effectiveCause normalizes cause to nil in the two cases that must
+	// not participate in the chain: a genuinely nil cause, and a
+	// non-nil `error` interface wrapping a nil *SdkError (see
+	// ToSdkError). Both render as "unknown cause" in the Cause string
+	// below, and for the same reason both must Unwrap to nil rather
+	// than to a nil pointer: calling cause.Error() on a typed-nil
+	// *SdkError would dereference a nil receiver (Error() has a value
+	// receiver) and panic, and handing that same nil pointer out via
+	// Unwrap would only defer the panic to whatever errors.Is/As caller
+	// eventually calls a method on it.
+	effectiveCause := cause
+	if sdkCause, ok := cause.(*SdkError); ok && sdkCause == nil {
+		effectiveCause = nil
+	}
+
+	causeText := "unknown cause"
+	if effectiveCause != nil {
+		causeText = effectiveCause.Error()
+	}
+
+	err := &SdkError{
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+		Code:      hex.EncodeToString(sum[:]),
+		Trace:     trace,
+		Args:      args,
+		Msg:       msg,
+		Cause:     pointerOf(causeText),
+		cause:     effectiveCause,
+	}
+
+	statusCode, ok := args["status"]
+	if !ok {
+		err.Severity = "ERROR"
+	} else {
+		err.Severity = calculateSeverity(statusCode)
+	}
+
+	return err
+}
+
 // Error tries to cast the cause as an SdkError, if it is not an SdkError, it creates a new SdkError with the given parameters.
 // It logs the error message and returns the error.
 // If cause is nil, it will store a blank string in the Cause field.
@@ -183,13 +256,15 @@ func (e SdkError) SecureString() string {
 // # This package logs at construction, not at handling
 //
 // If cause is already an *SdkError, Error does NOT construct a new error and
-// does NOT log anything: it returns cause unchanged, exactly as built and
-// logged the first time it was constructed. msg, args, and any
-// args["status"] override are silently ignored in that case — the returned
-// error's identity, Code, Severity and Args must stay stable as it
-// propagates back up through however many call sites already have it, and
-// re-logging it once per layer on the way up is not something this
-// function does.
+// does NOT log anything new: it returns cause unchanged, exactly as built,
+// and calls Log() on it — a no-op if that pointer was already logged
+// (which every existing call site's cause is, since Error has always logged
+// at construction), but not a no-op if it came from New(), which does not
+// log. msg, args, and any args["status"] override are silently ignored in
+// the short-circuit case — the returned error's identity, Code, Severity
+// and Args must stay stable as it propagates back up through however many
+// call sites already have it, and re-logging it once per layer on the way
+// up is not something this function does.
 //
 // This means passing an existing *SdkError as cause is never the right way
 // to add logged context. To log context about an error you already have,
@@ -198,74 +273,32 @@ func (e SdkError) SecureString() string {
 //	sdkErr := catcher.ToSdkError(err)
 //	catcher.Error("context about the failure", nil, map[string]any{"cause": sdkErr.Error()})
 //
+// New is the preferred constructor for new call sites migrating away from
+// logging at construction; see its doc comment.
+//
 // Returns:
 // *SdkError: the error. This type implements the Go error interface.
 func Error(msg string, cause error, args map[string]any) *SdkError {
-	var err *SdkError
-	if err = ToSdkError(cause); err == nil {
-		var trace []string
-		if !noTrace {
-			pc := make([]uintptr, 25)
-			n := runtime.Callers(2, pc)
-			frames := runtime.CallersFrames(pc[:n])
-
-			trace = make([]string, 0, 10)
-			for {
-				frame, more := frames.Next()
-
-				trace = append(trace, fmt.Sprint(frame.Function, " ", frame.Line))
-				if !more {
-					break
-				}
-			}
-		}
-		sum := md5.Sum([]byte(msg))
-
-		// effectiveCause normalizes cause to nil in the two cases that must
-		// not participate in the chain: a genuinely nil cause, and a
-		// non-nil `error` interface wrapping a nil *SdkError (see
-		// ToSdkError). Both render as "unknown cause" in the Cause string
-		// below, and for the same reason both must Unwrap to nil rather
-		// than to a nil pointer: calling cause.Error() on a typed-nil
-		// *SdkError would dereference a nil receiver (Error() has a value
-		// receiver) and panic, and handing that same nil pointer out via
-		// Unwrap would only defer the panic to whatever errors.Is/As caller
-		// eventually calls a method on it.
-		effectiveCause := cause
-		if sdkCause, ok := cause.(*SdkError); ok && sdkCause == nil {
-			effectiveCause = nil
-		}
-
-		causeText := "unknown cause"
-		if effectiveCause != nil {
-			causeText = effectiveCause.Error()
-		}
-
-		err = &SdkError{
-			Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
-			Code:      hex.EncodeToString(sum[:]),
-			Trace:     trace,
-			Args:      args,
-			Msg:       msg,
-			Cause:     pointerOf(causeText),
-			cause:     effectiveCause,
-		}
-
-		statusCode, ok := args["status"]
-		if !ok {
-			err.Severity = "ERROR"
-		} else {
-			err.Severity = calculateSeverity(statusCode)
-		}
-
-		if beauty {
-			printLog(fmt.Sprint(GetSeverityIcon(err.Severity), " ", err.JSON()), err.Severity)
-		} else {
-			printLog(err.JSON(), err.Severity)
-		}
-	}
-
+	err := build(msg, cause, args, 3)
+	err.Log()
 	return err
+}
+
+// New constructs an *SdkError exactly like Error — same short-circuit when
+// cause is already an *SdkError, same trace capture, same code hash, same
+// severity derivation from args["status"] — but it does not log.
+//
+// New is the preferred constructor. The error is logged once it reaches a
+// boundary: automatically, the first time GinError writes it to an HTTP
+// response, or explicitly, by calling Log() on it. Log is idempotent, so
+// it is safe to call from both places during a migration, or from neither
+// if GinError will handle it. What is not safe is constructing with New and
+// then discarding the result without ever reaching a boundary or calling
+// Log(): unlike Error, a swallowed *SdkError from New is never logged
+// anywhere, by anyone — if you catch it and decide not to propagate it,
+// call Log() yourself before you let it go.
+func New(msg string, cause error, args map[string]any) *SdkError {
+	return build(msg, cause, args, 3)
 }
 
 func calculateSeverity(value interface{}) string {

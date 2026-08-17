@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -866,6 +867,92 @@ func TestLogTwiceEmitsOnce(t *testing.T) {
 	line := lastJSONLine(t, output)
 	if line["msg"] != "log twice" {
 		t.Errorf("expected logged msg %q, got %v", "log twice", line["msg"])
+	}
+}
+
+// TestNewDoesNotLog is the defining difference between New and Error: New
+// performs the exact same construction but never writes a line, so a caller
+// that never reaches a boundary and never calls Log() gets silence, on
+// purpose — logging is now the boundary's job, not the constructor's.
+func TestNewDoesNotLog(t *testing.T) {
+	var err *SdkError
+	output := captureStdout(t, func() {
+		err = New("new does not log", nil, map[string]any{"status": 500})
+	})
+
+	if err == nil {
+		t.Fatal("expected a constructed *SdkError")
+	}
+	if got := strings.TrimSpace(output); got != "" {
+		t.Errorf("expected New() to log nothing, got %q", got)
+	}
+}
+
+// TestNewThenLogEmitsOne covers the explicit-boundary half of the
+// migration: New() built it silently, and a later Log() call is what
+// actually produces the line.
+func TestNewThenLogEmitsOne(t *testing.T) {
+	err := New("new then log", nil, map[string]any{"status": 500})
+
+	output := captureStdout(t, func() {
+		err.Log()
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("expected exactly one log line, got %d: %q", len(lines), output)
+	}
+	line := lastJSONLine(t, output)
+	if line["msg"] != "new then log" {
+		t.Errorf("expected logged msg %q, got %v", "new then log", line["msg"])
+	}
+}
+
+// TestErrorThenLogEmitsOnce covers the specific migration scenario the task
+// calls out: Error() already logged at construction (now by calling Log()
+// internally), so a later explicit Log() call — e.g. from code not yet
+// migrated to New() — must not add a second line.
+func TestErrorThenLogEmitsOnce(t *testing.T) {
+	var err *SdkError
+	output := captureStdout(t, func() {
+		err = Error("construction already logged", nil, map[string]any{"status": 500})
+		err.Log()
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("expected exactly one log line total, got %d: %q", len(lines), output)
+	}
+}
+
+// TestNewFieldsMatchError pins New()'s doc claim of being "identical to
+// Error in every respect" apart from logging: every field but Timestamp and
+// Trace (which are naturally call-specific — different instant, different
+// call site) must match field-for-field against an equivalent Error() call.
+func TestNewFieldsMatchError(t *testing.T) {
+	cause := errors.New("shared root cause")
+	args := map[string]any{"status": 503, "op": "compare"}
+
+	var fromError *SdkError
+	captureStdout(t, func() {
+		fromError = Error("compare new vs error", cause, args)
+	})
+	fromNew := New("compare new vs error", cause, args)
+
+	if fromNew.Code != fromError.Code {
+		t.Errorf("Code mismatch: New=%q Error=%q", fromNew.Code, fromError.Code)
+	}
+	if fromNew.Msg != fromError.Msg {
+		t.Errorf("Msg mismatch: New=%q Error=%q", fromNew.Msg, fromError.Msg)
+	}
+	if !reflect.DeepEqual(fromNew.Args, fromError.Args) {
+		t.Errorf("Args mismatch: New=%v Error=%v", fromNew.Args, fromError.Args)
+	}
+	if fromNew.Severity != fromError.Severity {
+		t.Errorf("Severity mismatch: New=%q Error=%q", fromNew.Severity, fromError.Severity)
+	}
+	if fromNew.Cause == nil || fromError.Cause == nil || *fromNew.Cause != *fromError.Cause {
+		t.Errorf("Cause mismatch: New=%v Error=%v", fromNew.Cause, fromError.Cause)
 	}
 }
 
