@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"runtime"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -52,18 +53,46 @@ type SdkError struct {
 	// a second call — from Error's own construction-time log, an explicit
 	// Log() call at a handling boundary, or GinError's boundary log — is a
 	// no-op. Deliberately unexported for the same reason as cause: the wire
-	// format above is unchanged, and an SdkError decoded from JSON starts
-	// with logged == false regardless of whether the original was ever
-	// logged, which is fine — decoding never runs Log.
+	// format above is unchanged, and an SdkError decoded from JSON has a nil
+	// logged pointer regardless of whether the original was ever logged,
+	// which is fine — decoding never runs Log. See Log's doc comment for
+	// what a nil pointer means for that case.
 	//
-	// This is a plain bool, not a sync.Once or a per-instance mutex,
-	// specifically so SdkError stays copyable: go vet's copylocks check
-	// would flag every value-receiver method below (Error, JSON,
-	// SecureString, GinError) the moment the struct embeds a lock. Log
-	// guards reads and writes of this field with the package-level mu
-	// instead. See Log's doc comment for what that means for a caller
-	// holding an SdkError value rather than a *SdkError.
-	logged bool
+	// This is a *atomic.Bool, not a plain bool. SdkError is handed around
+	// and returned by value-receiver methods (Error, JSON, SecureString,
+	// GinError) on purpose — those signatures cannot change without
+	// breaking every existing caller — which means the struct is copied
+	// constantly: GinError(c) takes a copy to satisfy its value receiver,
+	// dereferencing a *SdkError to log a %v of it copies, storing an
+	// SdkError (not *SdkError) in a slice copies. A plain bool copies with
+	// the struct, so each copy's flag is independent and "already logged"
+	// stops being true anywhere else the moment the struct is duplicated —
+	// that independence is the bug this field exists to close. A pointer
+	// field copies too, but copying a pointer does not copy its pointee:
+	// every copy of the struct still shares the one flag the pointer refers
+	// to, so a value-receiver method can genuinely observe and flip
+	// "logged" for every other copy in existence, not just its own. The
+	// pointee also needs its own synchronization, because two goroutines
+	// racing to log the same *SdkError is a real, intended use (see
+	// TestLogConcurrentGoroutinesLogOnce). An embedded, by-value sync.Once
+	// would also serialize the check-and-set and would also be shared
+	// across copies for the same reason a pointer is — but embedding a lock
+	// type directly in SdkError trips go vet's copylocks check the moment
+	// any value-receiver method below (Error, JSON, SecureString, GinError)
+	// copies the struct; confirmed by running `go vet ./catcher/...` against
+	// that version rather than assuming. A *pointer* to a lock does not
+	// trip copylocks, because copylocks only inspects values that directly
+	// embed a Locker-shaped type — a pointer field, whatever it points to,
+	// is just a pointer. So the field has to be a pointer either way,
+	// leaving the choice of what it points to: *atomic.Bool over *sync.Once
+	// because the operation being guarded is a plain check-and-set, which
+	// atomic.Bool's CompareAndSwap expresses directly, without Once's
+	// one-shot-function machinery.
+	//
+	// See Log's doc comment for what a nil pointer here means (an SdkError
+	// that never went through build — a zero value or one decoded from
+	// JSON).
+	logged *atomic.Bool
 }
 
 // Error returns the error message.
@@ -103,27 +132,54 @@ func (e *SdkError) Unwrap() error {
 }
 
 // Log emits this error's log line — exactly the line Error() emits at
-// construction — and records that it has done so. A second call, on the
-// same *SdkError, is a no-op: this idempotency is the whole basis of a safe
-// migration away from "log at construction". During the transition an
-// error may end up logged at construction (Error), at an explicit handling
-// boundary (Log), or at the HTTP boundary (GinError) — sometimes more than
-// one of those will run against the same pointer — and it must never
-// produce two lines for one error.
+// construction — and records that it has done so. A second call is a
+// no-op, whether it arrives via the same *SdkError, a pointer taken to a
+// copy of that same struct (e.g. GinError's local copy — see its doc
+// comment), or a concurrent goroutine racing another call on the same
+// pointer: this idempotency is the whole basis of a safe migration away
+// from "log at construction". During the transition an error may end up
+// logged at construction (Error), at an explicit handling boundary (Log),
+// or at the HTTP boundary (GinError) — sometimes more than one of those
+// will run against what turns out to be the same logical error — and it
+// must never produce two lines for one error.
 //
 // Log takes a pointer receiver, unlike Error, JSON, SecureString and
 // GinError below (which stay on value receivers for backwards
-// compatibility). Log has to mutate the logged flag so the next call sees
-// it; a value receiver could only ever flip its own throwaway copy. That
-// has a real consequence: if a caller holds an SdkError *value* — e.g. one
-// produced by dereferencing a *SdkError, or by decoding JSON into a plain
-// SdkError — calling Log() on it addresses that value's own copy of the
-// struct, not the pointer any other code may hold to "the same" logical
-// error. Its logged flag starts false independently, so it logs
-// independently, and flipping it does nothing for anyone else's pointer.
-// In this codebase that is reachable only by a caller going out of its way
-// to copy the struct; every constructor here (Error, New) and every real
-// call site hands back and passes around *SdkError, never SdkError.
+// compatibility). What actually makes a second call a no-op, though, is
+// not the receiver — it's that logged is a *atomic.Bool: every SdkError
+// built by build() (i.e. by Error or New) gets one allocated at
+// construction, and every copy taken of that struct afterward — by a
+// value-receiver method, by dereferencing the pointer, by storing an
+// SdkError value somewhere — carries a pointer to that same atomic.Bool,
+// not a copy of its value. A check-and-set through any copy's pointer is
+// therefore visible to every other copy, including the caller's original.
+// That also makes concurrent Log() calls on the same error safe without an
+// external lock: CompareAndSwap(false, true) guarantees exactly one caller
+// observes the false→true transition, so exactly one of them logs no
+// matter how many goroutines call at once (see
+// TestLogConcurrentGoroutinesLogOnce, run with -race).
+//
+// A nil logged pointer means this SdkError never went through build — a
+// zero-value SdkError{} literal, or one decoded from JSON (decoding never
+// calls Log, and the field is unexported so JSON tags can't touch it
+// either). That is not an error state: Log treats "no flag yet" as "not
+// logged yet", lazily allocating one — under mu, so two goroutines making
+// their first call on the same nil-flag pointer don't race to install
+// different flags — before doing the check-and-set. That makes repeated
+// Log() calls on that *same* pointer idempotent, exactly as above, because
+// the second call sees the flag the first call installed. What it cannot
+// fix is GinError specifically: GinError has a value receiver, so when
+// called on an SdkError whose logged pointer is nil, it is already holding
+// an independent copy of the whole struct — nil pointer included — before
+// Log ever runs. The flag Log lazily allocates for that call is real and
+// makes that one call idempotent against itself, but a value receiver has
+// no way to write it back to the caller's original (see GinError's doc
+// comment), so a later Log() on the original pointer, or a second GinError
+// call, starts from its own independent nil flag and logs again. This gap
+// is unreachable through Error or New, which always allocate the flag in
+// build() before any copy is ever made; it is only reachable by code that
+// builds an SdkError{} literal directly, or decodes one from JSON, and
+// then hands the same value to GinError (or Log) more than once.
 //
 // Safe to call on a nil *SdkError: it returns without doing anything,
 // rather than panicking, matching the nil-safety already established for
@@ -133,19 +189,31 @@ func (e *SdkError) Log() {
 		return
 	}
 
-	mu.Lock()
-	if e.logged {
-		mu.Unlock()
+	if !e.loggedFlag().CompareAndSwap(false, true) {
 		return
 	}
-	e.logged = true
-	mu.Unlock()
 
 	if beauty {
 		printLog(fmt.Sprint(GetSeverityIcon(e.Severity), " ", e.JSON()), e.Severity)
 	} else {
 		printLog(e.JSON(), e.Severity)
 	}
+}
+
+// loggedFlag returns e's logged flag, lazily allocating it under mu if e
+// was never constructed via build (see the field doc on logged, and the
+// "nil logged pointer" section of Log's doc comment above). The lock is
+// only around the allocate-if-nil check: it exists so two goroutines
+// making their first Log() call on the same nil-flag pointer install
+// exactly one *atomic.Bool between them, rather than each allocating their
+// own and one write clobbering the other.
+func (e *SdkError) loggedFlag() *atomic.Bool {
+	mu.Lock()
+	defer mu.Unlock()
+	if e.logged == nil {
+		e.logged = &atomic.Bool{}
+	}
+	return e.logged
 }
 
 // JSON returns the JSON string representation of the SdkError.
@@ -227,6 +295,12 @@ func build(msg string, cause error, args map[string]any, skip int) *SdkError {
 		Msg:       msg,
 		Cause:     pointerOf(causeText),
 		cause:     effectiveCause,
+		// Allocated here, once, so every later copy of this struct — by a
+		// value-receiver method, by dereferencing the pointer, by storing
+		// an SdkError value — shares this same flag instead of getting an
+		// independent one. See the field doc on logged for why that
+		// sharing is the whole point.
+		logged: &atomic.Bool{},
 	}
 
 	statusCode, ok := args["status"]
@@ -359,21 +433,29 @@ func ToSdkError(err error) *SdkError {
 //
 // GinError keeps its value receiver for backwards compatibility (see
 // Error, JSON and SecureString above), so it only ever holds a *copy* of
-// the SdkError, not the caller's pointer. It honours the logged flag by
-// taking the address of that local copy and calling Log() on it: the copy
-// was made at the moment GinError was invoked, so it carries whatever
-// logged was on the caller's pointer at that instant, and the check/set
-// happens correctly for this call. What does not happen is the reverse —
-// GinError cannot write back through a value receiver, so the caller's
-// original *SdkError is never marked logged by this call. In the ordinary
-// case (GinError is the terminal call in a request) that is invisible: the
-// line has been written, and nothing else in this codebase acts on that
-// pointer afterward. It only matters if the same *SdkError were logged via
-// GinError and then separately Log()'d (or passed through GinError again)
-// afterward — that would double-log, because from the original pointer's
-// point of view the flag was never actually flipped. A value receiver
-// cannot close that gap; doing so would require changing GinError to a
-// pointer receiver, which this task does not permit.
+// the SdkError, not the caller's pointer. That copy still genuinely marks
+// the error logged for every other holder of it, because logged is a
+// *atomic.Bool (see the field doc and Log's doc comment): copying the
+// struct copies the pointer, not the flag it points to, so GinError's
+// local copy shares the exact same atomic.Bool the caller's original
+// pointer does. (&e).Log() below does its check-and-set on that shared
+// flag, so the write is visible through the caller's original pointer too
+// — a later err.Log() call, or a second GinError(c) call, on that same
+// original pointer sees logged already true and stays silent. This is
+// what makes it safe for both "New() built it, GinError logs it" and
+// "Error() already logged it, GinError must not log it again" to share
+// one code path.
+//
+// The one case this does not cover is an SdkError whose logged pointer is
+// nil to begin with — a zero-value SdkError{} literal, or one decoded from
+// JSON, that was never built by build(). There, GinError's copy has its
+// own independent nil flag before Log ever runs, Log lazily allocates a
+// flag for that copy alone, and — because a value receiver cannot write
+// that allocation back to the caller — a later call against the original
+// starts from its own independent nil flag and logs again. See the "nil
+// logged pointer" section of Log's doc comment for the full explanation;
+// it is unreachable through Error or New, which always allocate the flag
+// before any copy is made.
 // Additional Args keys:
 //   - "retry": N — sets the Retry-After header to N seconds.
 //   - "code_override": string — overrides the error code in the response body.

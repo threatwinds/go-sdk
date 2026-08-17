@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1028,5 +1029,235 @@ func TestGinErrorAfterErrorLogsOnce(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", w.Code)
+	}
+}
+
+// The tests below cover the "logged flag is a shared *atomic.Bool, not a
+// per-copy bool" fix. TestGinErrorAfterErrorLogsOnce above already pins
+// "Error() then GinError() -> one line total"; the rest of that scenario
+// matrix follows here.
+
+// TestGinErrorThenLogOnOriginalPointerLogsOnce is the headline regression
+// test for the fix: before it, GinError's value receiver could only flip
+// its own local copy's flag, so a caller's original pointer never saw
+// "logged" become true and a later err.Log() call double-logged. Now that
+// logged is a *atomic.Bool shared across every copy, GinError's
+// check-and-set is visible through the original pointer too.
+func TestGinErrorThenLogOnOriginalPointerLogsOnce(t *testing.T) {
+	err := New("gin then log on original pointer", nil, nil) // New does not log at construction
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	output := captureStdout(t, func() {
+		err.GinError(c) // logs once, through GinError's local copy
+		err.Log()       // must see the same flag already set, via the original pointer
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("expected exactly one log line total (GinError's write must be visible through the original pointer), got %d: %q", len(lines), output)
+	}
+	line := lastJSONLine(t, output)
+	if line["msg"] != "gin then log on original pointer" {
+		t.Errorf("expected logged msg %q, got %v", "gin then log on original pointer", line["msg"])
+	}
+}
+
+// TestGinErrorTwiceLogsOnce covers the same *SdkError passed through
+// GinError twice (e.g. a shared error reused across two requests, or
+// retried within one). Only the first call's copy should ever see
+// logged==false.
+func TestGinErrorTwiceLogsOnce(t *testing.T) {
+	err := New("gin twice", nil, nil)
+
+	w1 := httptest.NewRecorder()
+	c1, _ := gin.CreateTestContext(w1)
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+
+	output := captureStdout(t, func() {
+		err.GinError(c1)
+		err.GinError(c2)
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("expected exactly one log line total from two GinError calls on the same error, got %d: %q", len(lines), output)
+	}
+
+	if w1.Code != http.StatusInternalServerError || w2.Code != http.StatusInternalServerError {
+		t.Errorf("expected both responses to still be written with status 500, got %d and %d", w1.Code, w2.Code)
+	}
+}
+
+// TestNewThenLogThenGinErrorLogsOnce covers the third constructor/boundary
+// ordering explicitly requested: New (silent) -> explicit Log() -> GinError
+// at the HTTP boundary. GinError must see the flag Log() already set.
+func TestNewThenLogThenGinErrorLogsOnce(t *testing.T) {
+	err := New("new then log then gin", nil, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	output := captureStdout(t, func() {
+		err.Log()
+		err.GinError(c)
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("expected exactly one log line total, got %d: %q", len(lines), output)
+	}
+}
+
+// TestLogOnValueCopyOfAlreadyLoggedErrorDoesNotDoubleLog covers a bare
+// SdkError value (as opposed to *SdkError) taken from an already-logged
+// error. Because logged is a shared *atomic.Bool, the copy's flag is the
+// same flag the original saw, so Log() on the copy is a no-op too.
+func TestLogOnValueCopyOfAlreadyLoggedErrorDoesNotDoubleLog(t *testing.T) {
+	err := Error("already logged, then copied", nil, nil) // logs once at construction, uncaptured
+
+	copyOfErr := *err // bare SdkError value; shares err's *atomic.Bool pointer
+
+	output := captureStdout(t, func() {
+		copyOfErr.Log()
+	})
+
+	if got := strings.TrimSpace(output); got != "" {
+		t.Errorf("expected no log output from Log() on an already-logged value copy, got %q", got)
+	}
+}
+
+// TestLogOnZeroValueAndJSONRoundTrippedErrorAllocatesFlagAndLogs covers
+// requirement (2): an SdkError that never went through build() — a
+// zero-value literal, or one decoded from JSON — has a nil logged pointer.
+// Log must not panic on that, must treat "no flag yet" as "not logged
+// yet" (so it still logs), and must lazily allocate a flag so repeated
+// calls on that *same* pointer are idempotent afterward.
+func TestLogOnZeroValueAndJSONRoundTrippedErrorAllocatesFlagAndLogs(t *testing.T) {
+	t.Run("zero-value SdkError", func(t *testing.T) {
+		e := &SdkError{Msg: "zero value", Severity: "ERROR"} // logged is nil: never built via build()
+
+		var recovered any
+		output := captureStdout(t, func() {
+			defer func() { recovered = recover() }()
+			e.Log()
+			e.Log() // same pointer: must see the flag the first call allocated
+		})
+
+		if recovered != nil {
+			t.Fatalf("Log() panicked on a zero-value SdkError: %v", recovered)
+		}
+
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		if len(lines) != 1 || lines[0] == "" {
+			t.Fatalf("expected exactly one log line (a nil flag is treated as unlogged, then lazily allocated so the second call on the same pointer is idempotent), got %d: %q", len(lines), output)
+		}
+	})
+
+	t.Run("SdkError round-tripped through JSON", func(t *testing.T) {
+		original := Error("round trip then log", errors.New("root cause"), map[string]any{"status": 500})
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("failed to marshal: %v", err)
+		}
+
+		var decoded SdkError // logged is unexported: json.Unmarshal cannot populate it, so it's nil
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		var recovered any
+		output := captureStdout(t, func() {
+			defer func() { recovered = recover() }()
+			decoded.Log()
+			decoded.Log() // same addressable variable: must be idempotent too
+		})
+
+		if recovered != nil {
+			t.Fatalf("Log() panicked on a JSON-decoded SdkError: %v", recovered)
+		}
+
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		if len(lines) != 1 || lines[0] == "" {
+			t.Fatalf("expected exactly one log line for the decoded copy, got %d: %q", len(lines), output)
+		}
+	})
+}
+
+// TestGinErrorOnNilFlagValueDoesNotCloseGapForOriginalPointer documents and
+// proves the one case the fix cannot close, per requirement (2): an
+// SdkError built as a struct literal (bypassing build(), so logged starts
+// nil) passed to GinError. GinError's value receiver copies that nil
+// pointer before Log ever allocates one, so the flag Log lazily allocates
+// lives only on GinError's own local copy — there is nothing shared yet to
+// write back to. A later Log() call against the original pointer starts
+// from its own independent nil flag and logs again. This is unreachable
+// through Error or New, which always allocate the flag in build() before
+// any copy is made; it only happens for hand-built or JSON-decoded structs
+// passed through GinError more than once, which is not how any real call
+// site in this codebase constructs an SdkError.
+func TestGinErrorOnNilFlagValueDoesNotCloseGapForOriginalPointer(t *testing.T) {
+	err := &SdkError{Msg: "never built via build()", Severity: "ERROR"} // logged is nil
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	output := captureStdout(t, func() {
+		err.GinError(c) // logs once, via GinError's own local copy's lazily-allocated flag
+		err.Log()       // original pointer's flag is still nil here: a second, independent allocation
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected two log lines here — this is the documented, unfixable-without-a-pointer-receiver gap for structs that bypass build() (see Log's doc comment) — got %d: %q", len(lines), output)
+	}
+}
+
+// TestLogConcurrentGoroutinesLogOnce is the concurrency guarantee the
+// *atomic.Bool flag exists for: many goroutines racing to call Log() on
+// the same *SdkError must produce exactly one line, never zero and never
+// more than one. Intended to be run with -race.
+//
+// withSyncLogging (defined in retry_test.go) disables the package's async
+// logging goroutine for this test and restores it afterward. This test's
+// own writes are ERROR severity, which printLog already always writes
+// synchronously regardless of async (see printLog's doc comment in
+// log.go) — but async messages left queued by earlier tests are still
+// drained by a background goroutine that reads the package-level
+// os.Stdout var without synchronization, which is a pre-existing,
+// unrelated data race against captureStdout's swap of os.Stdout (it
+// reproduces on baseline main, independent of this fix). withSyncLogging
+// stops that goroutine for the duration of this test, so a run under
+// -race reports only what this test actually exercises.
+func TestLogConcurrentGoroutinesLogOnce(t *testing.T) {
+	withSyncLogging(t)
+
+	err := New("concurrent log", nil, nil) // New does not log at construction
+
+	const n = 50
+	var wg sync.WaitGroup
+	wg.Add(n)
+
+	output := captureStdout(t, func() {
+		for i := 0; i < n; i++ {
+			go func() {
+				defer wg.Done()
+				err.Log()
+			}()
+		}
+		wg.Wait()
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("expected exactly one log line from %d concurrent Log() calls, got %d: %q", n, len(lines), output)
+	}
+
+	line := lastJSONLine(t, output)
+	if line["msg"] != "concurrent log" {
+		t.Errorf("expected logged msg %q, got %v", "concurrent log", line["msg"])
 	}
 }
