@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/threatwinds/go-sdk/catcher"
 )
 
 // DoReq sends an HTTP request and processes the response.
@@ -75,7 +77,19 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 	}
 
 	if resp.StatusCode >= 400 {
-		return result, resp.StatusCode, fmt.Errorf("error response (status=%d): %s", resp.StatusCode, string(body))
+		// Adopt the upstream's error id (x-error-id, set by catcher.GinError)
+		// so this failure keeps one id across every service that touches it.
+		// When the header is absent — a non-ThreatWinds endpoint, or an error
+		// from an intermediary — args["error_id"] is left unset and catcher
+		// generates a fresh id, same as it would for any other new error.
+		//
+		// catcher.New (not catcher.Error) so DoReq never logs: this error is
+		// logged, once, wherever the caller ends up handling it.
+		args := map[string]any{"status": resp.StatusCode}
+		if errorID := resp.Header.Get("x-error-id"); errorID != "" {
+			args["error_id"] = errorID
+		}
+		return result, resp.StatusCode, catcher.New(fmt.Sprintf("error response (status=%d): %s", resp.StatusCode, string(body)), nil, args)
 	}
 
 	if resp.StatusCode == http.StatusNoContent {
