@@ -2,6 +2,7 @@ package catcher
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -418,6 +419,118 @@ func TestRetryWithBackoff(t *testing.T) {
 		}
 		if attempts != 4 {
 			t.Errorf("Expected 4 attempts, got %d", attempts)
+		}
+	})
+}
+
+// withSyncLogging disables async logging for the duration of the calling
+// test and restores whatever Configure state was in effect before it,
+// afterward. It exists because captureStdout only produces deterministic
+// results for synchronous writes (see its doc comment in errors_test.go);
+// InfiniteLoop's termination log is INFO severity, which would otherwise
+// race the async drain goroutine exactly like the already-flaky TestInfo.
+func withSyncLogging(t *testing.T) {
+	t.Helper()
+
+	mu.Lock()
+	b, a, nt := beauty, async, noTrace
+	mu.Unlock()
+
+	Configure(b, false, nt)
+	t.Cleanup(func() {
+		Configure(b, a, nt)
+	})
+}
+
+func TestInfiniteLoop(t *testing.T) {
+	t.Run("non-exception errors are swallowed silently, however many iterations run", func(t *testing.T) {
+		withSyncLogging(t)
+
+		calls := 0
+		output := captureStdout(t, func() {
+			InfiniteLoop(func() error {
+				calls++
+				if calls >= 25 {
+					return errors.New("stop-now")
+				}
+				return errors.New("persistent failure")
+			}, &RetryConfig{WaitTime: time.Millisecond}, "stop-now")
+		})
+
+		if calls != 25 {
+			t.Fatalf("expected the loop to run 25 iterations before stopping, got %d", calls)
+		}
+		if strings.Contains(output, "persistent failure") {
+			t.Errorf("swallowed non-exception errors must never be logged, got: %q", output)
+		}
+
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		if len(lines) != 1 {
+			t.Fatalf("expected exactly one log line (the termination log only), got %d: %q", len(lines), output)
+		}
+	})
+
+	t.Run("the exception path that terminates the loop logs exactly once", func(t *testing.T) {
+		withSyncLogging(t)
+
+		output := captureStdout(t, func() {
+			InfiniteLoop(func() error {
+				return errors.New("terminate-marker")
+			}, &RetryConfig{WaitTime: time.Millisecond}, "terminate-marker")
+		})
+
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		if len(lines) != 1 {
+			t.Fatalf("expected exactly one log line, got %d: %q", len(lines), output)
+		}
+
+		entry := lastJSONLine(t, output)
+		if entry["msg"] != "InfiniteLoop stopped: function returned a matching exception" {
+			t.Errorf("unexpected termination message: %v", entry["msg"])
+		}
+	})
+
+	t.Run("an *SdkError already logged via Log() is not logged twice by the exception path", func(t *testing.T) {
+		withSyncLogging(t)
+
+		sdkErr := New("worker shutting down", nil, nil) // New does not log at construction
+
+		output := captureStdout(t, func() {
+			sdkErr.Log() // the one log line we expect to see
+
+			InfiniteLoop(func() error {
+				return sdkErr
+			}, &RetryConfig{WaitTime: time.Millisecond}, "shutting down")
+		})
+
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		if len(lines) != 1 {
+			t.Fatalf("Log()'s idempotency should have suppressed the duplicate, got %d lines: %q", len(lines), output)
+		}
+
+		entry := lastJSONLine(t, output)
+		if entry["msg"] != "worker shutting down" {
+			t.Errorf("unexpected log entry: %v", entry)
+		}
+	})
+
+	t.Run("a plain non-SdkError exception is still logged, informationally", func(t *testing.T) {
+		withSyncLogging(t)
+
+		output := captureStdout(t, func() {
+			InfiniteLoop(func() error {
+				return errors.New("shutdown requested")
+			}, &RetryConfig{WaitTime: time.Millisecond}, "shutdown requested")
+		})
+
+		entry := lastJSONLine(t, output)
+		if entry["severity"] != "INFO" {
+			t.Errorf("expected INFO severity for a designed loop termination, got %v", entry["severity"])
+		}
+
+		args, ok := entry["args"].(map[string]any)
+		if !ok || args["error"] != "shutdown requested" {
+			t.Errorf("expected the terminating error text in args, got %v", entry)
 		}
 	})
 }
