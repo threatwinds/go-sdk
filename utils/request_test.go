@@ -2,13 +2,25 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/threatwinds/go-sdk/catcher"
+)
+
+// Upstream error ids are only adopted when they are canonical UUIDs — the
+// shape catcher itself mints — so the fixtures below are real UUIDs rather
+// than convenient labels. See TestSdkErrorFromResponse_MalformedErrorIDIsNotAdopted
+// for the rejection half.
+const (
+	upstreamErrorID  = "5d08563a-9053-4e8e-ae8e-22781939a12b"
+	upstreamErrorID2 = "8c2f0f5c-1c8f-4a7e-9a5f-0a1b2c3d4e5f"
 )
 
 func TestSdkErrorFromResponse(t *testing.T) {
@@ -16,7 +28,7 @@ func TestSdkErrorFromResponse(t *testing.T) {
 		StatusCode: 500,
 		Header: http.Header{
 			"x-error":    []string{"connection timeout"},
-			"x-error-id": []string{"abc123def456"},
+			"x-error-id": []string{upstreamErrorID},
 		},
 	}
 
@@ -36,9 +48,9 @@ func TestSdkErrorFromResponse(t *testing.T) {
 	// — the field an operator greps across every service's logs to reconstruct
 	// one failure — and in Args["error_id"], the key catcher.build reserves
 	// for exactly this adoption.
-	assert.Equal(t, "abc123def456", sdkErr.ErrorID)
+	assert.Equal(t, upstreamErrorID, sdkErr.ErrorID)
 	assert.Contains(t, sdkErr.Args, "error_id")
-	assert.Equal(t, "abc123def456", sdkErr.Args["error_id"])
+	assert.Equal(t, upstreamErrorID, sdkErr.Args["error_id"])
 
 	// Code is the error's *type*, not this occurrence: an md5 of the message,
 	// identical for every remote error this helper builds. It must therefore
@@ -46,7 +58,7 @@ func TestSdkErrorFromResponse(t *testing.T) {
 	// the upstream's id — putting a per-occurrence id in Code is the
 	// conflation catcher.GinError was fixed to remove.
 	assert.Equal(t, catcher.New("remote service error", nil, nil).Code, sdkErr.Code)
-	assert.NotEqual(t, "abc123def456", sdkErr.Code)
+	assert.NotEqual(t, upstreamErrorID, sdkErr.Code)
 
 	// Verify it implements error via ToSdkError
 	assert.NotNil(t, catcher.ToSdkError(sdkErr))
@@ -169,7 +181,7 @@ func TestSdkErrorFromResponse_JsonMarshallable(t *testing.T) {
 		StatusCode: 500,
 		Header: http.Header{
 			"x-error":    []string{"db connection failed"},
-			"x-error-id": []string{"test-code-99"},
+			"x-error-id": []string{upstreamErrorID},
 		},
 	}
 
@@ -187,7 +199,7 @@ func TestSdkErrorFromResponse_JsonMarshallable(t *testing.T) {
 
 	// The occurrence id has to survive the wire too — it is the value the next
 	// service re-raises and an operator quotes from a support ticket.
-	assert.Equal(t, "test-code-99", unmarshaled.ErrorID)
+	assert.Equal(t, upstreamErrorID, unmarshaled.ErrorID)
 }
 
 func TestSdkErrorFromResponse_NilSafety(t *testing.T) {
@@ -219,12 +231,12 @@ func TestSdkErrorFromResponse_NilSafety(t *testing.T) {
 		// canonicalizes on read, so the keys are X-Error / X-Error-Id.
 		resp := &http.Response{StatusCode: 502, Header: http.Header{}}
 		resp.Header.Set("x-error", "upstream refused")
-		resp.Header.Set("x-error-id", "canonical-id-7")
+		resp.Header.Set("x-error-id", upstreamErrorID)
 
 		sdkErr := SdkErrorFromResponse(resp)
 
 		assert.Equal(t, "upstream refused", *sdkErr.Cause)
-		assert.Equal(t, "canonical-id-7", sdkErr.ErrorID)
+		assert.Equal(t, upstreamErrorID, sdkErr.ErrorID)
 		assert.Equal(t, "CRITICAL", sdkErr.Severity)
 	})
 }
@@ -238,15 +250,120 @@ func TestSdkErrorFromResponse_DoesNotReadBody(t *testing.T) {
 	assert.Nil(t, resp.Body)
 }
 
+// Msg is load-bearing twice over: catcher.SecureString returns it — and only
+// it — for a status >= 500, so anything upstream-derived in Msg crosses the
+// service boundary to the end client; and Code is an md5 of Msg, so anything
+// per-occurrence in Msg makes Code per-occurrence too, destroying the one
+// property Code exists for. Both are pinned here.
+func TestSdkErrorFromResponse_MessageAndCodeAreConstant(t *testing.T) {
+	first := SdkErrorFromResponse(&http.Response{
+		StatusCode: 500,
+		Header:     http.Header{"x-error": []string{`{"error":{"message":"pq: password authentication failed"}}`}},
+	})
+	second := SdkErrorFromResponse(&http.Response{
+		StatusCode: 503,
+		Header:     http.Header{"x-error": []string{"a completely different failure"}},
+	})
+
+	assert.Equal(t, remoteErrorMessage, first.Msg)
+	assert.Equal(t, remoteErrorMessage, second.Msg)
+	assert.Equal(t, first.Code, second.Code,
+		"Code is the error's type; two remote failures must group under one Code")
+
+	// The >= 500 disclosure path: SecureString is exactly what GinError writes
+	// into the x-error response header and the JSON body.
+	assert.Equal(t, remoteErrorMessage, first.SecureString())
+	assert.NotContains(t, first.SecureString(), "password authentication failed")
+}
+
+// Adoption is the one path by which a foreign, remote-controlled value reaches
+// ErrorID, a field this service then echoes in its own x-error-id header and
+// every log line about the failure. Only a canonical UUID — the shape catcher
+// itself mints — is accepted; anything else falls through to a freshly minted
+// id, so a buggy or hostile endpoint cannot make two unrelated incidents share
+// an id, nor plant a multi-megabyte string in our headers.
+func TestSdkErrorFromResponse_MalformedErrorIDIsNotAdopted(t *testing.T) {
+	tests := map[string]string{
+		"not a uuid":       "auth-api-error-123",
+		"empty":            "",
+		"uuid with prefix": "id-" + upstreamErrorID,
+		"braced uuid":      "{" + upstreamErrorID + "}",
+		"urn uuid":         "urn:uuid:" + upstreamErrorID,
+		"undashed uuid":    strings.ReplaceAll(upstreamErrorID, "-", ""),
+		"oversized":        strings.Repeat("a", 1<<20),
+	}
+
+	for name, id := range tests {
+		t.Run(name, func(t *testing.T) {
+			resp := &http.Response{StatusCode: 500, Header: http.Header{}}
+			resp.Header.Set("x-error-id", id)
+
+			sdkErr := SdkErrorFromResponse(resp)
+
+			assert.NotEqual(t, id, sdkErr.ErrorID, "a malformed upstream id must not be adopted")
+			assert.NotContains(t, sdkErr.Args, "error_id")
+			assert.NoError(t, uuid.Validate(sdkErr.ErrorID), "a fresh UUID must be minted instead")
+		})
+	}
+
+	t.Run("canonical uuid is adopted", func(t *testing.T) {
+		resp := &http.Response{StatusCode: 500, Header: http.Header{}}
+		resp.Header.Set("x-error-id", upstreamErrorID)
+
+		assert.Equal(t, upstreamErrorID, SdkErrorFromResponse(resp).ErrorID)
+	})
+}
+
+// Args["status"] is what catcher.GinError answers the client with, so a status
+// the relaying service cannot honestly send must never reach it. A 0 — from a
+// hand-built response, a mock, a cached response or a RoundTripper that never
+// set StatusCode — is the sharp case: gin's WriteHeader ignores a non-positive
+// code, so the failure would go out as a 200 and every client-side
+// `if status >= 400` check would wave it through.
+func TestSdkErrorFromResponse_ClampsUnrelayableStatus(t *testing.T) {
+	for _, status := range []int{0, 100, 200, 204, 304, 399, 600, 1000} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			sdkErr := SdkErrorFromResponse(&http.Response{StatusCode: status, Header: http.Header{}})
+
+			assert.Equal(t, http.StatusInternalServerError, sdkErr.Args["status"],
+				"status %d is not one this service can relay", status)
+			// Severity still describes what actually came back.
+			assert.Equal(t, calcSeverityFromStatus(status), sdkErr.Severity)
+		})
+	}
+
+	for _, status := range []int{400, 401, 429, 500, 503, 599} {
+		t.Run("relayable "+strconv.Itoa(status), func(t *testing.T) {
+			sdkErr := SdkErrorFromResponse(&http.Response{StatusCode: status, Header: http.Header{}})
+			assert.Equal(t, status, sdkErr.Args["status"])
+		})
+	}
+}
+
+func TestSdkErrorFromResponse_BoundsUpstreamDetail(t *testing.T) {
+	// http.Transport.MaxResponseHeaderBytes allows 10MB of headers, and
+	// whatever lands in Cause is rendered back out into the relaying service's
+	// own x-error response header for any status < 500.
+	huge := strings.Repeat("x", 64*1024)
+	resp := &http.Response{StatusCode: 400, Header: http.Header{}}
+	resp.Header.Set("x-error", huge)
+
+	sdkErr := SdkErrorFromResponse(resp)
+
+	assert.NotNil(t, sdkErr.Cause)
+	assert.Less(t, len(*sdkErr.Cause), maxErrorDetailSize+64)
+	assert.True(t, strings.HasSuffix(*sdkErr.Cause, "… (truncated)"))
+}
+
 // DoReq's non-2xx path is what lets an error id survive a service-to-service
 // call: the id a downstream service (e.g. auth-api) minted and sent back in
-// x-error-id must come out the other end of DoReq attached to the
-// *catcher.SdkError it returns, so the caller (e.g. ai-api) can adopt it
-// instead of minting a second, unrelated one for the same failure.
+// x-error-id must reach the caller (e.g. ai-api) so it can adopt it instead of
+// minting a second, unrelated one for the same failure — without DoReq
+// hijacking the error the caller builds around it.
 
-func TestDoReq_NonOKResponse_AdoptsUpstreamErrorID(t *testing.T) {
+func TestDoReq_NonOKResponse_ReturnsPlainRemoteError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("x-error-id", "auth-api-error-123")
+		w.Header().Set("x-error-id", upstreamErrorID)
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":"boom"}`))
 	}))
@@ -257,12 +374,50 @@ func TestDoReq_NonOKResponse_AdoptsUpstreamErrorID(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, status)
 	assert.Error(t, err)
 
-	sdkErr := catcher.ToSdkError(err)
-	assert.NotNil(t, sdkErr)
-	assert.Equal(t, "auth-api-error-123", sdkErr.ErrorID)
+	// Not an *SdkError: catcher.Error short-circuits on one, discarding the
+	// wrapping call's message, args and status. See RemoteError's doc.
+	assert.Nil(t, catcher.ToSdkError(err))
+
+	var remote *RemoteError
+	assert.True(t, errors.As(err, &remote))
+	assert.Equal(t, http.StatusInternalServerError, remote.Status)
+	assert.Equal(t, upstreamErrorID, remote.ID)
+	assert.Equal(t, `{"error":"boom"}`, remote.Detail)
+	assert.Equal(t, `error response (status=500): {"error":"boom"}`, err.Error())
 }
 
-func TestDoReq_NonOKResponse_MissingErrorIDHeader_StillGeneratesOne(t *testing.T) {
+// The point of reading x-error-id at all: the id survives into the error the
+// caller builds, while everything else about that error stays the caller's.
+func TestDoReq_WrapKeepsCallerContextAndInheritsUpstreamID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-error-id", upstreamErrorID)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	_, _, err := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+
+	wrapped := catcher.New("failed to validate session with auth-api", err,
+		map[string]any{"status": http.StatusBadGateway, "upstream": "auth-api"})
+
+	// The caller's message, args and status all survive — this is the wrap
+	// every service in the org already writes.
+	assert.Equal(t, "failed to validate session with auth-api", wrapped.Msg)
+	assert.Equal(t, http.StatusBadGateway, wrapped.Args["status"])
+	assert.Equal(t, "auth-api", wrapped.Args["upstream"])
+	assert.Equal(t, "CRITICAL", wrapped.Severity)
+
+	// ...and the upstream's occurrence id is inherited rather than replaced by
+	// a second, unrelated one.
+	assert.Equal(t, upstreamErrorID, wrapped.ErrorID)
+
+	// The upstream error is still reachable for a caller that wants its status.
+	var remote *RemoteError
+	assert.True(t, errors.As(wrapped, &remote))
+	assert.Equal(t, http.StatusUnauthorized, remote.Status)
+}
+
+func TestDoReq_WrapMintsIDWhenUpstreamSuppliesNone(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
 	}))
@@ -271,28 +426,132 @@ func TestDoReq_NonOKResponse_MissingErrorIDHeader_StillGeneratesOne(t *testing.T
 	_, status, err := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
 
 	assert.Equal(t, http.StatusBadGateway, status)
-	sdkErr := catcher.ToSdkError(err)
-	assert.NotNil(t, sdkErr)
-	assert.NotEmpty(t, sdkErr.ErrorID)
+
+	wrapped := catcher.New("calling auth-api failed", err, map[string]any{"status": 500})
+	assert.NoError(t, uuid.Validate(wrapped.ErrorID))
 }
 
-func TestDoReq_NonOKResponse_ErrorIDSurvivesCatcherErrorShortCircuit(t *testing.T) {
+// An explicitly supplied error_id still wins over an inherited one.
+func TestDoReq_WrapPrefersExplicitErrorIDOverInherited(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("x-error-id", "downstream-id-456")
+		w.Header().Set("x-error-id", upstreamErrorID)
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
 
 	_, _, err := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
-	downstream := catcher.ToSdkError(err)
 
-	// Mirrors the real call site: a caller wraps DoReq's error with
-	// catcher.Error, which short-circuits on an *SdkError cause and hands
-	// the exact same error back, id and all, rather than minting a new one.
-	wrapped := catcher.Error("calling auth-api failed", err, map[string]any{"status": 999})
+	wrapped := catcher.New("calling auth-api failed", err, map[string]any{"error_id": upstreamErrorID2})
+	assert.Equal(t, upstreamErrorID2, wrapped.ErrorID)
+}
 
-	assert.Same(t, downstream, wrapped)
-	assert.Equal(t, "downstream-id-456", wrapped.ErrorID)
+// Code is the error's *type*: an operator grouping by it to count occurrences
+// of "upstream returned 500" must get one Code, not one per upstream body.
+func TestDoReq_WrapKeepsMessageAndCodeStableAcrossBodies(t *testing.T) {
+	newServer := func(body string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(body))
+		}))
+	}
+
+	first := newServer(`{"error":"user 1 not found"}`)
+	defer first.Close()
+	second := newServer(`{"error":"user 2 not found"}`)
+	defer second.Close()
+
+	_, _, errOne := DoReq[map[string]any](first.URL, nil, "GET", nil, false)
+	_, _, errTwo := DoReq[map[string]any](second.URL, nil, "GET", nil, false)
+
+	wrapOne := catcher.New("upstream call failed", errOne, map[string]any{"status": 500})
+	wrapTwo := catcher.New("upstream call failed", errTwo, map[string]any{"status": 500})
+
+	assert.Equal(t, "upstream call failed", wrapOne.Msg)
+	assert.Equal(t, "upstream call failed", wrapTwo.Msg)
+	assert.Equal(t, wrapOne.Code, wrapTwo.Code)
+	assert.NotEqual(t, wrapOne.ErrorID, wrapTwo.ErrorID, "occurrence ids must still differ")
+}
+
+// What GinError writes into the x-error response header and the JSON body for
+// a status >= 500 is exactly SecureString(), which is Msg alone. The upstream's
+// body must not be in it.
+func TestDoReq_WrappedErrorDoesNotDiscloseUpstreamBody(t *testing.T) {
+	const secret = `{"error":{"message":"pq: password authentication failed for user \"casework\""}}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-error", `dial tcp 10.128.0.9:5432 connect refused`)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(secret))
+	}))
+	defer server.Close()
+
+	_, _, err := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+
+	wrapped := catcher.New("calling casework-api failed", err, map[string]any{"status": 500})
+
+	assert.Equal(t, "calling casework-api failed", wrapped.SecureString())
+	assert.NotContains(t, wrapped.SecureString(), "password authentication failed")
+	assert.NotContains(t, wrapped.SecureString(), "10.128.0.9")
+
+	// The detail is not lost, only kept off the wire: it is in Cause, which is
+	// logged locally and which SecureString suppresses at >= 500.
+	assert.Contains(t, *wrapped.Cause, "password authentication failed")
+}
+
+// An unbounded error body becomes an unbounded outbound header once a relaying
+// service renders it, and it compounds per hop.
+func TestDoReq_ErrorBodyIsBounded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(strings.Repeat("x", 512*1024)))
+	}))
+	defer server.Close()
+
+	_, _, err := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+
+	var remote *RemoteError
+	assert.True(t, errors.As(err, &remote))
+	assert.Less(t, len(remote.Detail), maxErrorDetailSize+64)
+	assert.True(t, strings.HasSuffix(remote.Detail, "… (truncated)"))
+
+	// And the rendered string a caller logs or relays is bounded with it.
+	assert.Less(t, len(err.Error()), maxErrorDetailSize+128)
+}
+
+// One call site must not log two different shapes depending on how the request
+// failed: a wrap around a transport failure and a wrap around an HTTP failure
+// keep the caller's message and args identically.
+func TestDoReq_TransportAndHTTPFailuresWrapAlike(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	_, _, httpErr := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+
+	// A listener that is already closed: client.Do fails before any response,
+	// which is DoReq's other failure branch.
+	closed := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	closedURL := closed.URL
+	closed.Close()
+	_, _, transportErr := DoReq[map[string]any](closedURL, nil, "GET", nil, false)
+
+	assert.Error(t, httpErr)
+	assert.Error(t, transportErr)
+
+	args := func() map[string]any {
+		return map[string]any{"type": "entity", "status": 500}
+	}
+	fromHTTP := catcher.New("sendEntity failed after retries", httpErr, args())
+	fromTransport := catcher.New("sendEntity failed after retries", transportErr, args())
+
+	assert.Equal(t, fromTransport.Msg, fromHTTP.Msg)
+	assert.Equal(t, "entity", fromHTTP.Args["type"])
+	assert.Equal(t, "entity", fromTransport.Args["type"])
+	assert.Equal(t, 500, fromHTTP.Args["status"])
+	assert.Equal(t, 500, fromTransport.Args["status"])
+	assert.Equal(t, fromTransport.Code, fromHTTP.Code)
+	assert.Equal(t, fromTransport.Severity, fromHTTP.Severity)
 }
 
 func TestDoReq_OKResponse_Unaffected(t *testing.T) {
@@ -310,16 +569,39 @@ func TestDoReq_OKResponse_Unaffected(t *testing.T) {
 	assert.Equal(t, true, result["ok"])
 }
 
-func TestDoReq_NonOKResponse_StatusReachesArgsForSeverity(t *testing.T) {
+// The success path still reads the whole body — only the failure path is
+// bounded, because only the failure path renders its body into an error string.
+func TestDoReq_OKResponse_LargeBodyStillReadInFull(t *testing.T) {
+	value := strings.Repeat("y", maxErrorDetailSize*4)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"value":"` + value + `"}`))
+	}))
+	defer server.Close()
+
+	result, status, err := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, status)
+	assert.Equal(t, value, result["value"])
+}
+
+// A relaying caller that deliberately opts into the upstream's status gets it
+// from SdkErrorFromResponse; DoReq's own error never imposes one.
+func TestDoReq_UpstreamStatusDoesNotDictateCallerStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer server.Close()
 
 	_, status, err := DoReq[map[string]any](server.URL, nil, "GET", nil, false)
+	assert.Equal(t, http.StatusUnauthorized, status)
 
-	sdkErr := catcher.ToSdkError(err)
-	assert.NotNil(t, sdkErr)
-	assert.Equal(t, status, sdkErr.Args["status"])
-	assert.Equal(t, "WARNING", sdkErr.Severity)
+	wrapped := catcher.New("auth check failed", err, map[string]any{"status": http.StatusInternalServerError})
+
+	// The handler asked to answer 500; an upstream 401 must not turn that into
+	// "your credentials are bad" for a client whose credentials were fine.
+	assert.Equal(t, http.StatusInternalServerError, wrapped.Args["status"])
+	assert.Equal(t, "ERROR", wrapped.Severity)
 }

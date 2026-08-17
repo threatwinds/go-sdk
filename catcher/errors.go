@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"net/http"
+	"reflect"
 	"runtime"
 	"strconv"
 	"sync/atomic"
@@ -246,6 +247,67 @@ func (e SdkError) SecureString() string {
 	return e.Error()
 }
 
+// ErrorIDCarrier is implemented by an error that already carries a catcher
+// error id minted somewhere else — in practice by utils.RemoteError, which
+// reads it from an upstream ThreatWinds service's x-error-id response header.
+//
+// It exists so a failure can keep one occurrence id across a service boundary
+// without the transport helper having to return an *SdkError to achieve it.
+// Returning an *SdkError would work, but at a price: build short-circuits on
+// an *SdkError cause and hands it straight back, discarding the wrapping
+// call's msg, args and status override. A plain error implementing this
+// interface lets the caller build its *own* error — its message, its args, its
+// status — that happens to inherit the upstream's id.
+//
+// build consults it only when the cause is not itself an *SdkError (that case
+// short-circuits before this is reached) and the call supplied no
+// args["error_id"], so an explicitly supplied id always wins over an inherited
+// one, and an inherited one always wins over a freshly minted UUID.
+//
+// An implementation returning "" means "no id to donate" and is treated as if
+// the interface were not implemented at all.
+type ErrorIDCarrier interface {
+	CatcherErrorID() string
+}
+
+// inheritedErrorID returns the occurrence id carried by cause, or "" if there
+// is none to inherit. Callers of this package are unaffected unless their
+// error type opts in by implementing ErrorIDCarrier.
+//
+// The typed-nil check matters: errors.As matches on type alone, so a nil
+// *Whatever boxed in a non-nil error interface satisfies the carrier interface
+// and would have its method called on a nil receiver — the same trap
+// ToSdkError already guards for *SdkError, but here the type is foreign, so
+// whether that panics is not this package's to decide. Error construction is
+// on every failure path in every service; it must not be able to turn a
+// failure into a panic.
+func inheritedErrorID(cause error) string {
+	if cause == nil {
+		return ""
+	}
+
+	var carrier ErrorIDCarrier
+	if !errors.As(cause, &carrier) || carrier == nil || isNilPointer(carrier) {
+		return ""
+	}
+
+	return carrier.CatcherErrorID()
+}
+
+// isNilPointer reports whether v is a non-nil interface holding a nil pointer
+// (or another nil-able kind), which is not detectable by comparing the
+// interface itself to nil.
+func isNilPointer(v any) bool {
+	rv := reflect.ValueOf(v)
+
+	switch rv.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.UnsafePointer:
+		return rv.IsNil()
+	default:
+		return false
+	}
+}
+
 // build implements the construction shared by Error and New: the
 // short-circuit when cause is already an *SdkError, trace capture, the code
 // hash, error-id adoption/generation, and severity derivation from
@@ -269,11 +331,17 @@ func build(msg string, cause error, args map[string]any, skip int) *SdkError {
 	// (e.g. a downstream service re-raising a failure it received from an
 	// upstream call, carrying forward the id that upstream already minted),
 	// it is adopted verbatim so the same occurrence keeps the same id
-	// across every service that touches it. When absent, a fresh UUID is
-	// generated here so every *SdkError this package ever constructs has
-	// one, whether or not any caller asked for it.
+	// across every service that touches it. Failing that, a cause that
+	// carries an id of its own donates it (see ErrorIDCarrier) — the same
+	// propagation, without the call site having to plumb the id by hand.
+	// When neither is present, a fresh UUID is generated here so every
+	// *SdkError this package ever constructs has one, whether or not any
+	// caller asked for it.
 	errorID, ok := args["error_id"].(string)
 	if !ok || errorID == "" {
+		errorID = inheritedErrorID(cause)
+	}
+	if errorID == "" {
 		errorID = uuid.NewString()
 	}
 
@@ -356,12 +424,14 @@ func build(msg string, cause error, args map[string]any, skip int) *SdkError {
 //	"code_override" (string) → overrides the error code in the JSON body
 //	"param" (string)       → included as "param" in the JSON error detail
 //	"error_id" (string)    → identifies this error occurrence; adopted
-//	                         verbatim if supplied, otherwise generated as
-//	                         a UUID. Meant to be carried unchanged by
-//	                         every service that re-raises the same
-//	                         failure so it can be traced across
-//	                         services. Ignored in the short-circuit case
-//	                         below, same as msg and every other arg.
+//	                         verbatim if supplied, otherwise inherited
+//	                         from a cause implementing ErrorIDCarrier,
+//	                         otherwise generated as a UUID. Meant to be
+//	                         carried unchanged by every service that
+//	                         re-raises the same failure so it can be
+//	                         traced across services. Ignored in the
+//	                         short-circuit case below, same as msg and
+//	                         every other arg.
 //
 // # This package logs at construction, not at handling
 //

@@ -9,32 +9,148 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/threatwinds/go-sdk/catcher"
 )
 
-// remoteErrorMessage is the message carried by every error SdkErrorFromResponse
-// builds. It is deliberately constant and carries no upstream detail:
-// catcher.SecureString returns Msg verbatim — and only Msg — for a status >=
-// 500, so anything folded into it crosses the next service boundary
-// unfiltered. The remote's own text goes to Cause, its status to
-// Args["status"], and its occurrence id to ErrorID.
+// remoteErrorMessage is the message carried by every *catcher.SdkError built in
+// this file. It is deliberately constant and carries no upstream detail, for
+// two independent reasons:
+//
+//   - Disclosure. catcher.SecureString returns Msg verbatim — and only Msg —
+//     for a status >= 500, and catcher.GinError writes that string into the
+//     relaying service's own x-error response header and JSON error body.
+//     Anything folded into Msg therefore crosses the next service boundary
+//     unfiltered, all the way to the end client: an upstream's "pq: password
+//     authentication failed for user \"casework\"" included.
+//   - Grouping. Code is an md5 of Msg and is documented as the error's *type* —
+//     "shared by every occurrence of the same message anywhere". It is a type
+//     fingerprint only for as long as Msg is per-type. Fold a response body in
+//     and every distinct upstream body produces a distinct Code, which is
+//     exactly the per-occurrence/per-type conflation Code exists to avoid.
+//
+// The remote's own text goes to Cause (suppressed by SecureString at >= 500),
+// its status to Args["status"], and its occurrence id to ErrorID. Both halves
+// are pinned by TestSdkErrorFromResponse_MessageAndCodeAreConstant and
+// TestDoReq_WrapKeepsMessageAndCodeStableAcrossBodies.
 const remoteErrorMessage = "remote service error"
+
+// maxErrorDetailSize bounds the upstream text this package will carry: the
+// response body DoReq reads on a failure, and the x-error header value.
+//
+// Neither is bounded at the source — io.ReadAll has no limit of its own, and
+// http.Transport.MaxResponseHeaderBytes defaults to 10MB — and both end up in
+// the Cause of whatever error the caller builds, which catcher.SecureString
+// renders (for a status < 500) into the relaying service's own x-error
+// *response* header. An unbounded one is rejected by the load balancer well
+// before it reaches anyone, turning a real failure into an opaque 502, and it
+// compounds per hop, since each service quotes the one below it.
+const maxErrorDetailSize = 4 * 1024
+
+// RemoteError is the error DoReq returns when an upstream answers with a
+// status >= 400.
+//
+// It is deliberately *not* a *catcher.SdkError. catcher.Error short-circuits
+// when the cause it is handed is already an *SdkError: it returns that error
+// unchanged and silently drops the wrapping call's message, args and status
+// override (see catcher.Error's doc comment). A transport helper returning an
+// *SdkError therefore converts every existing
+// `catcher.Error("calling X failed", err, args)` in the org into a no-op wrap —
+// the caller's message, its arg keys and the HTTP status it asked to answer
+// with all vanish, replaced by the upstream's. Worse, it does so only on the
+// HTTP-failure path and not on the transport-failure paths beside it, so a
+// single call site logs two different shapes depending on how the request
+// happened to fail.
+//
+// A plain error keeps every caller's message, args and status exactly where
+// they were, while catcher.ErrorIDCarrier (implemented below) still carries the
+// upstream's occurrence id into the error the caller builds — which is the
+// whole point of reading x-error-id in the first place.
+//
+// A caller that genuinely wants to relay the upstream's own status and severity
+// — a proxy, rather than a service making a call of its own — can opt in
+// explicitly with SdkErrorFromResponse.
+type RemoteError struct {
+	// Status is the upstream's HTTP status, exactly as received. It is not
+	// necessarily a status the relaying service should answer with; see
+	// SdkErrorFromResponse's note on Args["status"].
+	Status int
+
+	// ID is the upstream's x-error-id when it supplied a well-formed one: the
+	// occurrence id that lets one failure be grepped across every service's
+	// logs. Empty otherwise, in which case catcher mints a fresh UUID exactly
+	// as it would for any locally-raised error.
+	ID string
+
+	// Detail is the upstream's own error text — the first maxErrorDetailSize
+	// bytes of its response body, or its x-error header when the body is
+	// empty. Never the whole of an arbitrarily large body.
+	Detail string
+}
+
+// Error renders the failure in the exact shape DoReq has always produced, so
+// existing callers that log this text (or match on it) are unaffected. The only
+// difference is that the detail is now bounded.
+func (e *RemoteError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+
+	detail := e.Detail
+	if detail == "" {
+		detail = "unknown cause"
+	}
+
+	return fmt.Sprintf("error response (status=%d): %s", e.Status, detail)
+}
+
+// CatcherErrorID implements catcher.ErrorIDCarrier, so that a caller wrapping
+// this error with catcher.Error or catcher.New builds its own error — its
+// message, its args, its status — that nonetheless inherits the upstream's
+// occurrence id, rather than minting a second, unrelated id for one failure.
+func (e *RemoteError) CatcherErrorID() string {
+	if e == nil {
+		return ""
+	}
+
+	return e.ID
+}
+
+var _ catcher.ErrorIDCarrier = (*RemoteError)(nil)
 
 // SdkErrorFromResponse turns a failed HTTP response into a *catcher.SdkError,
 // reading only the status line and the error headers catcher.GinError sets on
 // the way out of a ThreatWinds service:
 //
-//	x-error-id → ErrorID (and Args["error_id"]), adopted verbatim so one
-//	             failure keeps a single id across every service that touches
-//	             it. Absent (a non-ThreatWinds endpoint, or an error from an
-//	             intermediary) → catcher mints a fresh UUID, exactly as it
-//	             would for any locally-raised error.
-//	x-error    → Cause, the remote's own rendered error text. Absent →
-//	             "unknown cause", the same text catcher itself uses.
-//	status     → Args["status"] (an int, as everywhere else in the SDK) and
-//	             Severity, via calcSeverityFromStatus.
+//	x-error-id → ErrorID (and Args["error_id"]), adopted so one failure keeps
+//	             a single id across every service that touches it — but only
+//	             when it is a well-formed UUID, see adoptErrorID. Absent or
+//	             malformed → catcher mints a fresh UUID, exactly as it would
+//	             for any locally-raised error.
+//	x-error    → Cause, the remote's own rendered error text, bounded to
+//	             maxErrorDetailSize. Absent → "unknown cause", the same text
+//	             catcher itself uses.
+//	status     → Severity, via calcSeverityFromStatus, and — clamped by
+//	             relayStatus — Args["status"] (an int, as everywhere else in
+//	             the SDK).
+//
+// Args["status"] is the status a *relaying* handler will answer its own client
+// with, since that is the key catcher.GinError reads. Using this function is
+// therefore a decision to pass the upstream's status through: an upstream 401
+// becomes your client's 401. Most callers do not want that (their client's
+// credentials are not the ones that were rejected) and should let
+// catcher.Error/catcher.New build an error with their own args["status"] around
+// the *RemoteError DoReq returns — which still inherits the occurrence id.
+//
+// Relaying a status < 500 also relays detail: catcher.SecureString returns the
+// full Error() text — Cause and Args included — for anything under 500, and
+// Cause here is the upstream's own message. That is SecureString's deliberate
+// design (a client error is explained to the client), but the explanation now
+// comes from a service the client never called, so relay a 4xx only when the
+// upstream's text is genuinely about the caller's request.
 //
 // It never touches resp.Body: the body may already have been consumed, may be
 // nil on a hand-built response, and is the caller's to read and to close.
@@ -43,44 +159,63 @@ const remoteErrorMessage = "remote service error"
 // inside a transport helper — the error is logged once, wherever the caller
 // ends up handling it (or automatically, if it reaches catcher.GinError).
 //
-// Code is *not* the upstream's id. Code identifies the error's type (an md5 of
-// the message, per catcher.SdkError's field doc) and is therefore the same for
-// every error this function builds; the per-occurrence, greppable id is
-// ErrorID. Conflating the two is precisely the drift catcher.GinError was
-// fixed to remove.
+// Msg is the constant remoteErrorMessage and never the upstream's text; see
+// that constant's doc for the two invariants that depend on it. Code follows
+// from Msg: it identifies the error's type (an md5 of the message, per
+// catcher.SdkError's field doc) and is therefore the same for every error this
+// package builds, while the per-occurrence, greppable id is ErrorID.
+// Conflating the two is precisely the drift catcher.GinError was fixed to
+// remove.
 //
 // A nil response, a nil Header map and absent headers are all handled: a nil
 // response is reported as a 500, since "no response at all" is a local
 // failure and 500 is the status catcher would otherwise default to.
 func SdkErrorFromResponse(resp *http.Response) *catcher.SdkError {
-	return sdkErrorFromResponse(resp, remoteErrorMessage)
+	return sdkErrorFrom(remoteErrorFrom(resp, nil))
 }
 
-// sdkErrorFromResponse is the single place an HTTP response is translated into
-// an *SdkError. The message is a parameter only so DoReq can keep its
-// long-standing text (which embeds the response body it has already read);
-// every other field — status, severity, cause, adopted error id — is derived
-// here, so the two call sites cannot drift apart.
-func sdkErrorFromResponse(resp *http.Response, msg string) *catcher.SdkError {
-	status := http.StatusInternalServerError
+// remoteErrorFrom is the single place an HTTP failure response is read into
+// this package's own error type. The body is a parameter rather than read here
+// because SdkErrorFromResponse must not touch resp.Body while DoReq has
+// already read it; every other field — status, adopted error id, detail — is
+// derived here, so the two entry points cannot drift apart.
+func remoteErrorFrom(resp *http.Response, body []byte) *RemoteError {
+	remote := &RemoteError{Status: http.StatusInternalServerError}
 
 	var header http.Header
 	if resp != nil {
-		status = resp.StatusCode
+		remote.Status = resp.StatusCode
 		header = resp.Header
 	}
 
-	args := map[string]any{"status": status}
-	if errorID := headerValue(header, "x-error-id"); errorID != "" {
-		args["error_id"] = errorID
+	remote.ID = adoptErrorID(headerValue(header, "x-error-id"))
+
+	// The body is the richer of the two and the only one a non-ThreatWinds
+	// endpoint supplies; x-error is the fallback for a response whose body was
+	// empty or unread (SdkErrorFromResponse passes none).
+	remote.Detail = truncateDetail(string(body))
+	if remote.Detail == "" {
+		remote.Detail = truncateDetail(headerValue(header, "x-error"))
+	}
+
+	return remote
+}
+
+// sdkErrorFrom converts a RemoteError into the *SdkError a relaying caller
+// wants, applying the message, status and severity rules documented on
+// SdkErrorFromResponse.
+func sdkErrorFrom(remote *RemoteError) *catcher.SdkError {
+	args := map[string]any{"status": relayStatus(remote.Status)}
+	if remote.ID != "" {
+		args["error_id"] = remote.ID
 	}
 
 	var cause error
-	if causeText := headerValue(header, "x-error"); causeText != "" {
-		cause = errors.New(causeText)
+	if remote.Detail != "" {
+		cause = errors.New(remote.Detail)
 	}
 
-	err := catcher.New(msg, cause, args)
+	err := catcher.New(remoteErrorMessage, cause, args)
 
 	// The trace catcher captures here is this process's stack — DoReq and its
 	// caller — which describes where the response was *received*, not where
@@ -91,14 +226,77 @@ func sdkErrorFromResponse(resp *http.Response, msg string) *catcher.SdkError {
 	err.Trace = nil
 
 	// Severity is stated here rather than left to catcher's derivation from
-	// args["status"]: the two ladders agree today (calcSeverityFromStatus
-	// mirrors catcher.calculateSeverity, which is unexported and so cannot be
-	// called from here), and stating it keeps this helper's contract —
-	// severity follows the HTTP status of the response — true regardless of
-	// how catcher chooses to read its args.
-	err.Severity = calcSeverityFromStatus(status)
+	// args["status"]: it follows the status the upstream actually returned,
+	// which after relayStatus is not necessarily what args["status"] holds
+	// (calcSeverityFromStatus mirrors catcher.calculateSeverity, which is
+	// unexported and so cannot be called from here). Stating it keeps this
+	// helper's contract — severity follows the HTTP status of the response —
+	// true regardless of how catcher chooses to read its args.
+	err.Severity = calcSeverityFromStatus(remote.Status)
 
 	return err
+}
+
+// relayStatus maps an upstream status onto a status the relaying service can
+// actually answer with, which is what Args["status"] means to
+// catcher.GinError.
+//
+// Anything outside 4xx/5xx becomes a 500 — the same clamp the nil-response
+// case has always had, and for the same reason. A 0 (a hand-built response, a
+// mock, a cached response or a custom RoundTripper that never set StatusCode)
+// is the sharp case: gin's responseWriter.WriteHeader ignores a non-positive
+// code (`if code > 0 && ...`), so the error envelope would go out as a 200 and
+// every client-side `if status >= 400` check would wave the failure through. A
+// 204 or 304 is no better — gin's bodyAllowedForStatus is false for those, so
+// the error body is dropped entirely — and a status above 599 reaches
+// net/http's checkWriteHeaderCode, which panics outright above 999.
+func relayStatus(status int) int {
+	if status < 400 || status > 599 {
+		return http.StatusInternalServerError
+	}
+
+	return status
+}
+
+// adoptErrorID accepts an upstream's x-error-id only when it is a canonical
+// 36-character UUID — the shape catcher itself always mints (uuid.NewString)
+// and therefore the only shape a ThreatWinds service can legitimately send.
+//
+// This is the one path by which a foreign, remote-controlled value enters the
+// field catcher otherwise mints itself, and it is echoed straight back out in
+// this service's own x-error-id response header and in every log line about the
+// failure. Without a guard, a buggy or hostile endpoint can hand us an id
+// already in use by an unrelated in-flight failure — which breaks the single
+// property ErrorID exists to provide, that grepping one id finds the lines of
+// exactly one incident — or an id megabytes long, since
+// http.Transport.MaxResponseHeaderBytes allows 10MB of headers. Rejecting a
+// malformed id simply falls through to catcher's own uuid.NewString, so the
+// error still gets an id; only the false correlation is lost.
+func adoptErrorID(id string) string {
+	// uuid.Parse also accepts the urn:, braced and undashed forms; requiring
+	// exactly 36 characters restricts it to the canonical one, so the value
+	// written back out is the same shape every other id in the logs has.
+	if len(id) != 36 {
+		return ""
+	}
+
+	if _, err := uuid.Parse(id); err != nil {
+		return ""
+	}
+
+	return id
+}
+
+// truncateDetail bounds upstream-supplied text to maxErrorDetailSize; see that
+// constant for why. The cut is repaired to valid UTF-8, since a byte-wise cut
+// can land mid-rune and the result is written into a log line and an HTTP
+// header.
+func truncateDetail(detail string) string {
+	if len(detail) <= maxErrorDetailSize {
+		return detail
+	}
+
+	return strings.ToValidUTF8(detail[:maxErrorDetailSize], "") + "… (truncated)"
 }
 
 // headerValue reads a header value, tolerating a Header map whose keys were
@@ -174,7 +372,13 @@ func calcSeverityFromStatus(status int) string {
 //   - response: The response body unmarshalled into the specified type.
 //   - int: The HTTP status code of the response.
 //   - error: An error if any occurred during the request or response
-//     processing, otherwise nil.
+//     processing, otherwise nil. For a response with a status >= 400 that
+//     error is a *RemoteError — a plain error, so wrapping it with
+//     catcher.Error/catcher.New builds the caller's own error normally,
+//     keeping the caller's message, args and status while inheriting the
+//     upstream's occurrence id. Use errors.As to reach the upstream's status
+//     and detail; use SdkErrorFromResponse if you mean to relay the upstream's
+//     status as your own.
 func DoReq[response any](url string, data []byte, method string, headers map[string]string, skipTlsVerification bool) (response, int, error) {
 	var result response
 
@@ -212,23 +416,29 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode >= 400 {
+		// The failure body is read here, and bounded, rather than with the
+		// success body below. An error body is only ever rendered into a log
+		// line or an error string — it is never unmarshalled — so there is
+		// nothing to gain from holding a large one, and every reason not to:
+		// it ends up in the Cause of whatever error the caller builds, which
+		// a relaying service writes back out in its own x-error response
+		// header. maxErrorDetailSize+1 is read so truncateDetail can tell that
+		// it was cut. A read error is deliberately not reported: the status
+		// line is the failure worth reporting, and a partial body is still
+		// useful detail.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorDetailSize+1))
+
+		// A plain *RemoteError, not an *SdkError: see RemoteError's doc for
+		// why returning an *SdkError would silently gut every existing
+		// `catcher.Error(msg, err, args)` wrap in the org. Nothing is logged
+		// here either — the caller's wrap logs once, wherever it handles it.
+		return result, resp.StatusCode, remoteErrorFrom(resp, body)
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return result, http.StatusInternalServerError, fmt.Errorf("error reading response body: %w", err)
-	}
-
-	if resp.StatusCode >= 400 {
-		// One extraction path: SdkErrorFromResponse adopts the upstream's
-		// x-error-id as ErrorID, its x-error as Cause, and derives status and
-		// severity — see its doc comment. Only the message is supplied here,
-		// byte-for-byte the text this call site has always produced, because
-		// it embeds the body DoReq has already read (SdkErrorFromResponse
-		// never reads a body itself).
-		//
-		// catcher.New under the hood, so DoReq never logs: this error is
-		// logged, once, wherever the caller ends up handling it.
-		return result, resp.StatusCode, sdkErrorFromResponse(resp,
-			fmt.Sprintf("error response (status=%d): %s", resp.StatusCode, string(body)))
 	}
 
 	if resp.StatusCode == http.StatusNoContent {

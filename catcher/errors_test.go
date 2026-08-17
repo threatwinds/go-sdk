@@ -1439,3 +1439,90 @@ func TestErrorIDAppearsInLogLine(t *testing.T) {
 		t.Errorf("expected ErrorID %q, got %q", "logged-id", err.ErrorID)
 	}
 }
+
+// The tests below cover ErrorIDCarrier: the way a failure keeps one occurrence
+// id across a service boundary without the transport helper that read the id
+// having to return an *SdkError to achieve it (which would short-circuit
+// build and discard the wrapping call's msg, args and status).
+
+// carrierError is a plain error that carries an id, standing in for
+// utils.RemoteError.
+type carrierError struct {
+	id string
+}
+
+func (e *carrierError) Error() string          { return "carrier error" }
+func (e *carrierError) CatcherErrorID() string { return e.id }
+
+func TestErrorIDInheritedFromCarrierCause(t *testing.T) {
+	cause := &carrierError{id: "5d08563a-9053-4e8e-ae8e-22781939a12b"}
+
+	err := New("calling auth-api failed", cause, map[string]any{"status": 502, "upstream": "auth-api"})
+
+	if err.ErrorID != cause.id {
+		t.Errorf("expected the id to be inherited as %q, got %q", cause.id, err.ErrorID)
+	}
+	// Everything else stays the caller's: this is the whole difference from
+	// the *SdkError short-circuit.
+	if err.Msg != "calling auth-api failed" {
+		t.Errorf("expected the caller's msg, got %q", err.Msg)
+	}
+	if err.Args["status"] != 502 || err.Args["upstream"] != "auth-api" {
+		t.Errorf("expected the caller's args, got %v", err.Args)
+	}
+	if err.Severity != "CRITICAL" {
+		t.Errorf("expected severity from the caller's status, got %q", err.Severity)
+	}
+}
+
+func TestErrorIDSuppliedInArgsBeatsCarrierCause(t *testing.T) {
+	cause := &carrierError{id: "5d08563a-9053-4e8e-ae8e-22781939a12b"}
+
+	err := New("explicit wins", cause, map[string]any{"error_id": "8c2f0f5c-1c8f-4a7e-9a5f-0a1b2c3d4e5f"})
+
+	if err.ErrorID != "8c2f0f5c-1c8f-4a7e-9a5f-0a1b2c3d4e5f" {
+		t.Errorf("expected the explicitly supplied id to win, got %q", err.ErrorID)
+	}
+}
+
+func TestErrorIDCarrierWithEmptyIDGeneratesUUID(t *testing.T) {
+	err := New("nothing to inherit", &carrierError{}, nil)
+
+	if err.ErrorID == "" {
+		t.Fatal("expected a generated ErrorID")
+	}
+	if uuid.Validate(err.ErrorID) != nil {
+		t.Errorf("expected a well-formed UUID, got %q", err.ErrorID)
+	}
+}
+
+// A carrier reached through a wrapped chain still donates its id, and a
+// typed-nil carrier in the chain must not panic.
+func TestErrorIDInheritedThroughWrappedChain(t *testing.T) {
+	cause := &carrierError{id: "5d08563a-9053-4e8e-ae8e-22781939a12b"}
+	wrapped := fmt.Errorf("while doing the thing: %w", cause)
+
+	if got := New("outer", wrapped, nil).ErrorID; got != cause.id {
+		t.Errorf("expected the id to be inherited through the chain, got %q", got)
+	}
+
+	var nilCarrier *carrierError
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("a typed-nil carrier must not panic: %v", r)
+		}
+	}()
+	if got := New("typed nil carrier", nilCarrier, nil).ErrorID; uuid.Validate(got) != nil {
+		t.Errorf("expected a generated UUID, got %q", got)
+	}
+}
+
+// A non-carrier cause is untouched: nothing outside this opt-in interface
+// changes behaviour.
+func TestErrorIDNotInheritedFromPlainCause(t *testing.T) {
+	err := New("plain cause", errors.New("boom"), nil)
+
+	if uuid.Validate(err.ErrorID) != nil {
+		t.Errorf("expected a generated UUID, got %q", err.ErrorID)
+	}
+}
