@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -424,6 +425,115 @@ func TestDo_ContextCancel(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "canceled") {
 		t.Errorf("error = %v, expected context cancellation error", err)
+	}
+}
+
+// The context branches of do() must not throw away the failure that caused the
+// retry. Returning the bare ctx.Err() reports "context deadline exceeded" about
+// a request that in fact got a 503 from a real service, and loses the
+// upstream's occurrence id, its status, IsRateLimited() and RetryAfter() with
+// it — so the two services' log lines for one failure stop being correlatable,
+// which is the whole point of reading x-error-id.
+
+func TestDo_ContextExpiredDuringBackoffKeepsUpstreamFailure(t *testing.T) {
+	attempts := 0
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			attempts++
+			h := make(http.Header)
+			h.Set("Retry-After", "60") // long enough that the ctx wins the select
+			h.Set("X-Error", "service unavailable")
+			h.Set("X-Error-Id", upstreamErrorID)
+			return mockResp(503, h, `{"error":"unavailable"}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}), WithMaxRetries(2))
+	c.endpoint = "https://api.example.com"
+
+	// Already expired: the backoff select therefore takes ctx.Done()
+	// immediately, deterministically, without waiting out the Retry-After.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := c.do(ctx, http.MethodGet, "/api/billing/v1/quota", nil, nil)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if attempts != 1 {
+		t.Fatalf("setup: expected one attempt before the context branch, got %d", attempts)
+	}
+
+	// Both truths survive: the caller can still match the context failure...
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected the context error to remain matchable, got %v", err)
+	}
+	// ...and the upstream failure it was retrying.
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected the *APIError to survive, got %T: %v", err, err)
+	}
+	if apiErr.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", apiErr.StatusCode)
+	}
+	if apiErr.RetryAfter() != "60" {
+		t.Errorf("retryAfter = %q, want 60", apiErr.RetryAfter())
+	}
+
+	// And the id the upstream minted still becomes the caller's error's id,
+	// rather than a second, unrelated one.
+	wrapped := catcher.New("calling billing-api failed", err, map[string]any{"status": http.StatusBadGateway})
+	if wrapped.ErrorID != upstreamErrorID {
+		t.Errorf("expected the upstream id %q to survive, got %q", upstreamErrorID, wrapped.ErrorID)
+	}
+}
+
+// The same guarantee for the other context branch — the check at the top of the
+// next iteration. With a zero backoff both branches are live and which one runs
+// depends on how the select is scheduled, which is exactly why they must not
+// differ: whichever fires, the upstream failure is still there.
+func TestDo_ContextExpiredBetweenAttemptsKeepsUpstreamFailure(t *testing.T) {
+	var cancel context.CancelFunc
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			h := make(http.Header)
+			h.Set("Retry-After", "0")
+			h.Set("X-Error", "service unavailable")
+			h.Set("X-Error-Id", upstreamErrorID)
+			cancel() // expired by the time this response is processed
+			return mockResp(503, h, `{"error":"unavailable"}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}), WithMaxRetries(2))
+	c.endpoint = "https://api.example.com"
+
+	var ctx context.Context
+	ctx, cancel = context.WithCancel(context.Background())
+	defer cancel()
+
+	err := c.do(ctx, http.MethodGet, "/api/billing/v1/quota", nil, nil)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected the context error to remain matchable, got %v", err)
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected the 503 *APIError to survive, got %T: %v", err, err)
+	}
+	if got := catcher.New("calling billing-api failed", err, nil).ErrorID; got != upstreamErrorID {
+		t.Errorf("expected the upstream id %q to survive, got %q", upstreamErrorID, got)
+	}
+}
+
+// A context that ends before anything was attempted has no failure to carry, so
+// the context error is returned as it is rather than joined with nothing.
+func TestExpiredWithNoPriorFailure(t *testing.T) {
+	if got := expiredWith(context.Canceled, nil); got != context.Canceled {
+		t.Errorf("expected the bare context error, got %v", got)
 	}
 }
 

@@ -15,6 +15,25 @@ Core utilities, error handling, OpenSearch wrapper, and data validation shared a
 | `go-sdk/os` | OpenSearch client wrapper with fluent query builders, bulk ops, and index management. |
 | `go-sdk/plugins` | Plugin infrastructure: Analysis, Notification, Parsing, Correlation. CEL expression engine. |
 | `go-sdk/client` | Unified ThreatWinds API client with `auth`, `billing`, `compute` sub-clients. |
+| `go-sdk/relay` | Turns an upstream's failed HTTP response into the `*catcher.SdkError` a relaying service answers its own client with. |
+
+### Which packages may import `catcher`
+
+`catcher` links gin — and through it validator, protobuf and mongo-driver's bson
+— and its package `init` starts a goroutine that writes to stdout for the life
+of the process. So `utils` and `client` import **nothing** from the SDK: they
+are linked by binaries whose whole job is an HTTP request (the ETL fetchers,
+through `entities`; a CLI or a third-party integrator, through `client`), and
+those must not inherit an HTTP framework or a logging goroutine they never asked
+for. Measured: importing catcher takes `utils` from 224 packages to 331 and
+`client` from 193 to 317.
+
+Where those two need catcher's error-id format rule they keep a six-line copy of
+`catcher.AdoptErrorID`, pinned to the original by a parity test
+(`TestAdoptErrorIDMatchesCatcher`, one per package), and they satisfy
+`catcher.ErrorIDCarrier` structurally with the compile-time assertion in the
+test file. `relay` is where the catcher-coupled conversion lives, so its cost
+falls only on services that already serve HTTP.
 
 ## Key Types
 

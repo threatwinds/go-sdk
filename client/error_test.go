@@ -147,24 +147,44 @@ func TestAPIError_ErrorIDSurvivesShortCircuit(t *testing.T) {
 	}
 }
 
-// Nothing to adopt: catcher mints, so the failure is still traceable — it just
-// traces to this service only, which is the truth.
-func TestAPIError_GeneratesIDWhenUpstreamSuppliesNone(t *testing.T) {
+// Nothing to adopt: the failure names itself, so it is still traceable — it
+// just traces to this service only, which is the truth. What it must not do is
+// leave every wrap to mint its own id, which is what returning "" here did.
+func TestAPIError_MintsItsOwnIDWhenUpstreamSuppliesNone(t *testing.T) {
 	err := newAPIError("GET", "/api/auth/v1/session", 500, "boom", "", "", nil)
 
-	if got := err.CatcherErrorID(); got != "" {
-		t.Errorf("expected nothing to donate, got %q", got)
+	donated := err.CatcherErrorID()
+	if uuid.Validate(donated) != nil {
+		t.Fatalf("expected a locally minted UUID to donate, got %q", donated)
+	}
+	if err.ErrorID != "" {
+		t.Errorf("the field must keep reporting that the server sent nothing, got %q", err.ErrorID)
 	}
 
-	wrapped := catcher.New("calling auth-api failed", err, map[string]any{"status": 500})
-	if uuid.Validate(wrapped.ErrorID) != nil {
-		t.Errorf("expected a generated UUID, got %q", wrapped.ErrorID)
+	// One failure, wrapped at two layers — a handler building its own response
+	// error while a middleware or caller wraps the same value — is one id.
+	first := catcher.New("calling auth-api failed", err, map[string]any{"status": 500})
+	second := catcher.New("session validation failed", err, map[string]any{"status": 502})
+
+	if first.ErrorID != donated || second.ErrorID != donated {
+		t.Errorf("expected both wraps to carry %q, got %q and %q", donated, first.ErrorID, second.ErrorID)
+	}
+}
+
+// Two separate failures must not share an id, however they were minted.
+func TestAPIError_LocalIDsAreOnePerFailure(t *testing.T) {
+	first := newAPIError("GET", "/", 500, "boom", "", "", nil)
+	second := newAPIError("GET", "/", 500, "boom", "", "", nil)
+
+	if first.CatcherErrorID() == second.CatcherErrorID() {
+		t.Errorf("expected different ids for two failures, both got %q", first.CatcherErrorID())
 	}
 }
 
 // An id that is not the shape catcher mints is not adopted: it would either
 // collide with an unrelated in-flight failure or blow up a log line. The field
-// still reports what the server actually sent.
+// still reports what the server actually sent, and the failure still carries
+// one id of its own.
 func TestAPIError_MalformedUpstreamIDIsNotAdopted(t *testing.T) {
 	for _, malformed := range []string{
 		"c72b9698fa1927e1dd12d3cf26ed84b2",              // an md5 Code, as ai-api sends today
@@ -174,19 +194,52 @@ func TestAPIError_MalformedUpstreamIDIsNotAdopted(t *testing.T) {
 	} {
 		err := newAPIError("GET", "/", 500, "boom", malformed, "", nil)
 
-		if got := err.CatcherErrorID(); got != "" {
-			t.Errorf("expected %.20q not to be donated, got %q", malformed, got)
+		donated := err.CatcherErrorID()
+		if donated == malformed {
+			t.Errorf("expected %.20q not to be donated", malformed)
+		}
+		if uuid.Validate(donated) != nil {
+			t.Errorf("expected a locally minted UUID for %.20q, got %q", malformed, donated)
 		}
 		if err.ErrorID != malformed {
 			t.Error("the field must still report what the server sent")
 		}
 
 		wrapped := catcher.New("calling upstream failed", err, nil)
-		if uuid.Validate(wrapped.ErrorID) != nil {
-			t.Errorf("expected a generated UUID for %.20q, got %q", malformed, wrapped.ErrorID)
+		if wrapped.ErrorID != donated {
+			t.Errorf("expected the wrap to carry %q for %.20q, got %q", donated, malformed, wrapped.ErrorID)
 		}
 	}
 }
+
+// The local guard is a copy of catcher's, kept out of the production build so
+// this package links nothing from the SDK (see adoptErrorID's doc comment).
+// Copies drift; this is what stops that.
+func TestAdoptErrorIDMatchesCatcher(t *testing.T) {
+	canonical := uuid.NewString()
+
+	for _, in := range []string{
+		canonical,
+		"",
+		"c72b9698fa1927e1dd12d3cf26ed84b2",
+		"{5d08563a-9053-4e8e-ae8e-22781939a12b}",
+		"urn:uuid:5d08563a-9053-4e8e-ae8e-22781939a12b",
+		"5d08563a90534e8eae8e22781939a12b",
+		strings.Repeat("z", 36),
+		strings.Repeat("a", 64*1024),
+		canonical + " ",
+		"abc\r\nX-Injected: 1",
+	} {
+		if got, want := adoptErrorID(in), catcher.AdoptErrorID(in); got != want {
+			t.Errorf("adoptErrorID(%.40q) = %q, catcher.AdoptErrorID = %q", in, got, want)
+		}
+	}
+}
+
+// The interface this package satisfies structurally, asserted where linking
+// catcher costs nothing: a rename or a signature change in catcher must fail a
+// test here rather than silently stop *APIError donating its id.
+var _ catcher.ErrorIDCarrier = (*APIError)(nil)
 
 // An explicitly supplied error_id still wins over an inherited one.
 func TestAPIError_ExplicitErrorIDBeatsInherited(t *testing.T) {

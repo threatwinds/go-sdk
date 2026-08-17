@@ -11,6 +11,13 @@ var async bool
 var noTrace bool
 var logChan chan string
 var cancelFunc context.CancelFunc
+
+// logDone is closed by the async writer goroutine when it has drained
+// everything it was given and is about to return. Configure waits on it when
+// switching async off, so "async logging is disabled" is a state that has
+// actually been reached by the time Configure returns, rather than one the
+// process is heading towards. See the disable branch for why that matters.
+var logDone chan struct{}
 var mu sync.Mutex
 
 const (
@@ -47,9 +54,12 @@ func Configure(b, a, nt bool) {
 		// Enabling async
 		async = true
 		logChan = make(chan string, 10000)
+		logDone = make(chan struct{})
 		ctx, cancel := context.WithCancel(context.Background())
 		cancelFunc = cancel
-		go func(ctx context.Context, ch chan string) {
+		go func(ctx context.Context, ch chan string, done chan struct{}) {
+			defer close(done)
+
 			for {
 				select {
 				case msg, ok := <-ch:
@@ -72,18 +82,35 @@ func Configure(b, a, nt bool) {
 					}
 				}
 			}
-		}(ctx, logChan)
+		}(ctx, logChan, logDone)
 	} else if !a && async {
-		// Disabling async
+		// Disabling async. The writer is asked to stop, and then waited
+		// for: it writes to whatever os.Stdout points at *when each line is
+		// written*, so a caller that switches to synchronous logging and
+		// then redirects, replaces or closes stdout — a test capturing
+		// output, a process installing its own writer — would otherwise
+		// still have a live goroutine flushing earlier lines into the new
+		// destination. Waiting costs a drain of what is already queued and
+		// makes "logging is synchronous now" true on return.
+		//
+		// The channel is deliberately not closed. printLog reads logChan
+		// under mu but sends outside it, so a sender can be holding a
+		// reference to this channel right now; closing it would make that
+		// send panic, and losing a queued INFO line is not worth a panic on
+		// a logging path. Dropping the reference is enough — the next
+		// printLog reads logChan == nil and writes synchronously.
 		async = false
 		if cancelFunc != nil {
 			cancelFunc()
 			cancelFunc = nil
 		}
-		// Drain and close channel
-		if logChan != nil {
-			close(logChan) // Ahora podemos cerrarlo porque printLog es seguro con mu y logChan=nil
-			logChan = nil
+
+		done := logDone
+		logChan = nil
+		logDone = nil
+
+		if done != nil {
+			<-done
 		}
 	} else if a && async {
 		// Already async, nothing to do for the goroutine

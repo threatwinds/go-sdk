@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -126,12 +127,15 @@ func (c *Client) initServices() {
 // do executes an HTTP request with retry logic for GET requests.
 // For GET requests, it retries up to maxRetries times on retryable
 // statuses (429, 502, 503, 504). Non-GET requests are not retried.
+//
+// When the context ends while a retryable failure is being backed off, both the
+// context error and the upstream failure are returned; see expiredWith.
 func (c *Client) do(ctx context.Context, method, path string, body, out interface{}) error {
 	var lastErr error
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		if attempt > 0 {
 			if err := ctx.Err(); err != nil {
-				return err
+				return expiredWith(err, lastErr)
 			}
 		}
 
@@ -154,11 +158,36 @@ func (c *Client) do(ctx context.Context, method, path string, body, out interfac
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return ctx.Err()
+			return expiredWith(ctx.Err(), lastErr)
 		case <-timer.C:
 		}
 	}
 	return lastErr
+}
+
+// expiredWith reports a context that ended mid-retry without throwing away the
+// failure that caused the retry.
+//
+// Returning the bare ctx.Err() loses everything the last attempt learned: the
+// *APIError, the upstream's occurrence id (so the two services' log lines for
+// one failure stop being correlatable, and a caller wrapping the result gets a
+// freshly minted, unrelated id), its status, and with them IsRateLimited() and
+// RetryAfter(). The caller is told only "context deadline exceeded" about a
+// request that in fact got a 503 from a real service, twice.
+//
+// The two are joined rather than one being chosen, because both are true and
+// callers match on either: errors.Is finds context.DeadlineExceeded or
+// context.Canceled, and errors.As finds the *APIError. catcher's own error-id
+// walk searches a join branch by branch, so the wrap a caller builds still
+// inherits the upstream's id.
+func expiredWith(ctxErr, lastErr error) error {
+	if lastErr == nil {
+		return ctxErr
+	}
+
+	// Upstream failure first: it is the part that explains why the request was
+	// still in flight when the deadline hit, and it leads the joined message.
+	return errors.Join(lastErr, ctxErr)
 }
 
 // doOnce executes a single HTTP request without retry.
@@ -252,8 +281,10 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body, out inte
 // canonical form and the map lookup covers the literal one.
 //
 // The same reasoning, and the same shape, as utils.headerValue. The duplication
-// is deliberate: this package deliberately depends on nothing in the SDK but
-// catcher, and a six-line accessor for an http.Header is not catcher's business.
+// is deliberate: this package depends on nothing in the SDK — see adoptErrorID
+// in error.go for what importing catcher would cost a binary that only wanted
+// an HTTP client — and a six-line accessor for an http.Header is not catcher's
+// business anyway.
 func headerValue(h http.Header, key string) string {
 	if len(h) == 0 {
 		return ""

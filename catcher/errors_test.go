@@ -20,16 +20,43 @@ import (
 
 // captureStdout redirects os.Stdout for the duration of fn and returns
 // everything written to it. Modeled on the same os.Pipe technique used by
-// log_test.go and exit_log_test.go. It only produces deterministic results
-// for synchronous writes — ERROR severity and above (see printLog in log.go)
-// — since lower severities are handed to an async channel drained by a
-// goroutine that may flush after os.Stdout has already been restored.
+// log_test.go and exit_log_test.go.
+//
+// It first takes the package out of async mode for the duration of the
+// capture, and restores it afterward. Without that, this helper cannot be
+// deterministic for *any* test, whatever severity that test itself writes at:
+// the async writer goroutine (started by catcher's init, since async defaults
+// to on) resolves the package-level os.Stdout at the moment it writes each
+// queued line, so a line queued by an *earlier* test can be flushed into a
+// later test's pipe — landing inside a capture window belonging to code that
+// never wrote it. Every assertion here that counts lines, or requires the
+// output to be empty, is one stray flush away from failing, and the failure
+// moves from test to test between runs because it depends only on when the
+// goroutine happens to be scheduled.
+//
+// Configure(_, false, _) is what makes this work rather than merely narrow the
+// window: its disable path stops the writer and waits for it to finish
+// draining before returning (see catcher.go), so on return there is no
+// goroutine left that could write to the os.Stdout this function is about to
+// replace. Async is restored only after os.Stdout is put back, so the restored
+// writer can never see the pipe either.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
+
+	mu.Lock()
+	b, wasAsync, nt := beauty, async, noTrace
+	mu.Unlock()
+
+	if wasAsync {
+		Configure(b, false, nt)
+	}
 
 	original := os.Stdout
 	r, w, err := os.Pipe()
 	if err != nil {
+		if wasAsync {
+			Configure(b, true, nt)
+		}
 		t.Fatalf("failed to create pipe: %v", err)
 	}
 	os.Stdout = w
@@ -38,6 +65,10 @@ func captureStdout(t *testing.T, fn func()) string {
 
 	w.Close()
 	os.Stdout = original
+
+	if wasAsync {
+		Configure(b, true, nt)
+	}
 
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
@@ -1268,14 +1299,65 @@ func TestLogConcurrentGoroutinesLogOnce(t *testing.T) {
 // *occurrence*, as opposed to Code (an md5 of the message, shared by every
 // occurrence of the same message anywhere).
 
+// suppliedErrorID stands in for the id a downstream service carries forward
+// from an upstream call. It is a canonical UUID because that is the only shape
+// AdoptErrorID accepts, and args["error_id"] goes through that guard like every
+// other id this package did not mint itself — see
+// TestErrorIDSuppliedInArgsIsGuarded.
+const suppliedErrorID = "b1d9f4a6-2c34-4e17-9f0d-6a8c7b5e1234"
+
+// otherSuppliedErrorID is a second canonical id, for the cases that need two
+// that differ.
+const otherSuppliedErrorID = "0f3c7d21-88ab-4c6e-9d15-2b7e4a9c8f60"
+
 // TestErrorIDSuppliedInArgsUsedVerbatim covers the adopt half of the
-// contract: when args["error_id"] is supplied, build uses it verbatim
-// rather than generating one — e.g. a downstream service carrying forward
-// the id an upstream service already minted for the same failure.
+// contract: when args["error_id"] is supplied, build uses it rather than
+// generating one — e.g. a downstream service carrying forward the id an
+// upstream service already minted for the same failure.
 func TestErrorIDSuppliedInArgsUsedVerbatim(t *testing.T) {
-	err := New("supplied error id", nil, map[string]any{"error_id": "req-12345"})
-	if err.ErrorID != "req-12345" {
-		t.Errorf("expected ErrorID %q, got %q", "req-12345", err.ErrorID)
+	err := New("supplied error id", nil, map[string]any{"error_id": suppliedErrorID})
+	if err.ErrorID != suppliedErrorID {
+		t.Errorf("expected ErrorID %q, got %q", suppliedErrorID, err.ErrorID)
+	}
+}
+
+// TestErrorIDSuppliedInArgsIsGuarded covers the other half of that contract,
+// and the reason the key cannot be trusted: the idiom build documents for it is
+// a relay plumbing an inbound x-error-id header into args, so the value is
+// remote-controlled. It goes through AdoptErrorID exactly like the id a
+// transport reads off a response, and a value that does not pass is replaced by
+// a freshly minted one rather than being written into ErrorID, the x-error-id
+// header GinError sends and every log line about the failure.
+func TestErrorIDSuppliedInArgsIsGuarded(t *testing.T) {
+	cases := []struct {
+		name string
+		id   string
+	}{
+		{"md5 code, as a v1.1.28 service sends today", "bd8aa635297fba3a4dd2077b6b0b14c5"},
+		{"header injection", "abc\r\nX-Injected: 1"},
+		{"oversized value", strings.Repeat("A", 200)},
+		{"right length but not a uuid", strings.Repeat("z", 36)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := New("guarded error id", nil, map[string]any{"error_id": tc.id})
+
+			if err.ErrorID == tc.id {
+				t.Fatalf("expected %.20q not to be adopted as an occurrence id", tc.id)
+			}
+			if uuid.Validate(err.ErrorID) != nil {
+				t.Errorf("expected a freshly minted UUID, got %q", err.ErrorID)
+			}
+
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			err.GinError(c)
+
+			if got := w.Header().Get("x-error-id"); got != err.ErrorID {
+				t.Errorf("expected the guarded id %q in the header, got %q", err.ErrorID, got)
+			}
+		})
 	}
 }
 
@@ -1316,15 +1398,15 @@ func TestErrorIDsDifferAcrossSeparateConstructions(t *testing.T) {
 // already carries the id from where it was created, and that identity is
 // exactly what must survive as the error propagates up through a service.
 func TestErrorIDShortCircuitPreservesOriginalEvenWithDifferentArg(t *testing.T) {
-	original := New("original failure", nil, map[string]any{"error_id": "original-id"})
+	original := New("original failure", nil, map[string]any{"error_id": suppliedErrorID})
 
-	annotated := New("layer msg", original, map[string]any{"error_id": "a-different-id"})
+	annotated := New("layer msg", original, map[string]any{"error_id": otherSuppliedErrorID})
 
 	if annotated != original {
 		t.Fatal("expected the short-circuit to return the same *SdkError pointer")
 	}
-	if annotated.ErrorID != "original-id" {
-		t.Errorf("expected ErrorID to stay %q, got %q", "original-id", annotated.ErrorID)
+	if annotated.ErrorID != suppliedErrorID {
+		t.Errorf("expected ErrorID to stay %q, got %q", suppliedErrorID, annotated.ErrorID)
 	}
 }
 
@@ -1336,15 +1418,15 @@ func TestNewAndErrorProduceSameErrorIDBehaviour(t *testing.T) {
 	t.Run("supplied verbatim", func(t *testing.T) {
 		var fromError *SdkError
 		captureStdout(t, func() {
-			fromError = Error("compare supplied", nil, map[string]any{"error_id": "shared-id"})
+			fromError = Error("compare supplied", nil, map[string]any{"error_id": suppliedErrorID})
 		})
-		fromNew := New("compare supplied", nil, map[string]any{"error_id": "shared-id"})
+		fromNew := New("compare supplied", nil, map[string]any{"error_id": suppliedErrorID})
 
-		if fromError.ErrorID != "shared-id" {
-			t.Errorf("Error(): expected ErrorID %q, got %q", "shared-id", fromError.ErrorID)
+		if fromError.ErrorID != suppliedErrorID {
+			t.Errorf("Error(): expected ErrorID %q, got %q", suppliedErrorID, fromError.ErrorID)
 		}
-		if fromNew.ErrorID != "shared-id" {
-			t.Errorf("New(): expected ErrorID %q, got %q", "shared-id", fromNew.ErrorID)
+		if fromNew.ErrorID != suppliedErrorID {
+			t.Errorf("New(): expected ErrorID %q, got %q", suppliedErrorID, fromNew.ErrorID)
 		}
 	})
 
@@ -1373,7 +1455,7 @@ func TestNewAndErrorProduceSameErrorIDBehaviour(t *testing.T) {
 func TestGinErrorSetsXErrorIDHeaderToErrorIDNotCode(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	err := New("gin error id header", nil, map[string]any{"error_id": "distinct-from-code"})
+	err := New("gin error id header", nil, map[string]any{"error_id": suppliedErrorID})
 	err.GinError(c)
 
 	got := w.Header().Get("x-error-id")
@@ -1404,7 +1486,7 @@ func TestGinErrorSetsXErrorIDHeaderToErrorIDNotCode(t *testing.T) {
 // exported with a json tag specifically so it can cross service boundaries
 // in the JSON body.
 func TestErrorIDSurvivesJSONRoundTrip(t *testing.T) {
-	original := New("round trip error id", nil, map[string]any{"error_id": "round-trip-id"})
+	original := New("round trip error id", nil, map[string]any{"error_id": suppliedErrorID})
 
 	data, err := json.Marshal(original)
 	if err != nil {
@@ -1428,15 +1510,15 @@ func TestErrorIDSurvivesJSONRoundTrip(t *testing.T) {
 func TestErrorIDAppearsInLogLine(t *testing.T) {
 	var err *SdkError
 	output := captureStdout(t, func() {
-		err = Error("error id in log line", nil, map[string]any{"error_id": "logged-id"})
+		err = Error("error id in log line", nil, map[string]any{"error_id": suppliedErrorID})
 	})
 
 	line := lastJSONLine(t, output)
 	if line["error_id"] != err.ErrorID {
 		t.Errorf("expected logged error_id %q, got %v", err.ErrorID, line["error_id"])
 	}
-	if err.ErrorID != "logged-id" {
-		t.Errorf("expected ErrorID %q, got %q", "logged-id", err.ErrorID)
+	if err.ErrorID != suppliedErrorID {
+		t.Errorf("expected ErrorID %q, got %q", suppliedErrorID, err.ErrorID)
 	}
 }
 
@@ -1634,6 +1716,94 @@ func TestErrorIDInheritedFromDeeplyNestedCarrier(t *testing.T) {
 
 	if got := New("outer", deep, nil).ErrorID; got != cause.id {
 		t.Errorf("expected the id to be inherited from depth, got %q", got)
+	}
+}
+
+// shadowingCarrier is a carrier that wraps another error and may have nothing
+// usable to donate itself — the shape *APIError has on the common case (an
+// upstream that sent no x-error-id, or one AdoptErrorID refused) once it sits
+// anywhere but the innermost position of a chain.
+type shadowingCarrier struct {
+	id  string
+	err error
+}
+
+func (e *shadowingCarrier) Error() string          { return "shadowing carrier: " + e.err.Error() }
+func (e *shadowingCarrier) Unwrap() error          { return e.err }
+func (e *shadowingCarrier) CatcherErrorID() string { return e.id }
+
+// A carrier with nothing to donate must be treated as if it did not implement
+// the interface at all — ErrorIDCarrier's documented contract — which means the
+// search continues beneath it instead of ending there. A single errors.As
+// cannot do that: it stops at the first type match, so this chain used to mint
+// a fresh UUID and lose the id the failure already had.
+func TestErrorIDWalkContinuesPastACarrierWithNothingToDonate(t *testing.T) {
+	const carried = "5d08563a-9053-4e8e-ae8e-22781939a12b"
+
+	cases := []struct {
+		name string
+		id   string
+	}{
+		{"donates nothing", ""},
+		{"donates an md5 code", "c72b9698fa1927e1dd12d3cf26ed84b2"},
+		{"donates an oversized value", strings.Repeat("a", 64*1024)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			chain := fmt.Errorf("handler failed: %w",
+				&shadowingCarrier{id: tc.id, err: &carrierError{id: carried}})
+
+			if got := New("outer", chain, nil).ErrorID; got != carried {
+				t.Errorf("expected the id from deeper in the chain (%q), got %q", carried, got)
+			}
+		})
+	}
+}
+
+// A joined error — what a caller building one error out of two failures
+// produces, and what client.do returns when a request context expires while a
+// retryable upstream failure is being backed off — is searched branch by
+// branch, in the order errors.As searches it.
+func TestErrorIDInheritedThroughJoinedError(t *testing.T) {
+	const carried = "5d08563a-9053-4e8e-ae8e-22781939a12b"
+
+	t.Run("carrier in the first branch", func(t *testing.T) {
+		joined := errors.Join(&carrierError{id: carried}, errors.New("context deadline exceeded"))
+
+		if got := New("outer", joined, nil).ErrorID; got != carried {
+			t.Errorf("expected %q, got %q", carried, got)
+		}
+	})
+
+	t.Run("carrier in the second branch", func(t *testing.T) {
+		joined := errors.Join(errors.New("context deadline exceeded"), &carrierError{id: carried})
+
+		if got := New("outer", joined, nil).ErrorID; got != carried {
+			t.Errorf("expected %q, got %q", carried, got)
+		}
+	})
+
+	t.Run("a branch with nothing to donate does not shadow the other", func(t *testing.T) {
+		joined := errors.Join(&carrierError{}, &carrierError{id: carried})
+
+		if got := New("outer", joined, nil).ErrorID; got != carried {
+			t.Errorf("expected %q, got %q", carried, got)
+		}
+	})
+}
+
+// A carrier's id is a value some other process chose, so it goes through the
+// same guard a header does: it is not adopted, and — per the test above — it
+// does not end the search either.
+func TestCarrierDonatingAMalformedIDIsNotAdopted(t *testing.T) {
+	err := New("malformed donation", &carrierError{id: "bd8aa635297fba3a4dd2077b6b0b14c5"}, nil)
+
+	if err.ErrorID == "bd8aa635297fba3a4dd2077b6b0b14c5" {
+		t.Fatal("expected an md5 donation not to be adopted as an occurrence id")
+	}
+	if uuid.Validate(err.ErrorID) != nil {
+		t.Errorf("expected a freshly minted UUID, got %q", err.ErrorID)
 	}
 }
 

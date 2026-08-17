@@ -333,8 +333,26 @@ var _ ErrorIDCarrier = (*SdkError)(nil)
 //
 // It lives here, rather than once per transport package, because this package
 // owns the id's format: it is the only thing that mints one, and the only thing
-// that has to keep every id in the logs the same shape. Both transports that
-// adopt (utils.DoReq, client.APIError) call it, so the two cannot drift apart.
+// that has to keep every id in the logs the same shape.
+//
+// # Where it is actually enforced
+//
+// build applies it to every id that reaches an *SdkError from outside: the
+// caller-supplied args["error_id"] (the idiom build's own comment recommends
+// for a service re-raising an upstream failure, and therefore the usual way an
+// inbound x-error-id header is plumbed in by hand) and every id donated by an
+// ErrorIDCarrier cause. That is what makes the guarantee true rather than
+// advisory — no *SdkError this package constructs can carry an id it did not
+// either mint or vet, whatever a caller or a foreign carrier hands it.
+//
+// The transport packages (utils.DoReq, client.APIError) apply the same rule to
+// decide what they report and donate, but they do it with their own six-line
+// copy rather than by importing this package: catcher links gin, and utils is
+// linked by binaries — the ETL fetchers — that have no business carrying an
+// HTTP framework or this package's logging goroutine. Their copies are not
+// load-bearing for the invariant above (build vets their output anyway) and
+// each is pinned to this function by a parity test in its own package, so the
+// three cannot drift apart without a test failing.
 func AdoptErrorID(id string) string {
 	// uuid.Parse also accepts the urn:, braced and undashed forms; requiring
 	// exactly 36 characters restricts it to the canonical one, so the value
@@ -350,28 +368,92 @@ func AdoptErrorID(id string) string {
 	return id
 }
 
-// inheritedErrorID returns the occurrence id carried by cause, or "" if there
-// is none to inherit. Callers of this package are unaffected unless their
-// error type opts in by implementing ErrorIDCarrier.
+// inheritedErrorID returns the first usable occurrence id donated by cause or
+// by anything cause wraps, and "" when there is none to inherit. Callers of
+// this package are unaffected unless their error type opts in by implementing
+// ErrorIDCarrier.
 //
-// The typed-nil check matters: errors.As matches on type alone, so a nil
-// *Whatever boxed in a non-nil error interface satisfies the carrier interface
-// and would have its method called on a nil receiver — the same trap
-// ToSdkError already guards for *SdkError, but here the type is foreign, so
-// whether that panics is not this package's to decide. Error construction is
-// on every failure path in every service; it must not be able to turn a
-// failure into a panic.
+// # Why this is a walk and not one errors.As
+//
+// ErrorIDCarrier's contract says an implementation returning "" means "no id to
+// donate" and is treated as if the interface were not implemented at all. A
+// single errors.As cannot honour that: it stops at the *first* node whose type
+// matches, so a carrier with nothing to donate ends the search and shadows a
+// real id deeper in the chain — the wrapping call then mints a fresh UUID and
+// the two services' log lines for one failure stop being correlatable, which is
+// the exact failure this whole mechanism exists to prevent.
+//
+// That was harmless while RemoteError was the only implementer. It is not now:
+// *SdkError, *APIError, *RemoteError and *generatedIDError are all carriers, so
+// a chain holding more than one is ordinary — and *APIError donates nothing on
+// precisely the common case (an upstream that sent no x-error-id, or one the
+// guard refused), which is the case that would do the shadowing. So each node is
+// asked in turn and an empty answer continues the walk rather than ending it.
+//
+// The walk mirrors errors.As otherwise: it follows both Unwrap() error and
+// Unwrap() []error (a join is searched depth-first, left to right, the order
+// errors.As uses), and it honours a node's own As method so a type that reports
+// itself as a carrier through that hook is still found.
 func inheritedErrorID(cause error) string {
-	if cause == nil {
-		return ""
+	for err := cause; err != nil; {
+		if id := donatedErrorID(err); id != "" {
+			return id
+		}
+
+		switch u := err.(type) {
+		case interface{ Unwrap() error }:
+			err = u.Unwrap()
+		case interface{ Unwrap() []error }:
+			for _, branch := range u.Unwrap() {
+				if id := inheritedErrorID(branch); id != "" {
+					return id
+				}
+			}
+
+			return ""
+		default:
+			return ""
+		}
 	}
 
+	return ""
+}
+
+// donatedErrorID asks one node of an error chain — not the chain beneath it —
+// for an id it is willing to donate, returning "" when it has none or is not a
+// carrier at all.
+//
+// The typed-nil check matters: a type match says nothing about the value, so a
+// nil *Whatever boxed in a non-nil error interface satisfies the carrier
+// interface and would have its method called on a nil receiver — the same trap
+// ToSdkError already guards for *SdkError, but here the type is foreign, so
+// whether that panics is not this package's to decide. Error construction is on
+// every failure path in every service; it must not be able to turn a failure
+// into a panic.
+//
+// The donated value goes through AdoptErrorID for the same reason a header does:
+// a carrier is usually a transport error type holding a value some other process
+// chose. An id that is not the shape this package mints is not adopted, and the
+// walk continues as if this node had donated nothing.
+func donatedErrorID(err error) string {
 	var carrier ErrorIDCarrier
-	if !errors.As(cause, &carrier) || carrier == nil || isNilPointer(carrier) {
+
+	switch v := err.(type) {
+	case ErrorIDCarrier:
+		carrier = v
+	case interface{ As(any) bool }:
+		if !v.As(&carrier) {
+			return ""
+		}
+	default:
 		return ""
 	}
 
-	return carrier.CatcherErrorID()
+	if carrier == nil || isNilPointer(carrier) {
+		return ""
+	}
+
+	return AdoptErrorID(carrier.CatcherErrorID())
 }
 
 // isNilPointer reports whether v is a non-nil interface holding a nil pointer
@@ -410,15 +492,28 @@ func build(msg string, cause error, args map[string]any, skip int) *SdkError {
 	// error_id is reserved, alongside status: when the caller supplies one
 	// (e.g. a downstream service re-raising a failure it received from an
 	// upstream call, carrying forward the id that upstream already minted),
-	// it is adopted verbatim so the same occurrence keeps the same id
-	// across every service that touches it. Failing that, a cause that
-	// carries an id of its own donates it (see ErrorIDCarrier) — the same
-	// propagation, without the call site having to plumb the id by hand.
-	// When neither is present, a fresh UUID is generated here so every
-	// *SdkError this package ever constructs has one, whether or not any
-	// caller asked for it.
-	errorID, ok := args["error_id"].(string)
-	if !ok || errorID == "" {
+	// it is adopted so the same occurrence keeps the same id across every
+	// service that touches it. Failing that, a cause that carries an id of
+	// its own donates it (see ErrorIDCarrier) — the same propagation,
+	// without the call site having to plumb the id by hand. When neither is
+	// present, a fresh UUID is generated here so every *SdkError this
+	// package ever constructs has one, whether or not any caller asked for
+	// it.
+	//
+	// Both inbound routes go through AdoptErrorID, and that is the point at
+	// which the guard is real rather than advisory. The caller-supplied key
+	// is not a trusted local value: the idiom this comment recommends is a
+	// relay plumbing an inbound x-error-id header into args, so it is a
+	// remote-controlled string, and without the check a 10MB header value or
+	// one colliding with an unrelated in-flight failure would be written
+	// straight into this error's ErrorID, back out through GinError's
+	// x-error-id header and into every log line about the failure. A value
+	// that does not pass is not an occurrence id; the error still gets one,
+	// generated below, and only the false correlation is lost.
+	suppliedID, _ := args["error_id"].(string)
+
+	errorID := AdoptErrorID(suppliedID)
+	if errorID == "" {
 		errorID = inheritedErrorID(cause)
 	}
 	if errorID == "" {
@@ -503,9 +598,11 @@ func build(msg string, cause error, args map[string]any, skip int) *SdkError {
 //	"retry" (int)          → Retry-After header value in seconds
 //	"code_override" (string) → overrides the error code in the JSON body
 //	"param" (string)       → included as "param" in the JSON error detail
-//	"error_id" (string)    → identifies this error occurrence; adopted
-//	                         verbatim if supplied, otherwise inherited
-//	                         from a cause implementing ErrorIDCarrier,
+//	"error_id" (string)    → identifies this error occurrence; adopted if
+//	                         supplied and it passes AdoptErrorID (a
+//	                         canonical 36-character UUID, the only shape
+//	                         this package mints), otherwise inherited from
+//	                         a cause implementing ErrorIDCarrier,
 //	                         otherwise generated as a UUID. Meant to be
 //	                         carried unchanged by every service that
 //	                         re-raises the same failure so it can be
