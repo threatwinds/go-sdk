@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -243,34 +244,65 @@ func (e SdkError) JSON() string {
 	return string(jLog)
 }
 
-// SecureString renders this error for a consumer who is not this platform's
-// operator: the response body and the x-error header GinError puts on the wire.
+// privateArgs are the Args keys that must never reach a consumer. They are
+// operator context describing this platform's internals, not anything about
+// the caller's own request.
 //
-// At >= 500 it returns Msg alone. A server-side failure is not the caller's to
-// diagnose, and Cause at that point is this service's own internals — a driver
-// error, a dependency's message, a connection string.
-//
-// Below 500 it returns Msg and, when there is one, Cause. A 4xx is about
-// something in the caller's own request, so explaining it is the whole point.
-//
-// Args are never rendered, at any status. They are operator context — the
-// diagnostic key/values a call site attaches for its log line — and the log
-// keeps them regardless: Log serializes the struct itself (see JSON) and never
-// goes through this method. Rendering them here published internal topology to
-// anonymous callers, because Args routinely carries the URL a request was
-// relayed to:
+// The leak this exists to close: gdk attaches the URL it relayed a request to,
+// so an anonymous caller of the gateway was handed auth-api's internal address
+// —
 //
 //	"url": "https://auth-<project-number>.us-central1.run.app/api/auth/v2/keypair"
 //
-// and because GinError writes this string into x-error, which the *next*
-// service adopts as its own Cause, one hop's args became permanent text in
-// every message downstream of it — a caller of the gateway was told the
-// internal address of auth-api, and the masked api-key it had rejected.
+// — and because GinError writes SecureString into the x-error header as well
+// as the body, and the next service adopts that header as its own Cause, one
+// hop's args became permanent text in every message downstream of it. Filtering
+// here rather than at each call site means the redaction also applies to the
+// text a relaying service inherits.
 //
-// Nothing a client legitimately needs is lost: GinError promotes the args a
-// consumer acts on into fields of their own (param, code_override, retry, and
-// the status itself), so they are read as structure rather than parsed back
-// out of a rendered blob.
+// Args are otherwise still rendered, because some of them genuinely are the
+// caller's guidance: a rejected search field is answered with the list of
+// accepted ones, a failed validation names the offending field. Those must
+// survive. This set is therefore a denylist, which is the weaker of the two
+// possible designs — a new key holding internal detail is exposed until it is
+// added here. Prefer putting consumer-facing text in the message, and treat
+// this list as the floor rather than the whole guarantee.
+var privateArgs = map[string]struct{}{
+	"url": {}, "host": {}, "hostname": {}, "endpoint": {}, "address": {},
+	"upstream": {}, "target": {}, "target_url": {}, "base_url": {},
+	"api-key": {}, "api_key": {}, "api-secret": {}, "api_secret": {},
+	"secret": {}, "token": {}, "password": {}, "authorization": {},
+}
+
+// consumerArgs returns args without the keys privateArgs names. It returns a
+// copy: e.Args is what Log serializes, and the operator must keep every key.
+// A nil result marshals to "null" the same way an empty map would not, so an
+// error with only private args renders "Args: {}" rather than losing the shape
+// callers and tests expect.
+func consumerArgs(args map[string]any) map[string]any {
+	out := make(map[string]any, len(args))
+	for k, v := range args {
+		if _, private := privateArgs[strings.ToLower(k)]; private {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// SecureString renders this error for a consumer who is not this platform's
+// operator: the response body and the x-error header GinError puts on the wire.
+//
+// At >= 500 it returns Msg alone — a server-side failure is not the caller's to
+// diagnose, and Cause at that point is this service's own internals.
+//
+// Below 500 it returns the full description, minus the Args that privateArgs
+// names. A 4xx is about something in the caller's own request, so explaining it
+// is the point; disclosing the platform's internal topology while doing so is
+// not.
+//
+// The log line is unaffected either way: Log serializes the struct itself (see
+// JSON) and never goes through this method, so operators keep every key.
 func (e SdkError) SecureString() string {
 	status, ok := e.Args["status"]
 	if ok {
@@ -279,11 +311,14 @@ func (e SdkError) SecureString() string {
 		}
 	}
 
-	if e.Cause == nil || *e.Cause == unknownCause {
-		return e.Msg
+	args, _ := json.Marshal(consumerArgs(e.Args))
+
+	causeText := unknownCause
+	if e.Cause != nil {
+		causeText = *e.Cause
 	}
 
-	return fmt.Sprintf("%s: %s", e.Msg, *e.Cause)
+	return fmt.Sprintf("%s: %s. Args: %s", e.Msg, causeText, args)
 }
 
 // unknownCause is the placeholder build stores in Cause when an error was

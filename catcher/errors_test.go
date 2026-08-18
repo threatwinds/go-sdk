@@ -1779,68 +1779,50 @@ func TestAdoptErrorID(t *testing.T) {
 	}
 }
 
-// TestSecureStringNeverRendersArgs pins the disclosure boundary: Args are
-// operator context and must not reach a consumer at any status. The concrete
-// regression is an internal service address — Args carries the URL a request
-// was relayed to, GinError writes SecureString into x-error, and the next
-// service adopts that text as its Cause, so one hop's args used to become
-// permanent text in every downstream message.
-func TestSecureStringNeverRendersArgs(t *testing.T) {
+// TestSecureStringRedactsInternalArgs pins the disclosure boundary. The
+// concrete regression is an internal service address: gdk attaches the URL it
+// relayed to, GinError writes SecureString into x-error, and the next service
+// adopts that text as its Cause — so one hop's args became permanent text in
+// every downstream message.
+func TestSecureStringRedactsInternalArgs(t *testing.T) {
 	const internalURL = "https://auth-80760915954.us-central1.run.app/api/auth/v2/keypair"
 
-	for _, tc := range []struct {
-		name   string
-		status int
-	}{
-		{"client error", http.StatusUnauthorized},
-		{"server error", http.StatusInternalServerError},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			err := New("auth API returned error", errors.New("the requested key was not found"), map[string]any{
-				"status":  tc.status,
-				"url":     internalURL,
-				"api-key": "dead****",
-			})
+	err := New("auth API returned error", errors.New("the requested key was not found"), map[string]any{
+		"status":  http.StatusUnauthorized,
+		"url":     internalURL,
+		"api-key": "dead****",
+		"allowed": "domain, email, username",
+	})
 
-			got := err.SecureString()
-			if strings.Contains(got, internalURL) {
-				t.Errorf("internal URL disclosed to the client: %q", got)
-			}
-			if strings.Contains(got, "dead****") {
-				t.Errorf("rejected credential echoed to the client: %q", got)
-			}
-			if strings.Contains(got, "Args:") {
-				t.Errorf("args rendered into a consumer-facing message: %q", got)
-			}
-			if !strings.Contains(got, "auth API returned error") {
-				t.Errorf("message lost: %q", got)
-			}
-			// The args still have to be there for the operator.
-			if err.Args["url"] != internalURL {
-				t.Error("url dropped from Args; the log line needs it")
-			}
-		})
+	got := err.SecureString()
+	if strings.Contains(got, internalURL) {
+		t.Errorf("internal URL disclosed to the client: %q", got)
+	}
+	if strings.Contains(got, "dead****") {
+		t.Errorf("rejected credential echoed to the client: %q", got)
+	}
+	// Guidance must survive: some args exist precisely to tell the caller what
+	// their request should have said.
+	if !strings.Contains(got, "domain, email, username") {
+		t.Errorf("caller guidance was redacted along with the internals: %q", got)
+	}
+	if !strings.Contains(got, "auth API returned error") {
+		t.Errorf("message lost: %q", got)
+	}
+	// The operator keeps everything.
+	if err.Args["url"] != internalURL {
+		t.Error("url dropped from Args; the log line needs it")
 	}
 }
 
-// TestSecureStringExplainsClientErrorsOnly keeps the two halves of the rule
-// apart: a 4xx is about the caller's own request and is explained, a 5xx is
-// this service's internals and is not.
-func TestSecureStringExplainsClientErrorsOnly(t *testing.T) {
-	cause := errors.New("the requested key was not found")
+// TestSecureStringServerErrorsSayNothing keeps the >= 500 half intact: a
+// server-side failure is not the caller's to diagnose, so neither cause nor
+// args are rendered.
+func TestSecureStringServerErrorsSayNothing(t *testing.T) {
+	err := New("upstream exploded", errors.New(`pq: password authentication failed for user "casework"`),
+		map[string]any{"status": http.StatusInternalServerError, "url": "https://internal.run.app"})
 
-	client := New("auth API returned error", cause, map[string]any{"status": http.StatusUnauthorized})
-	if got := client.SecureString(); got != "auth API returned error: the requested key was not found" {
-		t.Errorf("4xx should carry the cause, got %q", got)
-	}
-
-	server := New("auth API returned error", cause, map[string]any{"status": http.StatusInternalServerError})
-	if got := server.SecureString(); got != "auth API returned error" {
+	if got := err.SecureString(); got != "upstream exploded" {
 		t.Errorf("5xx should be the message alone, got %q", got)
-	}
-
-	bare := New("nothing to add", nil, map[string]any{"status": http.StatusBadRequest})
-	if got := bare.SecureString(); got != "nothing to add" {
-		t.Errorf("a causeless error should not grow a suffix, got %q", got)
 	}
 }
