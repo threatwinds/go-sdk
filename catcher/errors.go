@@ -112,7 +112,7 @@ type SdkError struct {
 func (e SdkError) Error() string {
 	args, _ := json.Marshal(e.Args)
 
-	causeText := "unknown cause"
+	causeText := unknownCause
 	if e.Cause != nil {
 		causeText = *e.Cause
 	}
@@ -243,7 +243,34 @@ func (e SdkError) JSON() string {
 	return string(jLog)
 }
 
-// SecureString returns the error message if the status code is >= 500, otherwise it returns the full error description.
+// SecureString renders this error for a consumer who is not this platform's
+// operator: the response body and the x-error header GinError puts on the wire.
+//
+// At >= 500 it returns Msg alone. A server-side failure is not the caller's to
+// diagnose, and Cause at that point is this service's own internals — a driver
+// error, a dependency's message, a connection string.
+//
+// Below 500 it returns Msg and, when there is one, Cause. A 4xx is about
+// something in the caller's own request, so explaining it is the whole point.
+//
+// Args are never rendered, at any status. They are operator context — the
+// diagnostic key/values a call site attaches for its log line — and the log
+// keeps them regardless: Log serializes the struct itself (see JSON) and never
+// goes through this method. Rendering them here published internal topology to
+// anonymous callers, because Args routinely carries the URL a request was
+// relayed to:
+//
+//	"url": "https://auth-<project-number>.us-central1.run.app/api/auth/v2/keypair"
+//
+// and because GinError writes this string into x-error, which the *next*
+// service adopts as its own Cause, one hop's args became permanent text in
+// every message downstream of it — a caller of the gateway was told the
+// internal address of auth-api, and the masked api-key it had rejected.
+//
+// Nothing a client legitimately needs is lost: GinError promotes the args a
+// consumer acts on into fields of their own (param, code_override, retry, and
+// the status itself), so they are read as structure rather than parsed back
+// out of a rendered blob.
 func (e SdkError) SecureString() string {
 	status, ok := e.Args["status"]
 	if ok {
@@ -252,8 +279,18 @@ func (e SdkError) SecureString() string {
 		}
 	}
 
-	return e.Error()
+	if e.Cause == nil || *e.Cause == unknownCause {
+		return e.Msg
+	}
+
+	return fmt.Sprintf("%s: %s", e.Msg, *e.Cause)
 }
+
+// unknownCause is the placeholder build stores in Cause when an error was
+// constructed without one. Cause is a *string that build always sets, so
+// "no cause" is this sentinel rather than a nil pointer, and any code
+// deciding whether there is something to explain must compare against it.
+const unknownCause = "unknown cause"
 
 // ErrorIDCarrier is implemented by an error that already carries a catcher
 // error id minted somewhere else — by utils.RemoteError and client.APIError,
@@ -568,7 +605,7 @@ func build(msg string, cause error, args map[string]any, skip int) *SdkError {
 		effectiveCause = nil
 	}
 
-	causeText := "unknown cause"
+	causeText := unknownCause
 	if effectiveCause != nil {
 		causeText = effectiveCause.Error()
 	}
