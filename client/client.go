@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -126,12 +127,15 @@ func (c *Client) initServices() {
 // do executes an HTTP request with retry logic for GET requests.
 // For GET requests, it retries up to maxRetries times on retryable
 // statuses (429, 502, 503, 504). Non-GET requests are not retried.
+//
+// When the context ends while a retryable failure is being backed off, both the
+// context error and the upstream failure are returned; see expiredWith.
 func (c *Client) do(ctx context.Context, method, path string, body, out interface{}) error {
 	var lastErr error
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		if attempt > 0 {
 			if err := ctx.Err(); err != nil {
-				return err
+				return expiredWith(err, lastErr)
 			}
 		}
 
@@ -154,11 +158,36 @@ func (c *Client) do(ctx context.Context, method, path string, body, out interfac
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return ctx.Err()
+			return expiredWith(ctx.Err(), lastErr)
 		case <-timer.C:
 		}
 	}
 	return lastErr
+}
+
+// expiredWith reports a context that ended mid-retry without throwing away the
+// failure that caused the retry.
+//
+// Returning the bare ctx.Err() loses everything the last attempt learned: the
+// *APIError, the upstream's occurrence id (so the two services' log lines for
+// one failure stop being correlatable, and a caller wrapping the result gets a
+// freshly minted, unrelated id), its status, and with them IsRateLimited() and
+// RetryAfter(). The caller is told only "context deadline exceeded" about a
+// request that in fact got a 503 from a real service, twice.
+//
+// The two are joined rather than one being chosen, because both are true and
+// callers match on either: errors.Is finds context.DeadlineExceeded or
+// context.Canceled, and errors.As finds the *APIError. catcher's own error-id
+// walk searches a join branch by branch, so the wrap a caller builds still
+// inherits the upstream's id.
+func expiredWith(ctxErr, lastErr error) error {
+	if lastErr == nil {
+		return ctxErr
+	}
+
+	// Upstream failure first: it is the part that explains why the request was
+	// still in flight when the deadline hit, and it leads the joined message.
+	return errors.Join(lastErr, ctxErr)
 }
 
 // doOnce executes a single HTTP request without retry.
@@ -211,11 +240,15 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body, out inte
 		return err
 	}
 
-	// Handle error responses.
+	// Handle error responses. These three are the headers catcher.GinError
+	// writes on the way out of a ThreatWinds service, which is what this client
+	// talks to; x-error-id in particular is the occurrence id that lets one
+	// failure be grepped across every service's logs, and it reaches catcher
+	// through APIError.CatcherErrorID.
 	if resp.StatusCode >= 400 {
-		message := resp.Header.Get("X-Error")
-		errorID := resp.Header.Get("X-Error-Id")
-		retryAfter := resp.Header.Get("Retry-After")
+		message := headerValue(resp.Header, "x-error")
+		errorID := headerValue(resp.Header, "x-error-id")
+		retryAfter := headerValue(resp.Header, "retry-after")
 		return newAPIError(method, path, resp.StatusCode, message, errorID, retryAfter, respBody)
 	}
 
@@ -232,6 +265,42 @@ func (c *Client) doOnce(ctx context.Context, method, path string, body, out inte
 	}
 
 	return nil
+}
+
+// headerValue reads a response header, tolerating a Header map whose keys were
+// never canonicalized.
+//
+// http.Header.Get canonicalizes the *lookup* key
+// (textproto.CanonicalMIMEHeaderKey), so it finds "X-Error-Id" — what net/http
+// stores for any response that came off the wire — but silently misses an entry
+// stored under the literal key "x-error-id", which is legal since http.Header
+// is a plain map and is what a hand-built response contains: a test double, a
+// cached response, or a custom http.RoundTripper installed through
+// WithHTTPClient. Missing it would drop the upstream's error id, so both
+// spellings are checked. Callers pass the lowercase spelling, so Get covers the
+// canonical form and the map lookup covers the literal one.
+//
+// The same reasoning, and the same shape, as utils.headerValue. The duplication
+// is deliberate: this package depends on nothing in the SDK — see adoptErrorID
+// in error.go for what importing catcher would cost a binary that only wanted
+// an HTTP client — and a six-line accessor for an http.Header is not catcher's
+// business anyway.
+func headerValue(h http.Header, key string) string {
+	if len(h) == 0 {
+		return ""
+	}
+
+	if v := h.Get(key); v != "" {
+		return v
+	}
+
+	for _, v := range h[key] {
+		if v != "" {
+			return v
+		}
+	}
+
+	return ""
 }
 
 // applyAuth sets the appropriate authentication headers on the request.

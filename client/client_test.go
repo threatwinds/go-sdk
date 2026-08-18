@@ -3,12 +3,16 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/threatwinds/go-sdk/catcher"
 )
 
 func TestNew_NoAuth(t *testing.T) {
@@ -421,5 +425,201 @@ func TestDo_ContextCancel(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "canceled") {
 		t.Errorf("error = %v, expected context cancellation error", err)
+	}
+}
+
+// The context branches of do() must not throw away the failure that caused the
+// retry. Returning the bare ctx.Err() reports "context deadline exceeded" about
+// a request that in fact got a 503 from a real service, and loses the
+// upstream's occurrence id, its status, IsRateLimited() and RetryAfter() with
+// it — so the two services' log lines for one failure stop being correlatable,
+// which is the whole point of reading x-error-id.
+
+func TestDo_ContextExpiredDuringBackoffKeepsUpstreamFailure(t *testing.T) {
+	attempts := 0
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			attempts++
+			h := make(http.Header)
+			h.Set("Retry-After", "60") // long enough that the ctx wins the select
+			h.Set("X-Error", "service unavailable")
+			h.Set("X-Error-Id", upstreamErrorID)
+			return mockResp(503, h, `{"error":"unavailable"}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}), WithMaxRetries(2))
+	c.endpoint = "https://api.example.com"
+
+	// Already expired: the backoff select therefore takes ctx.Done()
+	// immediately, deterministically, without waiting out the Retry-After.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := c.do(ctx, http.MethodGet, "/api/billing/v1/quota", nil, nil)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if attempts != 1 {
+		t.Fatalf("setup: expected one attempt before the context branch, got %d", attempts)
+	}
+
+	// Both truths survive: the caller can still match the context failure...
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected the context error to remain matchable, got %v", err)
+	}
+	// ...and the upstream failure it was retrying.
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected the *APIError to survive, got %T: %v", err, err)
+	}
+	if apiErr.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", apiErr.StatusCode)
+	}
+	if apiErr.RetryAfter() != "60" {
+		t.Errorf("retryAfter = %q, want 60", apiErr.RetryAfter())
+	}
+
+	// And the id the upstream minted still becomes the caller's error's id,
+	// rather than a second, unrelated one.
+	wrapped := catcher.New("calling billing-api failed", err, map[string]any{"status": http.StatusBadGateway})
+	if wrapped.ErrorID != upstreamErrorID {
+		t.Errorf("expected the upstream id %q to survive, got %q", upstreamErrorID, wrapped.ErrorID)
+	}
+}
+
+// The same guarantee for the other context branch — the check at the top of the
+// next iteration. With a zero backoff both branches are live and which one runs
+// depends on how the select is scheduled, which is exactly why they must not
+// differ: whichever fires, the upstream failure is still there.
+func TestDo_ContextExpiredBetweenAttemptsKeepsUpstreamFailure(t *testing.T) {
+	var cancel context.CancelFunc
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			h := make(http.Header)
+			h.Set("Retry-After", "0")
+			h.Set("X-Error", "service unavailable")
+			h.Set("X-Error-Id", upstreamErrorID)
+			cancel() // expired by the time this response is processed
+			return mockResp(503, h, `{"error":"unavailable"}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}), WithMaxRetries(2))
+	c.endpoint = "https://api.example.com"
+
+	var ctx context.Context
+	ctx, cancel = context.WithCancel(context.Background())
+	defer cancel()
+
+	err := c.do(ctx, http.MethodGet, "/api/billing/v1/quota", nil, nil)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected the context error to remain matchable, got %v", err)
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected the 503 *APIError to survive, got %T: %v", err, err)
+	}
+	if got := catcher.New("calling billing-api failed", err, nil).ErrorID; got != upstreamErrorID {
+		t.Errorf("expected the upstream id %q to survive, got %q", upstreamErrorID, got)
+	}
+}
+
+// A context that ends before anything was attempted has no failure to carry, so
+// the context error is returned as it is rather than joined with nothing.
+func TestExpiredWithNoPriorFailure(t *testing.T) {
+	if got := expiredWith(context.Canceled, nil); got != context.Canceled {
+		t.Errorf("expected the bare context error, got %v", got)
+	}
+}
+
+// The end-to-end path: an upstream ThreatWinds service's x-error-id has to
+// reach the error a calling service builds, so one failure keeps one id across
+// the hop. TestDo_APIError above covers reading the header; these cover what
+// happens to it afterwards.
+
+func TestDo_UpstreamErrorIDReachesCatcher(t *testing.T) {
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			h := make(http.Header)
+			h.Set("X-Error", "session expired")
+			h.Set("X-Error-Id", upstreamErrorID)
+			return mockResp(401, h, `{"error":"unauthorized"}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}))
+	c.endpoint = "https://api.example.com"
+
+	err := c.do(context.Background(), http.MethodGet, "/api/auth/v1/session", nil, nil)
+
+	wrapped := catcher.New("failed to validate session with auth-api", err,
+		map[string]any{"status": http.StatusBadGateway})
+	if wrapped.ErrorID != upstreamErrorID {
+		t.Errorf("expected the upstream id %q to survive the hop, got %q", upstreamErrorID, wrapped.ErrorID)
+	}
+	if wrapped.Args["status"] != http.StatusBadGateway {
+		t.Errorf("the caller's status must survive too, got %v", wrapped.Args["status"])
+	}
+}
+
+func TestDo_GeneratesErrorIDWhenUpstreamSendsNone(t *testing.T) {
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			return mockResp(500, make(http.Header), `{"error":"boom"}`), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}))
+	c.endpoint = "https://api.example.com"
+
+	err := c.do(context.Background(), http.MethodGet, "/api/auth/v1/session", nil, nil)
+
+	wrapped := catcher.New("calling auth-api failed", err, map[string]any{"status": 500})
+	if uuid.Validate(wrapped.ErrorID) != nil {
+		t.Errorf("expected a generated UUID, got %q", wrapped.ErrorID)
+	}
+}
+
+// A Header map built by hand — which is exactly what a custom RoundTripper
+// installed through WithHTTPClient produces — can hold literal lowercase keys.
+// http.Header.Get canonicalizes only the lookup key, so it would miss them and
+// the upstream's id would be silently dropped.
+func TestDo_ReadsNonCanonicalHeaderKeys(t *testing.T) {
+	rt := &mockRT{
+		roundTripper: func(req *http.Request) (*http.Response, error) {
+			h := http.Header{
+				"x-error":     []string{"session expired"},
+				"x-error-id":  []string{upstreamErrorID},
+				"retry-after": []string{"7"},
+			}
+			// 400, not a retryable status: do() sleeps out the Retry-After
+			// delay even on its final attempt, so a retryable status here
+			// would buy nothing but seven seconds of test runtime.
+			return mockResp(400, h, ""), nil
+		},
+	}
+
+	c, _ := New(WithBearer("tok"), WithHTTPClient(&http.Client{Transport: rt}))
+	c.endpoint = "https://api.example.com"
+
+	err := c.do(context.Background(), http.MethodGet, "/api/auth/v1/session", nil, nil)
+
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.ErrorID != upstreamErrorID {
+		t.Errorf("errorID = %q, want %q", apiErr.ErrorID, upstreamErrorID)
+	}
+	if apiErr.Message != "session expired" {
+		t.Errorf("message = %q, want 'session expired'", apiErr.Message)
+	}
+	if apiErr.RetryAfter() != "7" {
+		t.Errorf("retryAfter = %q, want 7", apiErr.RetryAfter())
 	}
 }
