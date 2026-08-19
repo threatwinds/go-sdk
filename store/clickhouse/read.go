@@ -99,14 +99,32 @@ func (d *Driver) fetch(ctx context.Context, s store.Scope, filters []store.Filte
 		order = "ASC"
 	}
 
-	// formatRow serialises the whole row, declared columns and discovered JSON
-	// paths alike, so this package never has to know a record's shape.
+	if idCol := d.cfg.IDColumns[s.Dataset]; idCol != "" {
+		id, err := column(idCol)
+		if err != nil {
+			return nil, err
+		}
+		q := fmt.Sprintf(
+			"SELECT formatRow('JSONEachRow', *) FROM %s WHERE %s AND %s IN "+
+				"(SELECT %s FROM %s WHERE %s ORDER BY %s %s LIMIT ? OFFSET ?) "+
+				"ORDER BY %s %s LIMIT ?",
+			tbl, pred, id, id, tbl, pred, sortCol, order, sortCol, order,
+		)
+		outer := append(append([]any{}, args...), args...)
+		outer = append(outer, limit, page.Offset, limit)
+		return d.scanRows(ctx, q, outer, limit)
+	}
+
 	q := fmt.Sprintf(
 		"SELECT formatRow('JSONEachRow', *) FROM %s WHERE %s ORDER BY %s %s LIMIT ? OFFSET ?",
 		tbl, pred, sortCol, order,
 	)
 	args = append(args, limit, page.Offset)
 
+	return d.scanRows(ctx, q, args, limit)
+}
+
+func (d *Driver) scanRows(ctx context.Context, q string, args []any, limit int) ([]json.RawMessage, error) {
 	rows, err := d.conn.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("clickhouse: fetch: %w", err)

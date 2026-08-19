@@ -44,6 +44,15 @@ type Config struct {
 	// that way, which is an error at call time rather than a silent no-match.
 	TextColumns map[store.Dataset]string
 
+	// IDColumns names, per dataset, a column that identifies a row. It is what
+	// a paged read narrows on before it materialises whole records: selecting
+	// every column is what lets a record keep the dynamic half of its shape,
+	// and it is also what stops ClickHouse deferring those columns until after
+	// the sort, so ordering a week of logs to return fifty of them reads the
+	// week. A dataset with no entry is read in one pass, which is correct and
+	// costs that.
+	IDColumns map[store.Dataset]string
+
 	// TimeColumn bounds Scope.From/To. Defaults to "@timestamp".
 	TimeColumn string
 
