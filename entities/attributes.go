@@ -90,6 +90,7 @@ type Attributes struct {
 	MobileAppId               *string  `json:"mobile-app-id,omitempty" example:"com.example.maliciousapp"`
 	Os                        *string  `json:"os,omitempty" example:"Windows 10"`
 	Passport                  *string  `json:"passport,omitempty" example:"AB1234567"`
+	Password                  *string  `json:"password,omitempty" example:"correct horse battery staple"`
 	Path                      *string  `json:"path,omitempty" example:"/var/log/suspicious.log"`
 	PatternInFile             *string  `json:"pattern-in-file,omitempty" example:"eval\\(base64_decode\\(.*\\)\\)"`
 	PatternInMemory           *string  `json:"pattern-in-memory,omitempty" example:"password=[a-zA-Z0-9]{8,}"`
