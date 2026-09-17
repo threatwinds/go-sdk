@@ -152,7 +152,7 @@ func (c *Config) loadCfg(processName string) {
 	}
 
 	if _, err := os.Stat(pipelineFolder.String()); os.IsNotExist(err) {
-		_ = catcher.Error("pipeline folder does not exist", nil, map[string]any{
+		_ = catcher.Error("could not load the pipeline configuration", errors.New("pipeline folder does not exist"), map[string]any{
 			"dir":     pipelineFolder,
 			"process": processName,
 		})
