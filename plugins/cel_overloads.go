@@ -32,6 +32,31 @@ func getNumeric(v gjson.Result) (float64, bool) {
 	return 0, false
 }
 
+// textContent returns the searchable text form of a gjson Result along with
+// whether a text form exists. Text-search overloads (contains, containsAll,
+// startsWith, endsWith, regexMatch) historically bailed out on any value that
+// was not a plain gjson.String, which silently returned false for objects and
+// arrays — the root cause of a large class of never-firing detection rules
+// (e.g. O365 contains("log.Parameters", "...")).
+//
+// gjson Result.String() already yields the raw JSON text for objects and
+// arrays, so we expose that for those two types. Plain strings are unchanged.
+// Null and missing values return false so callers keep their "not present =>
+// no match" contract. Numbers and booleans are deliberately NOT treated as
+// text (matching the pre-existing contract where those are non-searchable).
+func textContent(v gjson.Result) (string, bool) {
+	if !v.Exists() || v.Type == gjson.Null {
+		return "", false
+	}
+	switch v.Type {
+	case gjson.String:
+		return v.Str, true
+	case gjson.JSON: // object or array — search the raw JSON text
+		return v.Raw, true
+	}
+	return "", false
+}
+
 // Helper to parse a numeric value from ref.Val
 func valToFloat(v ref.Val) (float64, bool) {
 	switch val := v.Value().(type) {
@@ -250,8 +275,8 @@ func (c *CELCache) contains() cel.EnvOption {
 				key := args[1].Value().(string)
 				val := args[2].Value().(string)
 				v := gjson.Get(data, key)
-				if v.Exists() && v.Type == gjson.String {
-					return types.Bool(strings.Contains(v.String(), val))
+				if s, ok := textContent(v); ok {
+					return types.Bool(strings.Contains(s, val))
 				}
 				return types.False
 			}),
@@ -265,9 +290,9 @@ func (c *CELCache) contains() cel.EnvOption {
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
 				v := gjson.Get(data, key)
-				if v.Exists() && v.Type == gjson.String {
+				if s, ok := textContent(v); ok {
 					for _, item := range listVal {
-						if strings.Contains(v.String(), strings.TrimSpace(item.Value().(string))) {
+						if strings.Contains(s, strings.TrimSpace(item.Value().(string))) {
 							return types.Bool(true)
 						}
 					}
@@ -288,9 +313,9 @@ func (c *CELCache) containsAll() cel.EnvOption {
 			key := args[1].Value().(string)
 			listVal := args[2].Value().([]ref.Val)
 			v := gjson.Get(data, key)
-			if v.Exists() && v.Type == gjson.String {
+			if s, ok := textContent(v); ok {
 				for _, item := range listVal {
-					if !strings.Contains(v.String(), strings.TrimSpace(item.Value().(string))) {
+					if !strings.Contains(s, strings.TrimSpace(item.Value().(string))) {
 						return types.Bool(false)
 					}
 				}
@@ -336,8 +361,8 @@ func (c *CELCache) startsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				prefix := args[2].Value().(string)
 				v := gjson.Get(data, key)
-				if v.Exists() && v.Type == gjson.String {
-					return types.Bool(strings.HasPrefix(v.String(), prefix))
+				if s, ok := textContent(v); ok {
+					return types.Bool(strings.HasPrefix(s, prefix))
 				}
 				return types.False
 			}),
@@ -351,8 +376,7 @@ func (c *CELCache) startsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
 				v := gjson.Get(data, key)
-				if v.Exists() && v.Type == gjson.String {
-					s := v.String()
+				if s, ok := textContent(v); ok {
 					for _, item := range listVal {
 						if strings.HasPrefix(s, strings.TrimSpace(item.Value().(string))) {
 							return types.Bool(true)
@@ -376,8 +400,8 @@ func (c *CELCache) endsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				suffix := args[2].Value().(string)
 				v := gjson.Get(data, key)
-				if v.Exists() && v.Type == gjson.String {
-					return types.Bool(strings.HasSuffix(v.String(), suffix))
+				if s, ok := textContent(v); ok {
+					return types.Bool(strings.HasSuffix(s, suffix))
 				}
 				return types.False
 			}),
@@ -391,8 +415,7 @@ func (c *CELCache) endsWith() cel.EnvOption {
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
 				v := gjson.Get(data, key)
-				if v.Exists() && v.Type == gjson.String {
-					s := v.String()
+				if s, ok := textContent(v); ok {
 					for _, item := range listVal {
 						if strings.HasSuffix(s, strings.TrimSpace(item.Value().(string))) {
 							return types.Bool(true)
@@ -415,12 +438,12 @@ func (c *CELCache) regexMatch() cel.EnvOption {
 			key := args[1].Value().(string)
 			pattern := args[2].Value().(string)
 			v := gjson.Get(data, key)
-			if v.Exists() && v.Type == gjson.String {
+			if s, ok := textContent(v); ok {
 				re, err := rCache.Get(pattern)
 				if err != nil {
 					return types.False
 				}
-				return types.Bool(re.MatchString(v.String()))
+				return types.Bool(re.MatchString(s))
 			}
 			return types.False
 		}),
