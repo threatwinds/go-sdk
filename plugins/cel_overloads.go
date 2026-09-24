@@ -438,12 +438,19 @@ func (c *CELCache) regexMatch() cel.EnvOption {
 			key := args[1].Value().(string)
 			pattern := args[2].Value().(string)
 			v := gjson.Get(data, key)
-			if s, ok := textContent(v); ok {
+			// regexMatch is deliberately scalar-only, unlike contains/startsWith/
+			// endsWith/containsAll (which use textContent to search object/array
+			// text). Filters use regexMatch("log.X", ".+") as a string-type guard:
+			// "X is a non-empty string". Stringifying an object ({}, []) and
+			// matching it would let malformed vendor fields (e.g. userIdentity.arn
+			// = {}) flow into downstream grok as a bogus string value. Keep the
+			// pre-v1.1.34 type contract here.
+			if v.Exists() && v.Type == gjson.String {
 				re, err := rCache.Get(pattern)
 				if err != nil {
 					return types.False
 				}
-				return types.Bool(re.MatchString(s))
+				return types.Bool(re.MatchString(v.Str))
 			}
 			return types.False
 		}),

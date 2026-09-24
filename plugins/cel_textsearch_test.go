@@ -6,14 +6,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestCELTextSearchOnNonScalars pins the behavior that contains/containsAll/
-// startsWith/endsWith/regexMatch search the raw JSON text of objects and
-// arrays (and their #() query results) instead of returning false.
+// TestCELTextSearchOnNonScalars pins the split behavior of the text-search
+// CEL functions.
 //
-// Before the fix these returned false for any value whose gjson type is not
-// String, which silently killed detection rules (e.g. O365
-// contains("log.Parameters", "...")) and forced lossy cast-to-string filter
-// steps. Scalar behavior must be unchanged.
+// contains/containsAll/startsWith/endsWith search the raw JSON text of objects
+// and arrays (and their #() query results) instead of returning false. This is
+// the v1.1.34 fix that un-killed detection rules like O365
+// contains("log.Parameters", "...").
+//
+// regexMatch is deliberately different: it is a SCALAR-ONLY string-type guard.
+// Filters use regexMatch("log.X", ".+") to mean "X is a non-empty string", so
+// an object/array value must evaluate to false (not be stringified and
+// matched). This keeps malformed vendor fields (e.g. userIdentity.arn = {})
+// from being coerced into downstream string values.
 func TestCELTextSearchOnNonScalars(t *testing.T) {
 	data := `{
 		"log": {
@@ -21,7 +26,9 @@ func TestCELTextSearchOnNonScalars(t *testing.T) {
 			"Members": ["user@corp.com"],
 			"subject": "urgent invoice",
 			"count": 5,
-			"nested": {"deep": {"cidr": "0.0.0.0/0"}}
+			"nested": {"deep": {"cidr": "0.0.0.0/0"}},
+			"emptyObj": {},
+			"emptyArr": []
 		}
 	}`
 	tests := []struct {
@@ -29,7 +36,7 @@ func TestCELTextSearchOnNonScalars(t *testing.T) {
 		expr string
 		want bool
 	}{
-		// --- the bug: text-search over a whole array/object ---
+		// --- contains-family: text-search over a whole array/object ---
 		{"contains_array", `contains("log.Parameters", "ForwardTo")`, true},
 		{"contains_array_false", `contains("log.Parameters", "Nope")`, false},
 		{"contains_object", `contains("log.nested", "0.0.0.0/0")`, true},
@@ -39,9 +46,12 @@ func TestCELTextSearchOnNonScalars(t *testing.T) {
 		{"containsAll_array_false", `containsAll("log.Parameters", ["ForwardTo", "Nope"])`, false},
 		{"startsWith_array", `startsWith("log.Parameters", "[")`, true},
 		{"endsWith_object", `endsWith("log.nested", "}")`, true},
-		{"regexMatch_array", `regexMatch("log.Parameters", "attacker@.*")`, true},
-		{"regexMatch_object", `regexMatch("log.nested", "cidr")`, true},
 		{"containsQuery_first_match", `contains("log.Parameters.#(Name==ForwardTo).Value", "evil.com")`, true},
+		// --- regexMatch: scalar-only type guard, objects/arrays are false ---
+		{"regexMatch_array_false", `regexMatch("log.Parameters", "attacker@.*")`, false},
+		{"regexMatch_object_false", `regexMatch("log.nested", "cidr")`, false},
+		{"regexMatch_emptyObj_false", `regexMatch("log.emptyObj", ".+")`, false},
+		{"regexMatch_emptyArr_false", `regexMatch("log.emptyArr", ".+")`, false},
 		// --- scalar behavior must be unchanged ---
 		{"contains_scalar", `contains("log.subject", "invoice")`, true},
 		{"contains_scalar_false", `contains("log.subject", "nope")`, false},
