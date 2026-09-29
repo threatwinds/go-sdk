@@ -68,6 +68,24 @@ type Config struct {
 	// connection.
 	DialTimeout  time.Duration
 	MaxOpenConns int
+
+	// MaxRetries and RetryDelay bound how hard a BulkWriter tries a batch
+	// ClickHouse rejects before treating it as unrecoverable. Zero uses the
+	// package defaults (3 retries, 1s apart).
+	MaxRetries int
+	RetryDelay time.Duration
+
+	// OnReject is called for every row a BulkWriter permanently drops: one
+	// ClickHouse still refuses after MaxRetries, and, once a failing batch
+	// holds more than one row, after bisecting it down to the row(s) actually
+	// at fault. A single bad row would otherwise cost every row batched
+	// alongside it — ClickHouse parses one INSERT ... FORMAT JSONEachRow as
+	// one unit, so it rejects the whole thing for one bad line — and without
+	// this callback that loss leaves no trace beyond a row count in this
+	// package's own error log. Runs on the caller's goroutine (whichever
+	// called Flush/Close), never concurrently with itself. Nil is fine: the
+	// row is still dropped, just as silently as before.
+	OnReject func(row []byte, err error)
 }
 
 // boundLayout keeps the millisecond that DateTime64(3) stores.
