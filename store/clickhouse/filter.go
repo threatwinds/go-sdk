@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/threatwinds/go-sdk/store"
 )
@@ -34,19 +35,39 @@ func renderFilter(f store.Filter, textCol string) (string, []any, error) {
 	}
 
 	switch f.Op {
-	case store.OpEq:
-		return col + " = ?", []any{f.Value}, nil
-	case store.OpNotEq:
-		return col + " != ?", []any{f.Value}, nil
+	// A JSON path can hold a different type on a different row — ClickHouse
+	// stores it as Dynamic rather than forcing one type on insert — and
+	// comparing a Dynamic column to a literal errors (NO_COMMON_TYPE /
+	// TYPE_MISMATCH) the moment any row being scanned holds a different type
+	// than the one being compared against, not just the rows that do. Eq and
+	// NotEq sidestep it exactly like In/NotIn already do below: both sides
+	// become text, so every row's actual type reads as a value rather than
+	// failing the query some other row is in.
+	case store.OpEq, store.OpNotEq:
+		op := "="
+		if f.Op == store.OpNotEq {
+			op = "!="
+		}
+		if isJSONPath(f.Field) {
+			return "toString(" + col + ") " + op + " ?", []any{toStrings([]any{f.Value})[0]}, nil
+		}
+		return col + " " + op + " ?", []any{f.Value}, nil
 
+	// Ordering can't take the toString shortcut — "10" < "9" alphabetically
+	// is not what a numeric or date range means — so this narrows a JSON path
+	// to the Dynamic type the filter's own value is (dynJSONType), before
+	// comparing. A row where the path is some other type reads as NULL from
+	// dynamicElement and so never matches the range, which is what an
+	// operator filtering by range wants — not every row that isn't a number
+	// failing the whole query for everyone.
 	case store.OpGt:
-		return col + " > ?", []any{f.Value}, nil
+		return rangeColumn(f.Field, col, f.Value) + " > ?", []any{f.Value}, nil
 	case store.OpGte:
-		return col + " >= ?", []any{f.Value}, nil
+		return rangeColumn(f.Field, col, f.Value) + " >= ?", []any{f.Value}, nil
 	case store.OpLt:
-		return col + " < ?", []any{f.Value}, nil
+		return rangeColumn(f.Field, col, f.Value) + " < ?", []any{f.Value}, nil
 	case store.OpLte:
-		return col + " <= ?", []any{f.Value}, nil
+		return rangeColumn(f.Field, col, f.Value) + " <= ?", []any{f.Value}, nil
 
 	case store.OpIn, store.OpNotIn:
 		vals, err := toSlice(f.Value)
@@ -77,10 +98,11 @@ func renderFilter(f store.Filter, textCol string) (string, []any, error) {
 		if err != nil {
 			return "", nil, err
 		}
+		rc := rangeColumn(f.Field, col, lo)
 		if f.Op == store.OpNotBetween {
-			return col + " NOT BETWEEN ? AND ?", []any{lo, hi}, nil
+			return rc + " NOT BETWEEN ? AND ?", []any{lo, hi}, nil
 		}
-		return col + " BETWEEN ? AND ?", []any{lo, hi}, nil
+		return rc + " BETWEEN ? AND ?", []any{lo, hi}, nil
 
 	case store.OpContains:
 		return "positionCaseInsensitive(toString(" + col + "), ?) > 0", []any{f.Value}, nil
@@ -186,6 +208,46 @@ func toPair(v any) (any, any, error) {
 }
 
 func isJSONPath(field string) bool { return strings.Contains(field, ".") }
+
+// rangeColumn is what an ordered comparison (Gt/Gte/Lt/Lte/Between) reads. A
+// plain column already only ever holds one type, so it is its own value. A
+// JSON path is narrowed to the Dynamic type sample is, so ClickHouse compares
+// like against like instead of raising NO_COMMON_TYPE the moment the scanned
+// rows hold more than one type for that path — a row where the path is some
+// other type reads as NULL and just does not match, which is what a range
+// filter means by a row not qualifying. sample is unrecognized for a handful
+// of Go types (see dynJSONType); the column is left bare for those, same as
+// before this existed.
+func rangeColumn(field, col string, sample any) string {
+	if !isJSONPath(field) {
+		return col
+	}
+	typ, ok := dynJSONType(sample)
+	if !ok {
+		return col
+	}
+	return "dynamicElement(" + col + ", '" + typ + "')"
+}
+
+// dynJSONType names the ClickHouse Dynamic type that holds v, for the Go
+// types a filter's Value realistically arrives as: JSON-decoded (float64,
+// string, bool), Go-native integers, and time.Time for date ranges.
+func dynJSONType(v any) (string, bool) {
+	switch v.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return "Int64", true
+	case float32, float64:
+		return "Float64", true
+	case bool:
+		return "Bool", true
+	case time.Time:
+		return "DateTime64(3)", true
+	case string:
+		return "String", true
+	default:
+		return "", false
+	}
+}
 
 func toStrings(vals []any) []any {
 	out := make([]any, len(vals))

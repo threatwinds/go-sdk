@@ -156,9 +156,13 @@ func TestInStringifiesItsSetForAJSONSubcolumn(t *testing.T) {
 	}
 }
 
-// Ordering is not string comparison. Casting these would make "9" > "10", which
-// is a wrong answer rather than an error — the kind nobody goes looking for.
-func TestOrderingOperatorsAreNotCast(t *testing.T) {
+// Ordering is not string comparison — toString(...) would make "9" > "10",
+// a wrong answer rather than an error, the kind nobody goes looking for. A
+// JSON path still needs narrowing to one type, the same reason In/Eq do, so
+// this reaches for dynamicElement instead: the filter value's own Go type
+// says which one, and a row holding a different type there just does not
+// match, rather than failing the query for every row being scanned.
+func TestOrderingOperatorsAreNotCastButAreNarrowedOnAJSONPath(t *testing.T) {
 	for _, op := range []store.Op{store.OpGt, store.OpGte, store.OpLt, store.OpLte} {
 		sql, _, err := renderFilter(store.Filter{Field: "log.bytes", Op: op, Value: 100}, "raw")
 		if err != nil {
@@ -167,5 +171,73 @@ func TestOrderingOperatorsAreNotCast(t *testing.T) {
 		if strings.Contains(sql, "toString") {
 			t.Errorf("%s rendered %q: a numeric comparison became lexicographic", op, sql)
 		}
+		if !strings.Contains(sql, "dynamicElement(`log`.`bytes`, 'Int64')") {
+			t.Errorf("%s rendered %q, want the subcolumn narrowed to Int64 before comparing", op, sql)
+		}
+	}
+}
+
+// A declared column is usually in the sort key; dynamicElement belongs to the
+// JSON half only, same as toString does for Eq/In.
+func TestOrderingOperatorsLeaveADeclaredColumnAlone(t *testing.T) {
+	sql, _, err := renderFilter(store.Filter{Field: "impactScore", Op: store.OpGt, Value: 5}, "raw")
+	if err != nil {
+		t.Fatalf("renderFilter: %v", err)
+	}
+	if strings.Contains(sql, "dynamicElement") {
+		t.Errorf("rendered %q: a declared column was narrowed, defeating its index", sql)
+	}
+}
+
+// Between reads two Go values but ClickHouse compares against one type; the
+// low end of the pair is what decides it.
+func TestBetweenNarrowsAJSONSubcolumnToTheLowValuesType(t *testing.T) {
+	sql, args, err := renderFilter(store.Filter{
+		Field: "log.durationMs", Op: store.OpBetween, Value: []any{10, 500},
+	}, "raw")
+	if err != nil {
+		t.Fatalf("renderFilter: %v", err)
+	}
+	if !strings.Contains(sql, "dynamicElement(`log`.`durationMs`, 'Int64') BETWEEN") {
+		t.Errorf("rendered %q, want the subcolumn narrowed before BETWEEN", sql)
+	}
+	if len(args) != 2 {
+		t.Fatalf("args = %v, want the pair bound", args)
+	}
+}
+
+// The same NO_COMMON_TYPE / TYPE_MISMATCH that made In cast its column and
+// set applies to a bare Eq/NotEq on a JSON path: this is that same fix,
+// applied to the operator an API actually calls the most.
+func TestEqAndNotEqCastAJSONSubcolumn(t *testing.T) {
+	for op, want := range map[store.Op]string{store.OpEq: "=", store.OpNotEq: "!="} {
+		sql, args, err := renderFilter(store.Filter{Field: "log.pepe", Op: op, Value: 3.14}, "raw")
+		if err != nil {
+			t.Fatalf("%s: %v", op, err)
+		}
+		if !strings.Contains(sql, "toString(`log`.`pepe`) "+want) {
+			t.Errorf("%s rendered %q, want the subcolumn cast before %s", op, sql, want)
+		}
+		if len(args) != 1 {
+			t.Fatalf("%s args = %v, want the value bound", op, args)
+		}
+		if _, ok := args[0].(string); !ok {
+			t.Errorf("%s bound %v (%T), want it stringified to match the cast column", op, args[0], args[0])
+		}
+	}
+}
+
+// A declared column already has one type; casting it away is what In already
+// avoids, and Eq/NotEq must avoid it the same way.
+func TestEqAndNotEqLeaveADeclaredColumnAlone(t *testing.T) {
+	sql, args, err := renderFilter(store.Filter{Field: "severity", Op: store.OpEq, Value: "high"}, "raw")
+	if err != nil {
+		t.Fatalf("renderFilter: %v", err)
+	}
+	if strings.Contains(sql, "toString") {
+		t.Errorf("rendered %q: a declared column was cast, defeating its index", sql)
+	}
+	if len(args) != 1 || args[0] != "high" {
+		t.Errorf("args = %v, want the value bound as given", args)
 	}
 }
