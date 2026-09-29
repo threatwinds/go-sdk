@@ -15,6 +15,15 @@ import (
 // It is an escape hatch for endpoints not covered by a typed helper (e.g. the
 // _plugins/_ism policy CRUD with optimistic concurrency). body is JSON-encoded
 // when non-nil. path may be given with or without a leading slash.
+//
+// No response header is read, here or anywhere else in this package, and no
+// occurrence id is generated: the remote is OpenSearch, which is a third party
+// with no id to adopt, and every failure gets exactly one id from catcher when
+// the caller wraps it. See the note beside the client in opensearch.go.
+//
+// Note also that this function returns a nil error for every status: the status
+// is returned for the caller to judge, and an OpenSearch 500 arrives here as
+// (body, 500, nil). That predates this and is unchanged.
 func DoRequest(ctx context.Context, method, path string, body any) ([]byte, int, error) {
 	var reader io.Reader
 	if body != nil {

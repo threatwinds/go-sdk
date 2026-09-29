@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"runtime"
 	"time"
 )
@@ -75,19 +76,45 @@ func Log(msg string, args map[string]any) {
 	}
 
 	if b {
-		printLog(fmt.Sprint(GetSeverityIcon(sdkLog.Severity), " ", sdkLog.JSON()))
+		printLog(fmt.Sprint(GetSeverityIcon(sdkLog.Severity), " ", sdkLog.JSON()), sdkLog.Severity)
 	} else {
-		printLog(sdkLog.JSON())
+		printLog(sdkLog.JSON(), sdkLog.Severity)
 	}
 }
 
-func printLog(msg string) {
+// isFatalSeverity reports whether a message is severe enough that losing it
+// would leave an operator with nothing to go on.
+func isFatalSeverity(severity string) bool {
+	switch severity {
+	case "ERROR", "CRITICAL", "ALERT":
+		return true
+	default:
+		return false
+	}
+}
+
+// printLog emits one already-formatted line.
+//
+// Severity decides how. Anything ERROR or above is written synchronously, on
+// purpose: those are overwhelmingly logged immediately before os.Exit or a
+// log.Fatal, and the async path hands the message to a channel that a goroutine
+// drains later — a goroutine that never runs if the process is already gone.
+// That is not theoretical. compute-api's package init logs the reason it cannot
+// start and exits; with async on, it exited 1 with zero bytes on both stdout and
+// stderr, in tests and in production alike. Async is the default (catcher's init
+// enables it unless CATCHER_ASYNC is literally "false"), and package init runs
+// before main can reconfigure anything, so no service could opt out of that in
+// time.
+//
+// Lower severities keep the async path. They are the high-volume ones the
+// buffering exists for, and losing an INFO line to a racing exit costs nothing.
+func printLog(msg, severity string) {
 	mu.Lock()
 	isAsync := async
 	ch := logChan
 	mu.Unlock()
 
-	if isAsync && ch != nil {
+	if isAsync && ch != nil && !isFatalSeverity(severity) {
 		select {
 		case ch <- msg:
 		default:
@@ -95,9 +122,12 @@ func printLog(msg string) {
 			// aunque esto cause latencia temporalmente.
 			fmt.Println(msg)
 		}
-	} else {
-		fmt.Println(msg)
+		return
 	}
+
+	// Written straight to the fd rather than via fmt.Println so the bytes are
+	// gone before an os.Exit on the very next line can discard them.
+	_, _ = os.Stdout.WriteString(msg + "\n")
 }
 
 // JSON returns the JSON-encoded string representation of the SdkLog instance.

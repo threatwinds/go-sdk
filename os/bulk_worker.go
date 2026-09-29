@@ -3,6 +3,7 @@ package os
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -57,7 +58,7 @@ func (bq *BulkQueue) processBulk() error {
 
 		// Check for partial failures
 		if response.FailedCount > 0 {
-			lastErr = catcher.Error("bulk request had partial failures", nil, map[string]any{
+			lastErr = catcher.Error("could not complete the bulk insert", errors.New("bulk request had partial failures"), map[string]any{
 				"success_count": response.SuccessCount,
 				"failed_count":  response.FailedCount,
 				"process":       bq.processName,

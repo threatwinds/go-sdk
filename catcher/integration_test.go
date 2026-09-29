@@ -68,11 +68,22 @@ func TestSdkErrorIntegration(t *testing.T) {
 // TestErrorCreation tests the enhanced error creation
 func TestErrorCreation(t *testing.T) {
 	t.Run("error with metadata", func(t *testing.T) {
+		// The trace assertion below is the package's only coverage that
+		// build() ever populates SdkError.Trace, and tracing is off unless a
+		// test asks for it (see withTrace).
+		withTrace(t)
+
 		originalErr := errors.New("connection refused")
-		sdkErr := Error("database operation failed", originalErr, map[string]any{
-			"operation": "insert",
-			"table":     "entities",
-			"status":    500,
+
+		// Error logs at construction; capturing keeps the line out of the
+		// suite's own output instead of interleaving it with test results.
+		var sdkErr *SdkError
+		captureStdout(t, func() {
+			sdkErr = Error("database operation failed", originalErr, map[string]any{
+				"operation": "insert",
+				"table":     "entities",
+				"status":    500,
+			})
 		})
 
 		if sdkErr.Msg != "database operation failed" {

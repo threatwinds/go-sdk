@@ -59,12 +59,21 @@ func main() {
     headers := map[string]string{"Authorization": "Bearer token"}
     
     // DoReq[T] automatically unmarshals JSON response to struct T
-    resp, statusCode, err := utils.DoReq[MyResponse](url, nil, "GET", headers)
+    resp, statusCode, err := utils.DoReq[MyResponse](url, nil, "GET", headers, false)
     if err != nil {
-        // Handle error
+        // Wrap it as usual: your message, your args and your status are kept,
+        // and the upstream's x-error-id (if it sent one) is inherited, so the
+        // failure keeps one occurrence id across both services.
+        return catcher.Error("calling example-api failed", err, map[string]any{"status": 502})
     }
 }
 ```
+
+On a response with a status >= 400, `DoReq` returns a `*utils.RemoteError`: a plain
+error, deliberately not a `*catcher.SdkError` (which `catcher.Error` short-circuits
+on, discarding the wrapping call's message, args and status). Use `errors.As` to
+reach the upstream's `Status` and `Detail`, or `utils.SdkErrorFromResponse` if you
+mean to relay the upstream's status to your own client.
 
 ## 🛠️ Package Modules
 

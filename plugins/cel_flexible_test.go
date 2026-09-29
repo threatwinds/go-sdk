@@ -173,7 +173,9 @@ func TestCELRobustness(t *testing.T) {
 		{"greaterThan_on_text", `greaterThan("val", 10)`, false},
 		{"safe_num_on_text", `safe("val", 0.0) == 0.0`, true},   // "not_a_number" cannot be float
 		{"oneOf_on_object", `oneOf("meta", ["a", "b"])`, false}, // meta is an object, not a string
-		{"contains_on_object", `contains("meta", "tags")`, false},
+		// contains searches the raw JSON text of objects/arrays (was false pre-fix):
+		{"contains_on_object", `contains("meta", "tags")`, true},
+		{"contains_on_object_absent", `contains("meta", "absent_key")`, false},
 
 		// Empty string scenarios
 		{"equals_empty", `equals("empty", "")`, true},

@@ -30,9 +30,12 @@ func ValidateReservedField(f string, allowEmpty bool) error {
 var compiledPattern *regexp.Regexp
 var compiledPatternOnce sync.Once
 
-// SanitizeField removes all non-alphanumeric characters from a string
+// SanitizeField removes characters that are unsafe in a gjson/proto field path.
+// Letters, digits, dots and underscores are kept: underscores are standard JSON
+// key characters and must survive so that rules can reference the original field
+// name (e.g. log.correlationCandidate.<snake_case> markers, audit_verb, etc.).
 func SanitizeField(s *string) {
-	const exp string = "[^a-zA-Z0-9.]"
+	const exp string = "[^a-zA-Z0-9._]"
 
 	compiledPatternOnce.Do(func() {
 		compiledPattern, _ = regexp.Compile(exp)

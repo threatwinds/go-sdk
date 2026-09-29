@@ -131,6 +131,21 @@ func InfiniteRetry(f func() error, config *RetryConfig, exceptions ...string) er
 // InfiniteLoop continuously executes a provided function until it produces a matching
 // exception error. Enhanced version of logger.InfiniteLoop for catcher system.
 //
+// # Logging
+//
+// A non-exception error from f is swallowed silently, on purpose, exactly as
+// before: this loop exists to tolerate failure indefinitely, and a function
+// that errors on some cycles and succeeds on others is InfiniteLoop's
+// designed steady state, not an incident. Logging that — even deduplicated —
+// would turn ordinary operation into a permanent stream of log lines for
+// something nobody needs to act on.
+//
+// A matching exception is different: it is the loop *terminating*. Nothing
+// else observes an InfiniteLoop goroutine returning, so that is the one
+// event on this path worth recording, and it is logged once, immediately
+// before returning. See logLoopTermination for why that log is INFO, not
+// ERROR.
+//
 // Parameters:
 //   - f: Function to execute repeatedly
 //   - config: Configuration for wait time and logging (MaxRetries is ignored)
@@ -146,6 +161,7 @@ func InfiniteLoop(f func() error, config *RetryConfig, exceptions ...string) {
 		if err != nil {
 			// Check if this is an exception that should stop the loop
 			if IsException(err, exceptions...) {
+				logLoopTermination(err)
 				return
 			}
 			// For non-exception errors, just continue - don't log
@@ -153,6 +169,38 @@ func InfiniteLoop(f func() error, config *RetryConfig, exceptions ...string) {
 
 		time.Sleep(config.WaitTime)
 	}
+}
+
+// logLoopTermination logs the error that stopped an InfiniteLoop. It is the
+// only logging InfiniteLoop does: the loop returning is the significant
+// event, not any individual swallowed cycle.
+//
+// An *SdkError logs itself, via its own idempotent Log() — so an error
+// already logged at construction (Error) or at an earlier boundary is not
+// logged a second time here. A plain error has no such flag, so it goes
+// through the package's ordinary Log() path instead, which is this
+// package's normal way to record a message that isn't itself an *SdkError.
+//
+// This logs at INFO, not ERROR. Nothing else in this file treats a matching
+// exception as a failure: Retry, InfiniteRetry and RetryWithBackoff all
+// return on an exception match "without additional logging", by design,
+// because a matched exception is the intentional, expected way to stop
+// retrying. InfiniteLoop's only current caller, auth-api's worker, is
+// written the same way — every one of its five loops checks ctx.Done() and
+// returns an error, evidently meant as the loop's graceful-shutdown signal,
+// even though none of those call sites currently register that error text
+// in their exceptions list (so today this path is unreached by them; that
+// gap is in the caller, not something this function should paper over by
+// guessing at severity). The shape of that code is still the best evidence
+// available for what a matching exception means here: an expected,
+// designed stop, not a crash. Logging a designed stop at ERROR severity
+// would train whoever reads these logs to start ignoring real errors.
+func logLoopTermination(err error) {
+	if sdkErr, ok := err.(*SdkError); ok && sdkErr != nil {
+		sdkErr.Log()
+		return
+	}
+	Log("InfiniteLoop stopped: function returned a matching exception", map[string]any{"error": err.Error()})
 }
 
 // InfiniteRetryIfXError retries a function f() infinitely only if the error returned
