@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/threatwinds/go-sdk/store"
 )
@@ -203,6 +204,31 @@ func TestBetweenNarrowsAJSONSubcolumnToTheLowValuesType(t *testing.T) {
 	}
 	if len(args) != 2 {
 		t.Fatalf("args = %v, want the pair bound", args)
+	}
+}
+
+// A timestamp path doesn't get dynamicElement at all: which Dynamic type
+// name ClickHouse picked for it (DateTime, DateTime64(3), DateTime64(9), ...)
+// depends on the precision the source sent, and dynamicElement reads every
+// row as NULL the moment the name it's given doesn't match that exactly —
+// confirmed live against dev-18, where a real path came back DateTime and a
+// hardcoded DateTime64(3) silently matched zero rows instead of the real 150.
+// Reparsing the text form sidesteps having to guess the precision.
+func TestOrderingOnATimestampJSONPathReparsesInsteadOfGuessingThePrecision(t *testing.T) {
+	sql, args, err := renderFilter(store.Filter{
+		Field: "log.lastSeen", Op: store.OpGt, Value: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, "raw")
+	if err != nil {
+		t.Fatalf("renderFilter: %v", err)
+	}
+	if strings.Contains(sql, "dynamicElement") {
+		t.Errorf("rendered %q: a timestamp path was narrowed by a guessed Dynamic type name", sql)
+	}
+	if !strings.Contains(sql, "parseDateTimeBestEffortOrNull(toString(`log`.`lastSeen`))") {
+		t.Errorf("rendered %q, want the subcolumn reparsed from its text form", sql)
+	}
+	if len(args) != 1 {
+		t.Fatalf("args = %v, want the timestamp bound", args)
 	}
 }
 

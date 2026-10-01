@@ -222,6 +222,16 @@ func rangeColumn(field, col string, sample any) string {
 	if !isJSONPath(field) {
 		return col
 	}
+	// A timestamp path's Dynamic type is whatever precision ClickHouse
+	// inferred at insert time off the source string — DateTime, DateTime64(3),
+	// DateTime64(9), depending on the format each vendor sent. dynamicElement
+	// needs that name to match exactly or it reads every row as NULL, same
+	// failure as the one this function exists to avoid, just silent instead
+	// of NO_COMMON_TYPE. Reparsing the text form compares like against like
+	// without having to guess which precision this particular path landed on.
+	if _, ok := sample.(time.Time); ok {
+		return "parseDateTimeBestEffortOrNull(toString(" + col + "))"
+	}
 	typ, ok := dynJSONType(sample)
 	if !ok {
 		return col
@@ -231,7 +241,8 @@ func rangeColumn(field, col string, sample any) string {
 
 // dynJSONType names the ClickHouse Dynamic type that holds v, for the Go
 // types a filter's Value realistically arrives as: JSON-decoded (float64,
-// string, bool), Go-native integers, and time.Time for date ranges.
+// string, bool), and Go-native integers. time.Time is handled separately by
+// rangeColumn's caller — there is no one Dynamic type name for a timestamp.
 func dynJSONType(v any) (string, bool) {
 	switch v.(type) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
@@ -240,8 +251,6 @@ func dynJSONType(v any) (string, bool) {
 		return "Float64", true
 	case bool:
 		return "Bool", true
-	case time.Time:
-		return "DateTime64(3)", true
 	case string:
 		return "String", true
 	default:
