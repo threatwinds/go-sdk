@@ -431,16 +431,17 @@ func (x *Impact) GetAvailability() uint32 {
 }
 
 type Event struct {
-	state            protoimpl.MessageState       `protogen:"open.v1"`
-	Id               string                       `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Timestamp        string                       `protobuf:"bytes,2,opt,name=timestamp,json=@timestamp,proto3" json:"timestamp,omitempty"`
-	DeviceTime       string                       `protobuf:"bytes,3,opt,name=deviceTime,proto3" json:"deviceTime,omitempty"`
-	DataType         string                       `protobuf:"bytes,4,opt,name=dataType,proto3" json:"dataType,omitempty"`
-	DataSource       string                       `protobuf:"bytes,5,opt,name=dataSource,proto3" json:"dataSource,omitempty"`
-	TenantId         string                       `protobuf:"bytes,6,opt,name=tenantId,proto3" json:"tenantId,omitempty"`
-	TenantName       string                       `protobuf:"bytes,7,opt,name=tenantName,proto3" json:"tenantName,omitempty"`
-	Raw              string                       `protobuf:"bytes,8,opt,name=raw,proto3" json:"raw,omitempty"`
-	Log              map[string]*structpb.Value   `protobuf:"bytes,9,rep,name=log,proto3" json:"log,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Timestamp  string                 `protobuf:"bytes,2,opt,name=timestamp,json=@timestamp,proto3" json:"timestamp,omitempty"`
+	DeviceTime string                 `protobuf:"bytes,3,opt,name=deviceTime,proto3" json:"deviceTime,omitempty"`
+	DataType   string                 `protobuf:"bytes,4,opt,name=dataType,proto3" json:"dataType,omitempty"`
+	DataSource string                 `protobuf:"bytes,5,opt,name=dataSource,proto3" json:"dataSource,omitempty"`
+	TenantId   string                 `protobuf:"bytes,6,opt,name=tenantId,proto3" json:"tenantId,omitempty"`
+	TenantName string                 `protobuf:"bytes,7,opt,name=tenantName,proto3" json:"tenantName,omitempty"`
+	Raw        string                 `protobuf:"bytes,8,opt,name=raw,proto3" json:"raw,omitempty"`
+	// RENAMED from: map<string, google.protobuf.Value> log = 9;
+	Event            map[string]*structpb.Value   `protobuf:"bytes,9,rep,name=event,proto3" json:"event,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Target           *Side                        `protobuf:"bytes,10,opt,name=target,proto3" json:"target,omitempty"`
 	Origin           *Side                        `protobuf:"bytes,11,opt,name=origin,proto3" json:"origin,omitempty"`
 	Protocol         string                       `protobuf:"bytes,12,opt,name=protocol,proto3" json:"protocol,omitempty"`
@@ -451,8 +452,10 @@ type Event struct {
 	Severity         string                       `protobuf:"bytes,17,opt,name=severity,proto3" json:"severity,omitempty"`
 	Errors           []string                     `protobuf:"bytes,18,rep,name=errors,proto3" json:"errors,omitempty"`
 	Compliance       map[string]*ComplianceValues `protobuf:"bytes,19,rep,name=compliance,proto3" json:"compliance,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Compliance control tags (populated by the compliance orchestrator later).
+	Controls      []string `protobuf:"bytes,20,rep,name=controls,proto3" json:"controls,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Event) Reset() {
@@ -541,9 +544,9 @@ func (x *Event) GetRaw() string {
 	return ""
 }
 
-func (x *Event) GetLog() map[string]*structpb.Value {
+func (x *Event) GetEvent() map[string]*structpb.Value {
 	if x != nil {
-		return x.Log
+		return x.Event
 	}
 	return nil
 }
@@ -614,6 +617,13 @@ func (x *Event) GetErrors() []string {
 func (x *Event) GetCompliance() map[string]*ComplianceValues {
 	if x != nil {
 		return x.Compliance
+	}
+	return nil
+}
+
+func (x *Event) GetControls() []string {
+	if x != nil {
+		return x.Controls
 	}
 	return nil
 }
@@ -3465,7 +3475,7 @@ const file_plugins_proto_rawDesc = "" +
 	"\x06Impact\x12(\n" +
 	"\x0fconfidentiality\x18\x01 \x01(\rR\x0fconfidentiality\x12\x1c\n" +
 	"\tintegrity\x18\x02 \x01(\rR\tintegrity\x12\"\n" +
-	"\favailability\x18\x03 \x01(\rR\favailability\"\x9b\x06\n" +
+	"\favailability\x18\x03 \x01(\rR\favailability\"\xbf\x06\n" +
 	"\x05Event\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\ttimestamp\x18\x02 \x01(\tR\n" +
@@ -3481,8 +3491,8 @@ const file_plugins_proto_rawDesc = "" +
 	"\n" +
 	"tenantName\x18\a \x01(\tR\n" +
 	"tenantName\x12\x10\n" +
-	"\x03raw\x18\b \x01(\tR\x03raw\x12)\n" +
-	"\x03log\x18\t \x03(\v2\x17.plugins.Event.LogEntryR\x03log\x12%\n" +
+	"\x03raw\x18\b \x01(\tR\x03raw\x12/\n" +
+	"\x05event\x18\t \x03(\v2\x19.plugins.Event.EventEntryR\x05event\x12%\n" +
 	"\x06target\x18\n" +
 	" \x01(\v2\r.plugins.SideR\x06target\x12%\n" +
 	"\x06origin\x18\v \x01(\v2\r.plugins.SideR\x06origin\x12\x1a\n" +
@@ -3497,8 +3507,10 @@ const file_plugins_proto_rawDesc = "" +
 	"\x06errors\x18\x12 \x03(\tR\x06errors\x12>\n" +
 	"\n" +
 	"compliance\x18\x13 \x03(\v2\x1e.plugins.Event.ComplianceEntryR\n" +
-	"compliance\x1aN\n" +
-	"\bLogEntry\x12\x10\n" +
+	"compliance\x12\x1a\n" +
+	"\bcontrols\x18\x14 \x03(\tR\bcontrols\x1aP\n" +
+	"\n" +
+	"EventEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\x1aX\n" +
 	"\x0fComplianceEntry\x12\x10\n" +
@@ -3840,7 +3852,7 @@ var file_plugins_proto_goTypes = []any{
 	(*Rule)(nil),             // 34: plugins.Rule
 	(*SearchRequest)(nil),    // 35: plugins.SearchRequest
 	(*Expression)(nil),       // 36: plugins.Expression
-	nil,                      // 37: plugins.Event.LogEntry
+	nil,                      // 37: plugins.Event.EventEntry
 	nil,                      // 38: plugins.Event.ComplianceEntry
 	nil,                      // 39: plugins.Dynamic.ParamsEntry
 	nil,                      // 40: plugins.Add.ParamsEntry
@@ -3854,7 +3866,7 @@ var file_plugins_proto_depIdxs = []int32{
 	6,  // 1: plugins.Alert.adversary:type_name -> plugins.Side
 	6,  // 2: plugins.Alert.target:type_name -> plugins.Side
 	4,  // 3: plugins.Alert.events:type_name -> plugins.Event
-	37, // 4: plugins.Event.log:type_name -> plugins.Event.LogEntry
+	37, // 4: plugins.Event.event:type_name -> plugins.Event.EventEntry
 	6,  // 5: plugins.Event.target:type_name -> plugins.Side
 	6,  // 6: plugins.Event.origin:type_name -> plugins.Side
 	38, // 7: plugins.Event.compliance:type_name -> plugins.Event.ComplianceEntry
@@ -3891,7 +3903,7 @@ var file_plugins_proto_depIdxs = []int32{
 	36, // 38: plugins.SearchRequest.with:type_name -> plugins.Expression
 	35, // 39: plugins.SearchRequest.or:type_name -> plugins.SearchRequest
 	43, // 40: plugins.Expression.value:type_name -> google.protobuf.Value
-	43, // 41: plugins.Event.LogEntry.value:type_name -> google.protobuf.Value
+	43, // 41: plugins.Event.EventEntry.value:type_name -> google.protobuf.Value
 	5,  // 42: plugins.Event.ComplianceEntry.value:type_name -> plugins.ComplianceValues
 	43, // 43: plugins.Dynamic.ParamsEntry.value:type_name -> google.protobuf.Value
 	43, // 44: plugins.Add.ParamsEntry.value:type_name -> google.protobuf.Value

@@ -58,7 +58,8 @@ message Event {
   string tenantId = 6;
   string tenantName = 7;
   string raw = 8;
-  map<string, google.protobuf.Value> log = 9;
+  // RENAMED from: map<string, google.protobuf.Value> log = 9;
+  map<string, google.protobuf.Value> event = 9;
   Side target = 10;
   Side origin = 11;
   string protocol = 12;
@@ -69,6 +70,8 @@ message Event {
   string severity = 17;
   repeated string errors = 18;
   map<string, ComplianceValues> compliance = 19;
+  // Compliance control tags (populated by the compliance orchestrator later).
+  repeated string controls = 20;
 }
 
 message ComplianceValues {
