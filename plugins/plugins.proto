@@ -72,6 +72,10 @@ message Event {
   map<string, ComplianceValues> compliance = 19;
   // Compliance control tags (populated by the compliance orchestrator later).
   repeated string controls = 20;
+  // UTMStack curated, typed, aggregatable event-field bag. Unlike `event`
+  // (flat_object, search-only), `utm` is indexed as a typed object so its
+  // fields can be used as chart dimensions and terms/date aggregations.
+  map<string, google.protobuf.Value> utm = 21;
 }
 
 message ComplianceValues {
