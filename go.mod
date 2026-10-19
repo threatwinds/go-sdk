@@ -13,6 +13,7 @@ require (
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.19.0
+	github.com/tidwall/sjson v1.2.5
 	golang.org/x/crypto v0.53.0
 	golang.org/x/text v0.38.0
 	google.golang.org/grpc v1.81.1
