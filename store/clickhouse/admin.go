@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/threatwinds/go-sdk/store"
 )
 
@@ -63,23 +64,37 @@ func (d *Driver) DescribeFields(ctx context.Context, s store.Scope) ([]store.Fie
 	return out, nil
 }
 
+const (
+	// jsonPathsWindow is how far back path discovery looks when the scope sets
+	// no start of its own. A field that only ever appeared in older records is
+	// not offered, which is the price of not reading the whole table.
+	jsonPathsWindow = 90 * 24 * time.Hour
+
+	// jsonPathsSample is how many records are read for each data type.
+	jsonPathsSample = 500
+)
+
 // jsonPaths asks the data what shape it has. A path that appears with more than
 // one type is reported as a conflict rather than being hidden, because a filter
 // on it will behave differently depending on the row.
+//
+// It reads a sample, not the table. Listing every path means reading the JSON
+// column itself, and expanding each record into one row per path is far larger
+// than the column is: on a table of 188,000 records and 38 MiB on disk the
+// whole-table form needed more than 4 GiB and was killed by the memory limit,
+// which took the field list of the Log Explorer down with it. The sample is
+// taken per data type because the table is ordered by it — a plain LIMIT would
+// return the first type's records and none of the others' fields.
 func (d *Driver) jsonPaths(ctx context.Context, s store.Scope, col string) ([]store.Field, error) {
-	tbl, err := d.table(s)
+	q, args, err := d.jsonPathsQuery(s, col, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
-	pred, args, err := d.where(s, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	q := fmt.Sprintf(
-		"SELECT p.1 AS path, groupUniqArray(p.2) AS types FROM %s ARRAY JOIN JSONAllPathsWithTypes(%s) AS p WHERE %s GROUP BY path ORDER BY path",
-		tbl, quoteIdent(col), pred,
-	)
+	// One reader thread: each one reserves its own buffer for the JSON column,
+	// and a record with a very large value turns that into 256 MiB per thread.
+	// Measured on a 188,000-record table, one thread used 79 MiB in ten runs out
+	// of ten, while the default failed two runs in nine against a 1.5 GiB cap.
+	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{"max_threads": 1}))
 	rows, err := d.conn.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("clickhouse: json paths: %w", err)
@@ -102,6 +117,49 @@ func (d *Driver) jsonPaths(ctx context.Context, s store.Scope, col string) ([]st
 		})
 	}
 	return out, rows.Err()
+}
+
+func (d *Driver) jsonPathsQuery(s store.Scope, col string, now time.Time) (string, []any, error) {
+	tbl, err := d.table(s)
+	if err != nil {
+		return "", nil, err
+	}
+	if s.From.IsZero() {
+		s.From = now.Add(-jsonPathsWindow)
+	}
+	pred, args, err := d.where(s, nil)
+	if err != nil {
+		return "", nil, err
+	}
+	jc := quoteIdent(col)
+
+	limit := "LIMIT ?"
+	if d.cfg.DataTypeColumn != "" {
+		limit += " BY " + quoteIdent(d.cfg.DataTypeColumn)
+	}
+
+	var src string
+	var srcArgs []any
+	if idCol := d.cfg.IDColumns[s.Dataset]; idCol != "" {
+		// The ids are chosen first, from columns that cost nothing to read, so
+		// the JSON column is only read for the records picked.
+		id, err := column(idCol)
+		if err != nil {
+			return "", nil, err
+		}
+		src = fmt.Sprintf("SELECT %s FROM %s PREWHERE %s IN (SELECT %s FROM %s WHERE %s %s) WHERE %s",
+			jc, tbl, id, id, tbl, pred, limit, pred)
+		srcArgs = append(append(append([]any{}, args...), jsonPathsSample), args...)
+	} else {
+		src = fmt.Sprintf("SELECT %s FROM %s WHERE %s LIMIT ?", jc, tbl, pred)
+		srcArgs = append(append([]any{}, args...), jsonPathsSample)
+	}
+
+	q := fmt.Sprintf(
+		"SELECT p.1 AS path, groupUniqArray(p.2) AS types FROM (%s) ARRAY JOIN JSONAllPathsWithTypes(%s) AS p GROUP BY path ORDER BY path",
+		src, jc,
+	)
+	return q, srcArgs, nil
 }
 
 func (d *Driver) Usage(ctx context.Context) ([]store.DatasetUsage, error) {
