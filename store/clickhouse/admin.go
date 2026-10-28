@@ -381,6 +381,7 @@ func intervalDays(clause string) int {
 // quoteString renders a SQL string literal for the few places a value cannot be
 // a bound parameter — a volume name in DDL is one of them.
 func quoteString(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
 	return "'" + strings.ReplaceAll(s, "'", "\\'") + "'"
 }
 

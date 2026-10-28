@@ -164,12 +164,17 @@ func column(field string) (string, error) {
 	return strings.Join(out, "."), nil
 }
 
-// quoteIdent backtick-quotes an identifier and doubles any backtick inside it,
-// which is what keeps a field name from closing the quote and becoming SQL.
-// Field names reach this from rule definitions and API callers, so it is the
-// boundary that matters.
+// identEscaper escapes what ClickHouse treats specially inside a backtick-quoted
+// identifier. The backslash matters as much as the backtick: ClickHouse reads
+// backslash escapes in quoted identifiers the way it does in strings, so a name
+// ending in a backslash would turn the doubled backtick after it into a literal
+// plus a closing quote, and everything that follows would run as SQL.
+var identEscaper = strings.NewReplacer("\\", "\\\\", "`", "``")
+
+// quoteIdent backtick-quotes an identifier. Field names reach this from rule
+// definitions and API callers, so it is the boundary that matters.
 func quoteIdent(s string) string {
-	return "`" + strings.ReplaceAll(s, "`", "``") + "`"
+	return "`" + identEscaper.Replace(s) + "`"
 }
 
 func placeholders(n int) string {
