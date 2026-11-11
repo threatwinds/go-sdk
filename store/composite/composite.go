@@ -36,6 +36,13 @@ type Config struct {
 	// Cutover is the instant the legacy stopped receiving writes.
 	Cutover time.Time
 
+	// LegacyExpires is when the legacy store is switched off. From then on the
+	// composite never reaches it, so a query that would have crossed Cutover is
+	// answered from the primary alone instead of failing against a store that
+	// is gone. The zero value means it never expires. Set it to the cutover plus
+	// the legacy's retention.
+	LegacyExpires time.Time
+
 	// LegacyTenant is the one tenant the legacy data belongs to. A legacy store
 	// built for a single-tenant installation has no tenant field, so it cannot
 	// tell tenants apart: only this tenant (or store.AllTenants) may read it,
@@ -88,6 +95,8 @@ func New(cfg Config) (*Store, error) {
 		return nil, errors.New("composite: Config.LegacyTenant is required, so that no other tenant can read the legacy data")
 	case cfg.LegacyTenant == store.AllTenants:
 		return nil, errors.New("composite: Config.LegacyTenant must name one tenant")
+	case !cfg.LegacyExpires.IsZero() && !cfg.LegacyExpires.After(cfg.Cutover):
+		return nil, errors.New("composite: Config.LegacyExpires must be after Config.Cutover")
 	}
 	if cfg.TimeField == "" {
 		cfg.TimeField = defaultTimeField
@@ -109,8 +118,14 @@ type plan struct {
 	legacy  *store.Scope
 }
 
+// LegacyActive reports whether the legacy store can still be reached: it is
+// until LegacyExpires, if one is set.
+func (c *Store) LegacyActive() bool {
+	return c.cfg.LegacyExpires.IsZero() || c.cfg.Now().Before(c.cfg.LegacyExpires)
+}
+
 func (c *Store) eligibleForLegacy(s store.Scope) bool {
-	return c.datasets[s.Dataset] && (s.Tenant == c.cfg.LegacyTenant || s.Tenant == store.AllTenants)
+	return c.LegacyActive() && c.datasets[s.Dataset] && (s.Tenant == c.cfg.LegacyTenant || s.Tenant == store.AllTenants)
 }
 
 func (c *Store) plan(s store.Scope) plan {
@@ -281,6 +296,9 @@ func (c *Store) Usage(ctx context.Context) ([]store.DatasetUsage, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !c.LegacyActive() {
+		return prim, nil
+	}
 	leg, err := c.cfg.Legacy.Usage(ctx)
 	if err != nil {
 		if !c.legacyFailed("Usage", err) {
@@ -295,7 +313,7 @@ func (c *Store) Usage(ctx context.Context) ([]store.DatasetUsage, error) {
 // legacy that is down must not make the installation look down.
 func (c *Store) Health(ctx context.Context) (store.Health, error) {
 	h, err := c.cfg.Primary.Health(ctx)
-	if err != nil {
+	if err != nil || !c.LegacyActive() {
 		return h, err
 	}
 

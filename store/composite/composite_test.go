@@ -764,3 +764,81 @@ func TestPrefixMapAndRenameDocKey(t *testing.T) {
 		t.Errorf("rename mangled %q", got)
 	}
 }
+
+func TestAfterTheLegacyExpiresItIsNeverReached(t *testing.T) {
+	now := cutover.Add(6 * time.Hour)
+	c, _, leg := build(t, func(cfg *Config) {
+		cfg.LegacyExpires = cutover.Add(12 * time.Hour)
+		cfg.Now = func() time.Time { return now }
+	})
+	ctx := context.Background()
+
+	if !c.LegacyActive() {
+		t.Fatal("the legacy must be active before it expires")
+	}
+	if n, _ := c.Count(ctx, scope(), nil); n != 12 {
+		t.Fatalf("before expiry the legacy still counts: got %d, want 12", n)
+	}
+
+	now = cutover.Add(13 * time.Hour)
+	leg.mu.Lock()
+	leg.scopes = nil
+	leg.mu.Unlock()
+	// A legacy that has been switched off must not be able to hurt anything.
+	leg.err = errors.New("opensearch is gone")
+	leg.byID = map[string]json.RawMessage{"old": json.RawMessage(`{"id":"old"}`)}
+
+	if c.LegacyActive() {
+		t.Fatal("the legacy must be inactive once it has expired")
+	}
+	if n, err := c.Count(ctx, scope(), nil); err != nil || n != 5 {
+		t.Fatalf("count = %d, %v; want the primary's 5", n, err)
+	}
+	if rows, total, err := c.FetchPage(ctx, scope(), nil, store.Page{Offset: 3, Limit: 5}); err != nil || total != 5 || len(rows) != 2 {
+		t.Fatalf("page = %d rows, total %d, %v; want 2 rows of 5", len(rows), total, err)
+	}
+	if rows, err := c.FetchN(ctx, scope(), nil, 10); err != nil || len(rows) != 5 {
+		t.Fatalf("FetchN = %d rows, %v", len(rows), err)
+	}
+	if _, err := c.TopValues(ctx, scope(), "host", nil, 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Timeline(ctx, scope(), nil, store.Interval{Calendar: store.CalendarDay}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.GroupBy(ctx, scope(), []string{"host"}, nil, store.GroupOpts{Limit: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DescribeFields(ctx, scope()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.FetchByID(ctx, scope(), "old"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("a record only the legacy had must be gone, got %v", err)
+	}
+	if _, err := c.Usage(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h, err := c.Health(ctx); err != nil || h.Status != store.HealthOK {
+		t.Fatalf("health = %+v, %v; a switched-off legacy must not degrade it", h, err)
+	}
+	if leg.called() {
+		t.Fatalf("the legacy was reached after it expired: %v", leg.scopes)
+	}
+}
+
+func TestLegacyExpiresMustBeAfterTheCutover(t *testing.T) {
+	cfg := Config{Primary: &fake{}, Legacy: &fake{}, Cutover: cutover, LegacyTenant: "t"}
+
+	cfg.LegacyExpires = cutover
+	if _, err := New(cfg); err == nil {
+		t.Error("an expiry at the cutover leaves the legacy no life at all")
+	}
+	cfg.LegacyExpires = cutover.Add(-time.Hour)
+	if _, err := New(cfg); err == nil {
+		t.Error("an expiry before the cutover is a mistake")
+	}
+	cfg.LegacyExpires = cutover.Add(30 * 24 * time.Hour)
+	if _, err := New(cfg); err != nil {
+		t.Errorf("a valid expiry was refused: %v", err)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/threatwinds/go-sdk/store"
@@ -35,6 +36,24 @@ func (r *Rule) Normalize() {
 	}
 }
 
+// IndexPatternResolver turns the index pattern a v11 rule names into the
+// dataType a store reads it by. dataType is empty for a pattern that covers
+// every dataType; ok is false for one the store does not recognise.
+type IndexPatternResolver func(dataset store.Dataset, pattern string) (dataType string, ok bool)
+
+var indexPatternResolver atomic.Pointer[IndexPatternResolver]
+
+// SetIndexPatternResolver installs the translation ExecuteStore uses for rules
+// that name an indexPattern instead of a dataType. Without one such a rule is
+// refused, since guessing a store's naming would read the wrong data.
+func SetIndexPatternResolver(r IndexPatternResolver) {
+	if r == nil {
+		indexPatternResolver.Store(nil)
+		return
+	}
+	indexPatternResolver.Store(&r)
+}
+
 // ExecuteStore reports whether at least Count records match within Within, and if so
 // returns up to sampleSize of them as evidence. Counting and sampling are two
 // calls so that records are read only when the threshold is actually met.
@@ -55,8 +74,21 @@ func (e *SearchRequest) ExecuteStore(ctx context.Context, st store.Store, scope 
 
 	// Correlating against another source is opt-in; by default a rule looks at
 	// the same dataType that triggered it.
-	if e.DataType != "" {
+	switch {
+	case e.DataType != "":
 		scope.DataType = e.DataType
+	case e.IndexPattern != "":
+		r := indexPatternResolver.Load()
+		if r == nil {
+			return false, nil, fmt.Errorf("correlation: the rule reads index pattern %q but no resolver is installed", e.IndexPattern)
+		}
+		dt, ok := (*r)(scope.Dataset, e.IndexPattern)
+		if !ok {
+			return false, nil, fmt.Errorf("correlation: index pattern %q is not one this store reads", e.IndexPattern)
+		}
+		// A pattern over every dataType reads all of them, which is not the same
+		// as leaving the triggering rule's dataType in place.
+		scope.DataType = dt
 	}
 
 	// Pin the end of the range so the count and the sample cannot disagree.

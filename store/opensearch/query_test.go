@@ -471,3 +471,49 @@ var allOps = []store.Op{
 	store.OpStartsWith, store.OpNotStartsWith, store.OpEndsWith, store.OpNotEndsWith,
 	store.OpSearch, store.OpNotSearch, store.OpContainsAny, store.OpNotContainsAny,
 }
+
+func TestDataTypeOfPatternReversesReadIndices(t *testing.T) {
+	l := testLayout()
+	cases := []struct {
+		ds       store.Dataset
+		pattern  string
+		wantType string
+		wantOK   bool
+	}{
+		{dsLogs, "v11-log-deceptive-bytes-*", "deceptive-bytes", true},
+		{dsLogs, "v11-log-wineventlog-*", "wineventlog", true},
+		{dsLogs, "v11-log-*", "", true},
+		{dsLogs, "v11-log*", "", true},
+		{dsLogs, "v11-alert-*", "", false},
+		{dsLogs, "v11-log-a*b-*", "", false},
+		{dsLogs, "v11-log-?-*", "", false},
+		{dsLogs, "other-log-x-*", "", false},
+		{dsLogs, "v11-logger-*", "", false},
+		{dsLogs, "v11-logs", "", false},
+		{dsAlerts, "v11-alert-*", "", true},
+		{dsAlerts, "v11-alert-x-*", "", false},
+		{dsReport, "v11-compliance-report", "", true},
+		{store.Dataset("unknown"), "v11-log-*", "", false},
+	}
+	for _, tc := range cases {
+		got, ok := l.DataTypeOfPattern(tc.ds, tc.pattern)
+		if got != tc.wantType || ok != tc.wantOK {
+			t.Errorf("%s %q = (%q, %v), want (%q, %v)", tc.ds, tc.pattern, got, ok, tc.wantType, tc.wantOK)
+		}
+	}
+}
+
+// What a pattern resolves to must read the same indices the pattern names.
+func TestDataTypeOfPatternRoundTripsThroughReadIndices(t *testing.T) {
+	l := testLayout()
+	for _, dt := range []string{"wineventlog", "deceptive-bytes", "linux"} {
+		idx, err := l.ReadIndices(store.Scope{Dataset: dsLogs, DataType: dt})
+		if err != nil || len(idx) != 1 {
+			t.Fatal(err, idx)
+		}
+		got, ok := l.DataTypeOfPattern(dsLogs, idx[0])
+		if !ok || got != dt {
+			t.Errorf("%q -> %q -> (%q, %v)", dt, idx[0], got, ok)
+		}
+	}
+}
