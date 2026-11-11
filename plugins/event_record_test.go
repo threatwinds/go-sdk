@@ -39,7 +39,20 @@ func TestEventFromRecordKeepsTheRestOfARealRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Timestamp != "2026-10-22 06:31:02.382" || e.Origin.GetHost() != "h" || e.Log["codeLine"].GetStringValue() != "79" {
+	if e.Timestamp != "2026-10-22 06:31:02.382" || e.Origin.GetHost() != "h" || e.Event["codeLine"].GetStringValue() != "79" {
 		t.Errorf("fields lost: %+v", e)
+	}
+}
+
+func TestEventFromRecordReadsBothTheLegacyAndTheCurrentKey(t *testing.T) {
+	for _, key := range []string{"log", "event"} {
+		row := `{"id":"x","` + key + `":{"codeLine":"79"}}`
+		e, err := EventFromRecord([]byte(row))
+		if err != nil {
+			t.Fatalf("%s: %v", key, err)
+		}
+		if e.Event["codeLine"].GetStringValue() != "79" {
+			t.Errorf("%s: parsed fields lost: %+v", key, e.Event)
+		}
 	}
 }

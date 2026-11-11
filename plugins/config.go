@@ -170,6 +170,8 @@ func (c *Config) loadCfg(processName string) {
 			continue
 		}
 
+		b = splitDisabledRules(b)
+
 		err = protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, nCfg)
 		if err != nil {
 			_ = catcher.Error("failed to read YAML file", err, map[string]any{
@@ -186,6 +188,7 @@ func (c *Config) loadCfg(processName string) {
 		c.Pipeline = append(c.Pipeline, nCfg.Pipeline...)
 
 		c.DisabledRules = append(c.DisabledRules, nCfg.DisabledRules...)
+		c.DisabledRuleNames = append(c.DisabledRuleNames, nCfg.DisabledRuleNames...)
 
 		c.Tenants = append(c.Tenants, nCfg.Tenants...)
 
@@ -304,6 +307,7 @@ func updateCfg(processName string) {
 
 	cfg.Pipeline = tmpCfg.Pipeline
 	cfg.DisabledRules = tmpCfg.DisabledRules
+	cfg.DisabledRuleNames = tmpCfg.DisabledRuleNames
 	cfg.Tenants = tmpCfg.Tenants
 	cfg.Patterns = tmpCfg.Patterns
 	cfg.Plugins = tmpCfg.Plugins

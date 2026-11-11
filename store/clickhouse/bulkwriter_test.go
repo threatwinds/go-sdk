@@ -171,6 +171,61 @@ func TestBulkWriterDoesNotClearTheBufferBeforeSuccessIsConfirmed(t *testing.T) {
 	}
 }
 
+// ING-F1: isolating one bad row in a large batch must not re-spend the full
+// retry budget at every halving level — that is what turned one unparseable
+// row into ~30s of the single goroutine that drains this writer being stuck
+// inside flush(), during which every other log arriving anywhere piles up
+// behind a full channel and gets dropped. With the default-shaped retry
+// budget used here (3 retries, 50ms delay) the old recursive-retry algorithm
+// would need roughly log2(32)=5 bisection levels times (3 retries + 1) * 50ms
+// just for the levels on the poison row's path — about 1s — on top of the
+// initial batch's own retry wait. The fixed algorithm pays that full retry
+// price exactly once (at the top level) and then isolates with a single
+// confirmatory attempt per half, no delay.
+func TestBulkWriterIsolatesAPoisonRowQuicklyEvenInALargeBatch(t *testing.T) {
+	conn := &fakeConn{script: func(_ int, query string) error {
+		if containsID(query, "bad") {
+			return errPoison
+		}
+		return nil
+	}}
+
+	var rejected []string
+	var mu sync.Mutex
+	w := newWriter(conn, 3, 50*time.Millisecond, func(row []byte, err error) {
+		mu.Lock()
+		rejected = append(rejected, string(row))
+		mu.Unlock()
+	})
+
+	ids := make([]string, 0, 32)
+	for i := 0; i < 31; i++ {
+		id := fmt.Sprintf("good-%d", i)
+		ids = append(ids, id)
+		writeRow(t, w, id)
+	}
+	writeRow(t, w, "bad")
+
+	start := time.Now()
+	if err := w.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	// The old algorithm would need well over 1s on the poison row's path
+	// alone; the fixed one should land in well under half that.
+	if elapsed > 600*time.Millisecond {
+		t.Errorf("Flush took %v to isolate one bad row among 32 — the retry budget is being re-spent at every bisection level again (ING-F1)", elapsed)
+	}
+
+	if len(rejected) != 1 || !strings.Contains(rejected[0], `"id":"bad"`) {
+		t.Fatalf("rejected = %v, want exactly the bad row", rejected)
+	}
+	if len(w.rows) != 0 {
+		t.Errorf("buffer still holds %d row(s) after a fully-resolved flush", len(w.rows))
+	}
+}
+
 // A context that dies mid-attempt is not a verdict on the rows — they were
 // never confirmed lost or landed, so they must stay queued for the next
 // flush rather than being silently dropped or wrongly quarantined.

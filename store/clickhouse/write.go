@@ -164,11 +164,9 @@ func (b *bulkWriter) flush(ctx context.Context, wait bool) error {
 // a retry.
 //
 // A batch that still fails after every retry is content ClickHouse will not
-// accept as sent, which retrying again would not fix. Bisecting it isolates
-// which row(s) those are: everything that is not the culprit still gets
-// inserted, at the cost of one extra round trip per half. A row that still
-// fails on its own, after its own retries, is quarantined via onReject
-// instead of retried forever.
+// accept as sent, which retrying again would not fix, so isolate bisects it
+// without spending the retry budget again at every level (see isolate's own
+// comment — ING-F1).
 //
 // Returns an error only when ctx is done mid-attempt: that is the one case
 // where rows were not resolved either way (inserted or quarantined) and
@@ -193,18 +191,52 @@ func (b *bulkWriter) insertResilient(ctx context.Context, rows []string) error {
 		}
 	}
 
+	return b.isolate(ctx, rows, err)
+}
+
+// isolate is reached only once insertResilient's own retry budget has already
+// failed for this exact batch — a row ClickHouse will not accept as sent, not
+// a transient blip, since a blip would have cleared within those retries.
+// Repeating the same maxRetries×retryDelay treatment at every halving level
+// (the previous behaviour) turns a single bad row in a large batch into
+// retries*retryDelay seconds *per level*: with the default 3 retries/1s delay
+// and a 1000-row batch (~10 levels to isolate one row), that is the ~30s the
+// finding reports — and the single goroutine that drains this writer's queue
+// is blocked inside flush() for all of it, so every log arriving meanwhile
+// piles up behind a full channel and gets dropped. Past this point, each half
+// gets exactly one confirmatory attempt, with no delay, purely to locate
+// which row(s) are bad; everything that is not the culprit still gets
+// inserted, at the cost of one extra round trip per half. A row that still
+// fails on its own is quarantined via onReject instead of retried forever.
+func (b *bulkWriter) isolate(ctx context.Context, rows []string, lastErr error) error {
 	if len(rows) == 1 {
-		b.reject(rows[0], err)
+		b.reject(rows[0], lastErr)
 		return nil
 	}
 
 	mid := len(rows) / 2
-	err1 := b.insertResilient(ctx, rows[:mid])
-	err2 := b.insertResilient(ctx, rows[mid:])
-	if err1 != nil {
-		return err1
+	left, right := rows[:mid], rows[mid:]
+
+	errL := b.insertOnce(ctx, left)
+	if errL != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		errL = b.isolate(ctx, left, errL)
 	}
-	return err2
+
+	errR := b.insertOnce(ctx, right)
+	if errR != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		errR = b.isolate(ctx, right, errR)
+	}
+
+	if errL != nil {
+		return errL
+	}
+	return errR
 }
 
 func (b *bulkWriter) insertOnce(ctx context.Context, rows []string) error {

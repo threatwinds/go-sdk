@@ -35,10 +35,10 @@ func (r *Rule) Normalize() {
 	}
 }
 
-// Execute reports whether at least Count records match within Within, and if so
+// ExecuteStore reports whether at least Count records match within Within, and if so
 // returns up to sampleSize of them as evidence. Counting and sampling are two
 // calls so that records are read only when the threshold is actually met.
-func (e *SearchRequest) Execute(ctx context.Context, st store.Store, scope store.Scope, previous *string) (bool, []json.RawMessage, error) {
+func (e *SearchRequest) ExecuteStore(ctx context.Context, st store.Store, scope store.Scope, previous *string) (bool, []json.RawMessage, error) {
 	filters, err := e.filters(previous)
 	if err != nil {
 		return false, nil, err
@@ -85,7 +85,7 @@ func (e *SearchRequest) Execute(ctx context.Context, st store.Store, scope store
 
 	var docs []json.RawMessage
 	for _, or := range e.Or {
-		matched, more, err := or.Execute(ctx, st, scope, previous)
+		matched, more, err := or.ExecuteStore(ctx, st, scope, previous)
 		if err != nil {
 			return false, nil, err
 		}

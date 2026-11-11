@@ -75,6 +75,11 @@ func TestSearchReadsTheRecord(t *testing.T) {
 	}
 }
 
+// ALR-F20: multiSearchAnyCaseInsensitive's needle array has to be a
+// compile-time constant in ClickHouse — a user-chosen tag list bound as a
+// runtime parameter fails the query (500) every time. arrayExists with a
+// lambda has the same "any needle matches" semantics but takes its array as
+// an ordinary argument, so the needle list can still be bound.
 func TestContainsAnyTakesAList(t *testing.T) {
 	sql, args, err := renderFilter(store.Filter{
 		Field: "message", Op: store.OpContainsAny, Value: []any{"denied", "refused"},
@@ -82,8 +87,8 @@ func TestContainsAnyTakesAList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("contains_any: %v", err)
 	}
-	if !strings.Contains(sql, "multiSearchAnyCaseInsensitive") {
-		t.Errorf("rendered %q", sql)
+	if !strings.Contains(sql, "arrayExists") {
+		t.Errorf("rendered %q, want arrayExists (not multiSearchAnyCaseInsensitive, whose needle array ClickHouse requires to be a compile-time constant)", sql)
 	}
 	if len(args) != 1 {
 		t.Errorf("bound %d args, want the list bound as one", len(args))
@@ -157,23 +162,45 @@ func TestInStringifiesItsSetForAJSONSubcolumn(t *testing.T) {
 	}
 }
 
-// Ordering is not string comparison — toString(...) would make "9" > "10",
-// a wrong answer rather than an error, the kind nobody goes looking for. A
-// JSON path still needs narrowing to one type, the same reason In/Eq do, so
-// this reaches for dynamicElement instead: the filter value's own Go type
-// says which one, and a row holding a different type there just does not
-// match, rather than failing the query for every row being scanned.
-func TestOrderingOperatorsAreNotCastButAreNarrowedOnAJSONPath(t *testing.T) {
+// Ordering is not string comparison — a bare toString(...) comparison would
+// make "9" > "10", a wrong answer rather than an error, the kind nobody goes
+// looking for. DSH-F22: narrowing to the Dynamic type of the filter value's
+// own Go type (what this used to do, via dynamicElement) only matches rows
+// where the JSON path was ALSO ingested as that exact type — a row where a
+// different source sent the same path as, say, a numeric-looking string
+// instead of a number reads as NULL under that narrowing and the range
+// filter never matches it. Reparsing through toFloat64OrNull compares like
+// against like (as a number) regardless of which Dynamic type the path
+// actually got, while still comparing numerically rather than lexically.
+func TestOrderingOperatorsCoerceNumericallyOnAJSONPath(t *testing.T) {
 	for _, op := range []store.Op{store.OpGt, store.OpGte, store.OpLt, store.OpLte} {
 		sql, _, err := renderFilter(store.Filter{Field: "log.bytes", Op: op, Value: 100}, "raw")
 		if err != nil {
 			t.Fatalf("%s: %v", op, err)
 		}
-		if strings.Contains(sql, "toString") {
-			t.Errorf("%s rendered %q: a numeric comparison became lexicographic", op, sql)
+		if !strings.Contains(sql, "toFloat64OrNull(toString(`log`.`bytes`))") {
+			t.Errorf("%s rendered %q, want the subcolumn coerced through toFloat64OrNull before comparing", op, sql)
 		}
-		if !strings.Contains(sql, "dynamicElement(`log`.`bytes`, 'Int64')") {
-			t.Errorf("%s rendered %q, want the subcolumn narrowed to Int64 before comparing", op, sql)
+	}
+}
+
+// DSH-F22's actual reported symptom, as a rendering-level regression guard:
+// the whole point of toFloat64OrNull(toString(...)) over dynamicElement is
+// that it doesn't name a specific Dynamic type at all, so it can't silently
+// read a row of a *different* numeric Dynamic type as NULL the way a
+// hardcoded 'Int64'/'Float64' narrowing would for a float-valued filter
+// against an int-stored row or vice versa.
+func TestOrderingCoercionDoesNotNameASpecificDynamicType(t *testing.T) {
+	for _, v := range []any{100, int64(100), 100.5} {
+		sql, _, err := renderFilter(store.Filter{Field: "log.bytes", Op: store.OpGt, Value: v}, "raw")
+		if err != nil {
+			t.Fatalf("%T: %v", v, err)
+		}
+		if strings.Contains(sql, "dynamicElement") {
+			t.Errorf("value %v (%T) rendered %q: narrowed to a specific Dynamic type again", v, v, sql)
+		}
+		if !strings.Contains(sql, "toFloat64OrNull") {
+			t.Errorf("value %v (%T) rendered %q, want the numeric coercion", v, v, sql)
 		}
 	}
 }
@@ -191,16 +218,17 @@ func TestOrderingOperatorsLeaveADeclaredColumnAlone(t *testing.T) {
 }
 
 // Between reads two Go values but ClickHouse compares against one type; the
-// low end of the pair is what decides it.
-func TestBetweenNarrowsAJSONSubcolumnToTheLowValuesType(t *testing.T) {
+// low end of the pair is what decides which coercion rangeColumn picks
+// (DSH-F22 — see TestOrderingOperatorsCoerceNumericallyOnAJSONPath).
+func TestBetweenCoercesNumericallyOnAJSONSubcolumn(t *testing.T) {
 	sql, args, err := renderFilter(store.Filter{
 		Field: "log.durationMs", Op: store.OpBetween, Value: []any{10, 500},
 	}, "raw")
 	if err != nil {
 		t.Fatalf("renderFilter: %v", err)
 	}
-	if !strings.Contains(sql, "dynamicElement(`log`.`durationMs`, 'Int64') BETWEEN") {
-		t.Errorf("rendered %q, want the subcolumn narrowed before BETWEEN", sql)
+	if !strings.Contains(sql, "toFloat64OrNull(toString(`log`.`durationMs`)) BETWEEN") {
+		t.Errorf("rendered %q, want the subcolumn coerced before BETWEEN", sql)
 	}
 	if len(args) != 2 {
 		t.Fatalf("args = %v, want the pair bound", args)

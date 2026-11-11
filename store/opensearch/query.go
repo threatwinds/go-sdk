@@ -2,6 +2,7 @@ package opensearch
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/threatwinds/go-sdk/store"
@@ -24,7 +25,7 @@ func (d *Driver) buildQuery(s store.Scope, filters []store.Filter) (map[string]a
 	}
 
 	for _, f := range filters {
-		clause, negate, err := filterClause(f)
+		clause, negate, err := d.clauseFor(s.Dataset, f)
 		if err != nil {
 			return nil, err
 		}
@@ -54,6 +55,20 @@ func (d *Driver) timeRange(from, to time.Time) map[string]any {
 		return nil
 	}
 	return map[string]any{"range": map[string]any{d.cfg.TimestampField: bounds}}
+}
+
+// clauseFor handles the one operator that names no field, and leaves the rest
+// to filterClause.
+func (d *Driver) clauseFor(ds store.Dataset, f store.Filter) (map[string]any, bool, error) {
+	if f.Op != store.OpSearch && f.Op != store.OpNotSearch {
+		return filterClause(f)
+	}
+	field := d.cfg.TextFields[ds]
+	if field == "" {
+		return nil, false, fmt.Errorf("%w: dataset %q has no text to search", store.ErrUnsupported, ds)
+	}
+	clause := map[string]any{"match": map[string]any{field: map[string]any{"query": f.Value, "operator": "and"}}}
+	return clause, f.Op == store.OpNotSearch, nil
 }
 
 // filterClause reports whether the clause belongs in must_not rather than filter.
@@ -94,10 +109,51 @@ func filterClause(f store.Filter) (map[string]any, bool, error) {
 		return map[string]any{"match": map[string]any{f.Field: f.Value}}, true, nil
 	case store.OpExists:
 		return map[string]any{"exists": map[string]any{"field": f.Field}}, false, nil
+	case store.OpNotExists:
+		return map[string]any{"exists": map[string]any{"field": f.Field}}, true, nil
+	case store.OpNotBetween:
+		vals, err := toSlice(f.Value)
+		if err != nil || len(vals) != 2 {
+			return nil, false, fmt.Errorf("opensearch: OpNotBetween on %q needs exactly two bounds", f.Field)
+		}
+		return map[string]any{"range": map[string]any{
+			f.Field: map[string]any{"gte": vals[0], "lte": vals[1]},
+		}}, true, nil
+
+	// Anchored matching is case-insensitive, like the ClickHouse driver's, so a
+	// filter behaves the same whichever store answers it.
+	case store.OpStartsWith, store.OpNotStartsWith:
+		return map[string]any{"prefix": map[string]any{f.Field: map[string]any{
+			"value": fmt.Sprint(f.Value), "case_insensitive": true,
+		}}}, f.Op == store.OpNotStartsWith, nil
+	case store.OpEndsWith, store.OpNotEndsWith:
+		return map[string]any{"wildcard": map[string]any{f.Field: map[string]any{
+			"value": "*" + wildcardEscaper.Replace(fmt.Sprint(f.Value)), "case_insensitive": true,
+		}}}, f.Op == store.OpNotEndsWith, nil
+
+	case store.OpContainsAny, store.OpNotContainsAny:
+		vals, err := toSlice(f.Value)
+		if err != nil {
+			return nil, false, err
+		}
+		negate := f.Op == store.OpNotContainsAny
+		if len(vals) == 0 {
+			// Matches nothing, so its negation matches everything — the same
+			// answer the ClickHouse driver gives for an empty list.
+			return map[string]any{"match_none": map[string]any{}}, negate, nil
+		}
+		should := make([]map[string]any, len(vals))
+		for i, v := range vals {
+			should[i] = map[string]any{"match": map[string]any{f.Field: v}}
+		}
+		return map[string]any{"bool": map[string]any{"should": should, "minimum_should_match": 1}}, negate, nil
 	default:
 		return nil, false, fmt.Errorf("%w: operator %q", store.ErrUnsupported, f.Op)
 	}
 }
+
+// wildcardEscaper keeps a user's text from being read as a pattern.
+var wildcardEscaper = strings.NewReplacer(`\`, `\\`, "*", `\*`, "?", `\?`)
 
 func rangeClause(field, op string, v any) map[string]any {
 	return map[string]any{"range": map[string]any{field: map[string]any{op: v}}}

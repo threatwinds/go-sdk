@@ -148,6 +148,28 @@ func TestFilterClauses(t *testing.T) {
 			`{"match":{"log.message":"denied"}}`, false},
 		{"exists", store.Filter{Field: "origin.ip", Op: store.OpExists},
 			`{"exists":{"field":"origin.ip"}}`, false},
+		{"not exists", store.Filter{Field: "origin.ip", Op: store.OpNotExists},
+			`{"exists":{"field":"origin.ip"}}`, true},
+		{"not between", store.Filter{Field: "log.bytes", Op: store.OpNotBetween, Value: []any{1, 9}},
+			`{"range":{"log.bytes":{"gte":1,"lte":9}}}`, true},
+		{"starts with", store.Filter{Field: "origin.host", Op: store.OpStartsWith, Value: "web-"},
+			`{"prefix":{"origin.host":{"case_insensitive":true,"value":"web-"}}}`, false},
+		{"not starts with", store.Filter{Field: "origin.host", Op: store.OpNotStartsWith, Value: "web-"},
+			`{"prefix":{"origin.host":{"case_insensitive":true,"value":"web-"}}}`, true},
+		{"ends with", store.Filter{Field: "file", Op: store.OpEndsWith, Value: ".exe"},
+			`{"wildcard":{"file":{"case_insensitive":true,"value":"*.exe"}}}`, false},
+		{"ends with escapes wildcards", store.Filter{Field: "file", Op: store.OpEndsWith, Value: `a*b?c\d`},
+			`{"wildcard":{"file":{"case_insensitive":true,"value":"*a\\*b\\?c\\\\d"}}}`, false},
+		{"not ends with", store.Filter{Field: "file", Op: store.OpNotEndsWith, Value: ".exe"},
+			`{"wildcard":{"file":{"case_insensitive":true,"value":"*.exe"}}}`, true},
+		{"contains any", store.Filter{Field: "log.message", Op: store.OpContainsAny, Value: []string{"a", "b"}},
+			`{"bool":{"minimum_should_match":1,"should":[{"match":{"log.message":"a"}},{"match":{"log.message":"b"}}]}}`, false},
+		{"not contains any", store.Filter{Field: "log.message", Op: store.OpNotContainsAny, Value: []string{"a"}},
+			`{"bool":{"minimum_should_match":1,"should":[{"match":{"log.message":"a"}}]}}`, true},
+		{"contains any of nothing matches nothing", store.Filter{Field: "x", Op: store.OpContainsAny, Value: []string{}},
+			`{"match_none":{}}`, false},
+		{"not contains any of nothing matches everything", store.Filter{Field: "x", Op: store.OpNotContainsAny, Value: []string{}},
+			`{"match_none":{}}`, true},
 	}
 
 	for _, tc := range cases {
@@ -390,4 +412,62 @@ func TestPatchDeleteAge(t *testing.T) {
 	if got := ing["conditions"].(map[string]any)["min_index_age"]; got != "24h" {
 		t.Errorf("ingest transition changed to %v, want 24h", got)
 	}
+}
+
+func TestSearchReadsTheDatasetsTextField(t *testing.T) {
+	d, err := New(Config{Layout: testLayout(), TenantField: "tenantId", TextFields: map[store.Dataset]string{dsLogs: "raw"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	q, err := d.buildQuery(store.Scope{Tenant: "acme", Dataset: dsLogs}, []store.Filter{{Op: store.OpSearch, Value: "failed login"}})
+	if err != nil {
+		t.Fatalf("buildQuery: %v", err)
+	}
+	if !hasClause(t, q, `{"match":{"raw":{"operator":"and","query":"failed login"}}}`) {
+		t.Fatalf("search clause missing from %s", mustJSON(t, q))
+	}
+
+	q, err = d.buildQuery(store.Scope{Tenant: "acme", Dataset: dsLogs}, []store.Filter{{Op: store.OpNotSearch, Value: "x"}})
+	if err != nil {
+		t.Fatalf("buildQuery: %v", err)
+	}
+	if _, ok := q["bool"].(map[string]any)["must_not"]; !ok {
+		t.Fatalf("not_search must land in must_not: %s", mustJSON(t, q))
+	}
+}
+
+func TestSearchOnADatasetWithoutTextIsAnErrorNotAnEmptyResult(t *testing.T) {
+	_, err := testDriver(t).buildQuery(store.Scope{Tenant: "acme", Dataset: dsAlerts}, []store.Filter{{Op: store.OpSearch, Value: "x"}})
+	if !errors.Is(err, store.ErrUnsupported) {
+		t.Fatalf("want ErrUnsupported, got %v", err)
+	}
+}
+
+func TestEveryOperatorTheStoreDefinesHasAClause(t *testing.T) {
+	d, err := New(Config{Layout: testLayout(), TenantField: "tenantId", TextFields: map[store.Dataset]string{dsLogs: "raw"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[store.Op]any{
+		store.OpBetween: []any{1, 2}, store.OpNotBetween: []any{1, 2},
+		store.OpIn: []any{"a"}, store.OpNotIn: []any{"a"},
+		store.OpContainsAny: []any{"a"}, store.OpNotContainsAny: []any{"a"},
+	}
+	for _, op := range allOps {
+		f := store.Filter{Field: "f", Op: op, Value: "v"}
+		if v, ok := values[op]; ok {
+			f.Value = v
+		}
+		if _, err := d.buildQuery(store.Scope{Tenant: "acme", Dataset: dsLogs}, []store.Filter{f}); err != nil {
+			t.Errorf("%s: %v", op, err)
+		}
+	}
+}
+
+var allOps = []store.Op{
+	store.OpEq, store.OpNotEq, store.OpIn, store.OpNotIn, store.OpGt, store.OpGte, store.OpLt, store.OpLte,
+	store.OpBetween, store.OpNotBetween, store.OpContains, store.OpNotContains, store.OpExists, store.OpNotExists,
+	store.OpStartsWith, store.OpNotStartsWith, store.OpEndsWith, store.OpNotEndsWith,
+	store.OpSearch, store.OpNotSearch, store.OpContainsAny, store.OpNotContainsAny,
 }

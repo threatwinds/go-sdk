@@ -439,16 +439,17 @@ func (x *Impact) GetAvailability() uint32 {
 }
 
 type Event struct {
-	state            protoimpl.MessageState       `protogen:"open.v1"`
-	Id               string                       `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Timestamp        string                       `protobuf:"bytes,2,opt,name=timestamp,json=@timestamp,proto3" json:"timestamp,omitempty"`
-	DeviceTime       string                       `protobuf:"bytes,3,opt,name=deviceTime,proto3" json:"deviceTime,omitempty"`
-	DataType         string                       `protobuf:"bytes,4,opt,name=dataType,proto3" json:"dataType,omitempty"`
-	DataSource       string                       `protobuf:"bytes,5,opt,name=dataSource,proto3" json:"dataSource,omitempty"`
-	TenantId         string                       `protobuf:"bytes,6,opt,name=tenantId,proto3" json:"tenantId,omitempty"`
-	TenantName       string                       `protobuf:"bytes,7,opt,name=tenantName,proto3" json:"tenantName,omitempty"`
-	Raw              string                       `protobuf:"bytes,8,opt,name=raw,proto3" json:"raw,omitempty"`
-	Log              map[string]*structpb.Value   `protobuf:"bytes,9,rep,name=log,proto3" json:"log,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Timestamp  string                 `protobuf:"bytes,2,opt,name=timestamp,json=@timestamp,proto3" json:"timestamp,omitempty"`
+	DeviceTime string                 `protobuf:"bytes,3,opt,name=deviceTime,proto3" json:"deviceTime,omitempty"`
+	DataType   string                 `protobuf:"bytes,4,opt,name=dataType,proto3" json:"dataType,omitempty"`
+	DataSource string                 `protobuf:"bytes,5,opt,name=dataSource,proto3" json:"dataSource,omitempty"`
+	TenantId   string                 `protobuf:"bytes,6,opt,name=tenantId,proto3" json:"tenantId,omitempty"`
+	TenantName string                 `protobuf:"bytes,7,opt,name=tenantName,proto3" json:"tenantName,omitempty"`
+	Raw        string                 `protobuf:"bytes,8,opt,name=raw,proto3" json:"raw,omitempty"`
+	// RENAMED from: map<string, google.protobuf.Value> log = 9;
+	Event            map[string]*structpb.Value   `protobuf:"bytes,9,rep,name=event,proto3" json:"event,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Target           *Side                        `protobuf:"bytes,10,opt,name=target,proto3" json:"target,omitempty"`
 	Origin           *Side                        `protobuf:"bytes,11,opt,name=origin,proto3" json:"origin,omitempty"`
 	Protocol         string                       `protobuf:"bytes,12,opt,name=protocol,proto3" json:"protocol,omitempty"`
@@ -459,8 +460,14 @@ type Event struct {
 	Severity         string                       `protobuf:"bytes,17,opt,name=severity,proto3" json:"severity,omitempty"`
 	Errors           []string                     `protobuf:"bytes,18,rep,name=errors,proto3" json:"errors,omitempty"`
 	Compliance       map[string]*ComplianceValues `protobuf:"bytes,19,rep,name=compliance,proto3" json:"compliance,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Compliance control tags (populated by the compliance orchestrator later).
+	Controls []string `protobuf:"bytes,20,rep,name=controls,proto3" json:"controls,omitempty"`
+	// UTMStack curated, typed, aggregatable event-field bag. Unlike `event`
+	// (flat_object, search-only), `utm` is indexed as a typed object so its
+	// fields can be used as chart dimensions and terms/date aggregations.
+	Utm           map[string]*structpb.Value `protobuf:"bytes,21,rep,name=utm,proto3" json:"utm,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Event) Reset() {
@@ -549,9 +556,9 @@ func (x *Event) GetRaw() string {
 	return ""
 }
 
-func (x *Event) GetLog() map[string]*structpb.Value {
+func (x *Event) GetEvent() map[string]*structpb.Value {
 	if x != nil {
-		return x.Log
+		return x.Event
 	}
 	return nil
 }
@@ -622,6 +629,20 @@ func (x *Event) GetErrors() []string {
 func (x *Event) GetCompliance() map[string]*ComplianceValues {
 	if x != nil {
 		return x.Compliance
+	}
+	return nil
+}
+
+func (x *Event) GetControls() []string {
+	if x != nil {
+		return x.Controls
+	}
+	return nil
+}
+
+func (x *Event) GetUtm() map[string]*structpb.Value {
+	if x != nil {
+		return x.Utm
 	}
 	return nil
 }
@@ -2725,15 +2746,18 @@ func (x *Add) GetWhere() string {
 }
 
 type Config struct {
-	state         protoimpl.MessageState     `protogen:"open.v1"`
-	Pipeline      []*Pipeline                `protobuf:"bytes,1,rep,name=pipeline,proto3" json:"pipeline,omitempty"`
-	DisabledRules []string                   `protobuf:"bytes,2,rep,name=disabledRules,proto3" json:"disabledRules,omitempty"`
-	Tenants       []*Tenant                  `protobuf:"bytes,3,rep,name=tenants,proto3" json:"tenants,omitempty"`
-	Patterns      map[string]string          `protobuf:"bytes,4,rep,name=patterns,proto3" json:"patterns,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Plugins       map[string]*structpb.Value `protobuf:"bytes,5,rep,name=plugins,proto3" json:"plugins,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Env           *Env                       `protobuf:"bytes,6,opt,name=env,proto3" json:"env,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Pipeline []*Pipeline            `protobuf:"bytes,1,rep,name=pipeline,proto3" json:"pipeline,omitempty"`
+	// disabledRules is the numeric-id form the v11 line uses. The filename-
+	// identity form is disabledRuleNames.
+	DisabledRules     []uint64                   `protobuf:"varint,2,rep,packed,name=disabledRules,proto3" json:"disabledRules,omitempty"`
+	Tenants           []*Tenant                  `protobuf:"bytes,3,rep,name=tenants,proto3" json:"tenants,omitempty"`
+	Patterns          map[string]string          `protobuf:"bytes,4,rep,name=patterns,proto3" json:"patterns,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Plugins           map[string]*structpb.Value `protobuf:"bytes,5,rep,name=plugins,proto3" json:"plugins,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Env               *Env                       `protobuf:"bytes,6,opt,name=env,proto3" json:"env,omitempty"`
+	DisabledRuleNames []string                   `protobuf:"bytes,7,rep,name=disabledRuleNames,proto3" json:"disabledRuleNames,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Config) Reset() {
@@ -2773,7 +2797,7 @@ func (x *Config) GetPipeline() []*Pipeline {
 	return nil
 }
 
-func (x *Config) GetDisabledRules() []string {
+func (x *Config) GetDisabledRules() []uint64 {
 	if x != nil {
 		return x.DisabledRules
 	}
@@ -2808,19 +2832,24 @@ func (x *Config) GetEnv() *Env {
 	return nil
 }
 
+func (x *Config) GetDisabledRuleNames() []string {
+	if x != nil {
+		return x.DisabledRuleNames
+	}
+	return nil
+}
+
 type Tenant struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Name              string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Id                string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
 	Assets            []*Asset               `protobuf:"bytes,3,rep,name=assets,proto3" json:"assets,omitempty"`
-	DisabledRules     []string               `protobuf:"bytes,4,rep,name=disabledRules,proto3" json:"disabledRules,omitempty"`
+	DisabledRules     []uint64               `protobuf:"varint,4,rep,packed,name=disabledRules,proto3" json:"disabledRules,omitempty"`
 	DisabledPipelines []string               `protobuf:"bytes,5,rep,name=disabledPipelines,proto3" json:"disabledPipelines,omitempty"`
-	// Pipeline names, in the order this tenant wants them applied. Names not
-	// listed keep the order declared in their own file, after the listed ones.
-	// Empty means this tenant never reordered anything and inherits the default.
-	PipelineOrder []string `protobuf:"bytes,6,rep,name=pipelineOrder,proto3" json:"pipelineOrder,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	PipelineOrder     []string               `protobuf:"bytes,6,rep,name=pipelineOrder,proto3" json:"pipelineOrder,omitempty"`
+	DisabledRuleNames []string               `protobuf:"bytes,7,rep,name=disabledRuleNames,proto3" json:"disabledRuleNames,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Tenant) Reset() {
@@ -2874,7 +2903,7 @@ func (x *Tenant) GetAssets() []*Asset {
 	return nil
 }
 
-func (x *Tenant) GetDisabledRules() []string {
+func (x *Tenant) GetDisabledRules() []uint64 {
 	if x != nil {
 		return x.DisabledRules
 	}
@@ -2891,6 +2920,13 @@ func (x *Tenant) GetDisabledPipelines() []string {
 func (x *Tenant) GetPipelineOrder() []string {
 	if x != nil {
 		return x.PipelineOrder
+	}
+	return nil
+}
+
+func (x *Tenant) GetDisabledRuleNames() []string {
+	if x != nil {
+		return x.DisabledRuleNames
 	}
 	return nil
 }
@@ -3199,6 +3235,9 @@ type Rule struct {
 	GroupBy       []string               `protobuf:"bytes,12,rep,name=groupBy,proto3" json:"groupBy,omitempty"`
 	Correlation   []*SearchRequest       `protobuf:"bytes,13,rep,name=correlation,proto3" json:"correlation,omitempty"`
 	TenantId      string                 `protobuf:"bytes,14,opt,name=tenantId,proto3" json:"tenantId,omitempty"`
+	// id is the numeric identity the v11 line gives a rule; v12 identifies a
+	// rule by its file name and leaves it unset.
+	Id            uint64 `protobuf:"varint,15,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3331,13 +3370,23 @@ func (x *Rule) GetTenantId() string {
 	return ""
 }
 
+func (x *Rule) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
 type SearchRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DataType      string                 `protobuf:"bytes,1,opt,name=dataType,proto3" json:"dataType,omitempty"`
-	With          []*Expression          `protobuf:"bytes,2,rep,name=with,proto3" json:"with,omitempty"`
-	Or            []*SearchRequest       `protobuf:"bytes,3,rep,name=or,proto3" json:"or,omitempty"`
-	Within        string                 `protobuf:"bytes,4,opt,name=within,proto3" json:"within,omitempty"`
-	Count         uint64                 `protobuf:"varint,5,opt,name=count,proto3" json:"count,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	DataType string                 `protobuf:"bytes,1,opt,name=dataType,proto3" json:"dataType,omitempty"`
+	With     []*Expression          `protobuf:"bytes,2,rep,name=with,proto3" json:"with,omitempty"`
+	Or       []*SearchRequest       `protobuf:"bytes,3,rep,name=or,proto3" json:"or,omitempty"`
+	Within   string                 `protobuf:"bytes,4,opt,name=within,proto3" json:"within,omitempty"`
+	Count    uint64                 `protobuf:"varint,5,opt,name=count,proto3" json:"count,omitempty"`
+	// indexPattern targets an OpenSearch index pattern directly (v11); dataType
+	// targets a store dataset (v12).
+	IndexPattern  string `protobuf:"bytes,6,opt,name=indexPattern,proto3" json:"indexPattern,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3405,6 +3454,13 @@ func (x *SearchRequest) GetCount() uint64 {
 		return x.Count
 	}
 	return 0
+}
+
+func (x *SearchRequest) GetIndexPattern() string {
+	if x != nil {
+		return x.IndexPattern
+	}
+	return ""
 }
 
 type Expression struct {
@@ -3517,7 +3573,7 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\x06Impact\x12(\n" +
 	"\x0fconfidentiality\x18\x01 \x01(\rR\x0fconfidentiality\x12\x1c\n" +
 	"\tintegrity\x18\x02 \x01(\rR\tintegrity\x12\"\n" +
-	"\favailability\x18\x03 \x01(\rR\favailability\"\x9b\x06\n" +
+	"\favailability\x18\x03 \x01(\rR\favailability\"\xba\a\n" +
 	"\x05Event\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\ttimestamp\x18\x02 \x01(\tR\n" +
@@ -3533,8 +3589,8 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\n" +
 	"tenantName\x18\a \x01(\tR\n" +
 	"tenantName\x12\x10\n" +
-	"\x03raw\x18\b \x01(\tR\x03raw\x12)\n" +
-	"\x03log\x18\t \x03(\v2\x17.plugins.Event.LogEntryR\x03log\x12%\n" +
+	"\x03raw\x18\b \x01(\tR\x03raw\x12/\n" +
+	"\x05event\x18\t \x03(\v2\x19.plugins.Event.EventEntryR\x05event\x12%\n" +
 	"\x06target\x18\n" +
 	" \x01(\v2\r.plugins.SideR\x06target\x12%\n" +
 	"\x06origin\x18\v \x01(\v2\r.plugins.SideR\x06origin\x12\x1a\n" +
@@ -3549,13 +3605,19 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\x06errors\x18\x12 \x03(\tR\x06errors\x12>\n" +
 	"\n" +
 	"compliance\x18\x13 \x03(\v2\x1e.plugins.Event.ComplianceEntryR\n" +
-	"compliance\x1aN\n" +
-	"\bLogEntry\x12\x10\n" +
+	"compliance\x12\x1a\n" +
+	"\bcontrols\x18\x14 \x03(\tR\bcontrols\x12)\n" +
+	"\x03utm\x18\x15 \x03(\v2\x17.plugins.Event.UtmEntryR\x03utm\x1aP\n" +
+	"\n" +
+	"EventEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\x1aX\n" +
 	"\x0fComplianceEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
-	"\x05value\x18\x02 \x01(\v2\x19.plugins.ComplianceValuesR\x05value:\x028\x01\"*\n" +
+	"\x05value\x18\x02 \x01(\v2\x19.plugins.ComplianceValuesR\x05value:\x028\x01\x1aN\n" +
+	"\bUtmEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\"*\n" +
 	"\x10ComplianceValues\x12\x16\n" +
 	"\x06values\x18\x01 \x03(\tR\x06values\"\xcf\x12\n" +
 	"\x04Side\x12\x1c\n" +
@@ -3754,27 +3816,29 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\x05where\x18\x03 \x01(\tR\x05where\x1aQ\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
-	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\"\xac\x03\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\"\xda\x03\n" +
 	"\x06Config\x12-\n" +
 	"\bpipeline\x18\x01 \x03(\v2\x11.plugins.PipelineR\bpipeline\x12$\n" +
-	"\rdisabledRules\x18\x02 \x03(\tR\rdisabledRules\x12)\n" +
+	"\rdisabledRules\x18\x02 \x03(\x04R\rdisabledRules\x12)\n" +
 	"\atenants\x18\x03 \x03(\v2\x0f.plugins.TenantR\atenants\x129\n" +
 	"\bpatterns\x18\x04 \x03(\v2\x1d.plugins.Config.PatternsEntryR\bpatterns\x126\n" +
 	"\aplugins\x18\x05 \x03(\v2\x1c.plugins.Config.PluginsEntryR\aplugins\x12\x1e\n" +
-	"\x03env\x18\x06 \x01(\v2\f.plugins.EnvR\x03env\x1a;\n" +
+	"\x03env\x18\x06 \x01(\v2\f.plugins.EnvR\x03env\x12,\n" +
+	"\x11disabledRuleNames\x18\a \x03(\tR\x11disabledRuleNames\x1a;\n" +
 	"\rPatternsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aR\n" +
 	"\fPluginsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
-	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\"\xce\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05value:\x028\x01\"\xfc\x01\n" +
 	"\x06Tenant\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12&\n" +
 	"\x06assets\x18\x03 \x03(\v2\x0e.plugins.AssetR\x06assets\x12$\n" +
-	"\rdisabledRules\x18\x04 \x03(\tR\rdisabledRules\x12,\n" +
+	"\rdisabledRules\x18\x04 \x03(\x04R\rdisabledRules\x12,\n" +
 	"\x11disabledPipelines\x18\x05 \x03(\tR\x11disabledPipelines\x12$\n" +
-	"\rpipelineOrder\x18\x06 \x03(\tR\rpipelineOrder\"\xb7\x01\n" +
+	"\rpipelineOrder\x18\x06 \x03(\tR\rpipelineOrder\x12,\n" +
+	"\x11disabledRuleNames\x18\a \x03(\tR\x11disabledRuleNames\"\xb7\x01\n" +
 	"\x05Asset\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\thostnames\x18\x02 \x03(\tR\thostnames\x12\x10\n" +
@@ -3798,7 +3862,7 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\bVariable\x12\x10\n" +
 	"\x03get\x18\x01 \x01(\tR\x03get\x12\x0e\n" +
 	"\x02as\x18\x02 \x01(\tR\x02as\x12\x16\n" +
-	"\x06ofType\x18\x03 \x01(\tR\x06ofType\"\xe1\x03\n" +
+	"\x06ofType\x18\x03 \x01(\tR\x06ofType\"\xf1\x03\n" +
 	"\x04Rule\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1a\n" +
@@ -3816,13 +3880,15 @@ const file_plugins_plugins_proto_rawDesc = "" +
 	"\rdeduplicateBy\x18\v \x03(\tR\rdeduplicateBy\x12\x18\n" +
 	"\agroupBy\x18\f \x03(\tR\agroupBy\x128\n" +
 	"\vcorrelation\x18\r \x03(\v2\x16.plugins.SearchRequestR\vcorrelation\x12\x1a\n" +
-	"\btenantId\x18\x0e \x01(\tR\btenantId\"\xaa\x01\n" +
+	"\btenantId\x18\x0e \x01(\tR\btenantId\x12\x0e\n" +
+	"\x02id\x18\x0f \x01(\x04R\x02id\"\xce\x01\n" +
 	"\rSearchRequest\x12\x1a\n" +
 	"\bdataType\x18\x01 \x01(\tR\bdataType\x12'\n" +
 	"\x04with\x18\x02 \x03(\v2\x13.plugins.ExpressionR\x04with\x12&\n" +
 	"\x02or\x18\x03 \x03(\v2\x16.plugins.SearchRequestR\x02or\x12\x16\n" +
 	"\x06within\x18\x04 \x01(\tR\x06within\x12\x14\n" +
-	"\x05count\x18\x05 \x01(\x04R\x05count\"l\n" +
+	"\x05count\x18\x05 \x01(\x04R\x05count\x12\"\n" +
+	"\findexPattern\x18\x06 \x01(\tR\findexPattern\"l\n" +
 	"\n" +
 	"Expression\x12\x14\n" +
 	"\x05field\x18\x01 \x01(\tR\x05field\x12\x1a\n" +
@@ -3858,7 +3924,7 @@ func file_plugins_plugins_proto_rawDescGZIP() []byte {
 	return file_plugins_plugins_proto_rawDescData
 }
 
-var file_plugins_plugins_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
+var file_plugins_plugins_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
 var file_plugins_plugins_proto_goTypes = []any{
 	(*Message)(nil),          // 0: plugins.Message
 	(*Ack)(nil),              // 1: plugins.Ack
@@ -3897,14 +3963,15 @@ var file_plugins_plugins_proto_goTypes = []any{
 	(*Rule)(nil),             // 34: plugins.Rule
 	(*SearchRequest)(nil),    // 35: plugins.SearchRequest
 	(*Expression)(nil),       // 36: plugins.Expression
-	nil,                      // 37: plugins.Event.LogEntry
+	nil,                      // 37: plugins.Event.EventEntry
 	nil,                      // 38: plugins.Event.ComplianceEntry
-	nil,                      // 39: plugins.Dynamic.ParamsEntry
-	nil,                      // 40: plugins.Add.ParamsEntry
-	nil,                      // 41: plugins.Config.PatternsEntry
-	nil,                      // 42: plugins.Config.PluginsEntry
-	(*structpb.Value)(nil),   // 43: google.protobuf.Value
-	(*emptypb.Empty)(nil),    // 44: google.protobuf.Empty
+	nil,                      // 39: plugins.Event.UtmEntry
+	nil,                      // 40: plugins.Dynamic.ParamsEntry
+	nil,                      // 41: plugins.Add.ParamsEntry
+	nil,                      // 42: plugins.Config.PatternsEntry
+	nil,                      // 43: plugins.Config.PluginsEntry
+	(*structpb.Value)(nil),   // 44: google.protobuf.Value
+	(*emptypb.Empty)(nil),    // 45: google.protobuf.Empty
 }
 var file_plugins_plugins_proto_depIdxs = []int32{
 	3,  // 0: plugins.Alert.impact:type_name -> plugins.Impact
@@ -3912,71 +3979,73 @@ var file_plugins_plugins_proto_depIdxs = []int32{
 	6,  // 2: plugins.Alert.target:type_name -> plugins.Side
 	4,  // 3: plugins.Alert.events:type_name -> plugins.Event
 	4,  // 4: plugins.Alert.lastEvent:type_name -> plugins.Event
-	37, // 5: plugins.Event.log:type_name -> plugins.Event.LogEntry
+	37, // 5: plugins.Event.event:type_name -> plugins.Event.EventEntry
 	6,  // 6: plugins.Event.target:type_name -> plugins.Side
 	6,  // 7: plugins.Event.origin:type_name -> plugins.Side
 	38, // 8: plugins.Event.compliance:type_name -> plugins.Event.ComplianceEntry
-	8,  // 9: plugins.Side.geolocation:type_name -> plugins.Geolocation
-	7,  // 10: plugins.Side.disks:type_name -> plugins.DiskInfo
-	10, // 11: plugins.Transform.draft:type_name -> plugins.Draft
-	12, // 12: plugins.Transform.step:type_name -> plugins.Step
-	17, // 13: plugins.Step.kv:type_name -> plugins.Kv
-	15, // 14: plugins.Step.grok:type_name -> plugins.Grok
-	22, // 15: plugins.Step.trim:type_name -> plugins.Trim
-	18, // 16: plugins.Step.json:type_name -> plugins.Json
-	20, // 17: plugins.Step.csv:type_name -> plugins.Csv
-	24, // 18: plugins.Step.rename:type_name -> plugins.Rename
-	25, // 19: plugins.Step.cast:type_name -> plugins.Cast
-	14, // 20: plugins.Step.reformat:type_name -> plugins.Reformat
-	23, // 21: plugins.Step.delete:type_name -> plugins.Delete
-	26, // 22: plugins.Step.drop:type_name -> plugins.Drop
-	27, // 23: plugins.Step.add:type_name -> plugins.Add
-	13, // 24: plugins.Step.dynamic:type_name -> plugins.Dynamic
-	21, // 25: plugins.Step.xml:type_name -> plugins.Xml
-	39, // 26: plugins.Dynamic.params:type_name -> plugins.Dynamic.ParamsEntry
-	16, // 27: plugins.Grok.patterns:type_name -> plugins.Pattern
-	40, // 28: plugins.Add.params:type_name -> plugins.Add.ParamsEntry
-	31, // 29: plugins.Config.pipeline:type_name -> plugins.Pipeline
-	29, // 30: plugins.Config.tenants:type_name -> plugins.Tenant
-	41, // 31: plugins.Config.patterns:type_name -> plugins.Config.PatternsEntry
-	42, // 32: plugins.Config.plugins:type_name -> plugins.Config.PluginsEntry
-	32, // 33: plugins.Config.env:type_name -> plugins.Env
-	30, // 34: plugins.Tenant.assets:type_name -> plugins.Asset
-	12, // 35: plugins.Pipeline.steps:type_name -> plugins.Step
-	3,  // 36: plugins.Rule.impact:type_name -> plugins.Impact
-	35, // 37: plugins.Rule.afterEvents:type_name -> plugins.SearchRequest
-	35, // 38: plugins.Rule.correlation:type_name -> plugins.SearchRequest
-	36, // 39: plugins.SearchRequest.with:type_name -> plugins.Expression
-	35, // 40: plugins.SearchRequest.or:type_name -> plugins.SearchRequest
-	43, // 41: plugins.Expression.value:type_name -> google.protobuf.Value
-	43, // 42: plugins.Event.LogEntry.value:type_name -> google.protobuf.Value
-	5,  // 43: plugins.Event.ComplianceEntry.value:type_name -> plugins.ComplianceValues
-	43, // 44: plugins.Dynamic.ParamsEntry.value:type_name -> google.protobuf.Value
-	43, // 45: plugins.Add.ParamsEntry.value:type_name -> google.protobuf.Value
-	43, // 46: plugins.Config.PluginsEntry.value:type_name -> google.protobuf.Value
-	9,  // 47: plugins.Engine.Input:input_type -> plugins.Log
-	0,  // 48: plugins.Engine.Notify:input_type -> plugins.Message
-	11, // 49: plugins.Parsing.ParseLog:input_type -> plugins.Transform
-	4,  // 50: plugins.Analysis.Analyze:input_type -> plugins.Event
-	2,  // 51: plugins.Correlation.Correlate:input_type -> plugins.Alert
-	0,  // 52: plugins.Notification.Notify:input_type -> plugins.Message
-	9,  // 53: plugins.Integration.ProcessLog:input_type -> plugins.Log
-	4,  // 54: plugins.Output.EventOutput:input_type -> plugins.Event
-	2,  // 55: plugins.Output.AlertOutput:input_type -> plugins.Alert
-	1,  // 56: plugins.Engine.Input:output_type -> plugins.Ack
-	1,  // 57: plugins.Engine.Notify:output_type -> plugins.Ack
-	10, // 58: plugins.Parsing.ParseLog:output_type -> plugins.Draft
-	2,  // 59: plugins.Analysis.Analyze:output_type -> plugins.Alert
-	44, // 60: plugins.Correlation.Correlate:output_type -> google.protobuf.Empty
-	44, // 61: plugins.Notification.Notify:output_type -> google.protobuf.Empty
-	1,  // 62: plugins.Integration.ProcessLog:output_type -> plugins.Ack
-	44, // 63: plugins.Output.EventOutput:output_type -> google.protobuf.Empty
-	44, // 64: plugins.Output.AlertOutput:output_type -> google.protobuf.Empty
-	56, // [56:65] is the sub-list for method output_type
-	47, // [47:56] is the sub-list for method input_type
-	47, // [47:47] is the sub-list for extension type_name
-	47, // [47:47] is the sub-list for extension extendee
-	0,  // [0:47] is the sub-list for field type_name
+	39, // 9: plugins.Event.utm:type_name -> plugins.Event.UtmEntry
+	8,  // 10: plugins.Side.geolocation:type_name -> plugins.Geolocation
+	7,  // 11: plugins.Side.disks:type_name -> plugins.DiskInfo
+	10, // 12: plugins.Transform.draft:type_name -> plugins.Draft
+	12, // 13: plugins.Transform.step:type_name -> plugins.Step
+	17, // 14: plugins.Step.kv:type_name -> plugins.Kv
+	15, // 15: plugins.Step.grok:type_name -> plugins.Grok
+	22, // 16: plugins.Step.trim:type_name -> plugins.Trim
+	18, // 17: plugins.Step.json:type_name -> plugins.Json
+	20, // 18: plugins.Step.csv:type_name -> plugins.Csv
+	24, // 19: plugins.Step.rename:type_name -> plugins.Rename
+	25, // 20: plugins.Step.cast:type_name -> plugins.Cast
+	14, // 21: plugins.Step.reformat:type_name -> plugins.Reformat
+	23, // 22: plugins.Step.delete:type_name -> plugins.Delete
+	26, // 23: plugins.Step.drop:type_name -> plugins.Drop
+	27, // 24: plugins.Step.add:type_name -> plugins.Add
+	13, // 25: plugins.Step.dynamic:type_name -> plugins.Dynamic
+	21, // 26: plugins.Step.xml:type_name -> plugins.Xml
+	40, // 27: plugins.Dynamic.params:type_name -> plugins.Dynamic.ParamsEntry
+	16, // 28: plugins.Grok.patterns:type_name -> plugins.Pattern
+	41, // 29: plugins.Add.params:type_name -> plugins.Add.ParamsEntry
+	31, // 30: plugins.Config.pipeline:type_name -> plugins.Pipeline
+	29, // 31: plugins.Config.tenants:type_name -> plugins.Tenant
+	42, // 32: plugins.Config.patterns:type_name -> plugins.Config.PatternsEntry
+	43, // 33: plugins.Config.plugins:type_name -> plugins.Config.PluginsEntry
+	32, // 34: plugins.Config.env:type_name -> plugins.Env
+	30, // 35: plugins.Tenant.assets:type_name -> plugins.Asset
+	12, // 36: plugins.Pipeline.steps:type_name -> plugins.Step
+	3,  // 37: plugins.Rule.impact:type_name -> plugins.Impact
+	35, // 38: plugins.Rule.afterEvents:type_name -> plugins.SearchRequest
+	35, // 39: plugins.Rule.correlation:type_name -> plugins.SearchRequest
+	36, // 40: plugins.SearchRequest.with:type_name -> plugins.Expression
+	35, // 41: plugins.SearchRequest.or:type_name -> plugins.SearchRequest
+	44, // 42: plugins.Expression.value:type_name -> google.protobuf.Value
+	44, // 43: plugins.Event.EventEntry.value:type_name -> google.protobuf.Value
+	5,  // 44: plugins.Event.ComplianceEntry.value:type_name -> plugins.ComplianceValues
+	44, // 45: plugins.Event.UtmEntry.value:type_name -> google.protobuf.Value
+	44, // 46: plugins.Dynamic.ParamsEntry.value:type_name -> google.protobuf.Value
+	44, // 47: plugins.Add.ParamsEntry.value:type_name -> google.protobuf.Value
+	44, // 48: plugins.Config.PluginsEntry.value:type_name -> google.protobuf.Value
+	9,  // 49: plugins.Engine.Input:input_type -> plugins.Log
+	0,  // 50: plugins.Engine.Notify:input_type -> plugins.Message
+	11, // 51: plugins.Parsing.ParseLog:input_type -> plugins.Transform
+	4,  // 52: plugins.Analysis.Analyze:input_type -> plugins.Event
+	2,  // 53: plugins.Correlation.Correlate:input_type -> plugins.Alert
+	0,  // 54: plugins.Notification.Notify:input_type -> plugins.Message
+	9,  // 55: plugins.Integration.ProcessLog:input_type -> plugins.Log
+	4,  // 56: plugins.Output.EventOutput:input_type -> plugins.Event
+	2,  // 57: plugins.Output.AlertOutput:input_type -> plugins.Alert
+	1,  // 58: plugins.Engine.Input:output_type -> plugins.Ack
+	1,  // 59: plugins.Engine.Notify:output_type -> plugins.Ack
+	10, // 60: plugins.Parsing.ParseLog:output_type -> plugins.Draft
+	2,  // 61: plugins.Analysis.Analyze:output_type -> plugins.Alert
+	45, // 62: plugins.Correlation.Correlate:output_type -> google.protobuf.Empty
+	45, // 63: plugins.Notification.Notify:output_type -> google.protobuf.Empty
+	1,  // 64: plugins.Integration.ProcessLog:output_type -> plugins.Ack
+	45, // 65: plugins.Output.EventOutput:output_type -> google.protobuf.Empty
+	45, // 66: plugins.Output.AlertOutput:output_type -> google.protobuf.Empty
+	58, // [58:67] is the sub-list for method output_type
+	49, // [49:58] is the sub-list for method input_type
+	49, // [49:49] is the sub-list for extension type_name
+	49, // [49:49] is the sub-list for extension extendee
+	0,  // [0:49] is the sub-list for field type_name
 }
 
 func init() { file_plugins_plugins_proto_init() }
@@ -3990,7 +4059,7 @@ func file_plugins_plugins_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugins_plugins_proto_rawDesc), len(file_plugins_plugins_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   43,
+			NumMessages:   44,
 			NumExtensions: 0,
 			NumServices:   7,
 		},

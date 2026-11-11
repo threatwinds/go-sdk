@@ -131,7 +131,14 @@ func renderFilter(f store.Filter, textCol string) (string, []any, error) {
 			}
 			return "1", nil, nil
 		}
-		expr := "multiSearchAnyCaseInsensitive(toString(" + col + "), ?)"
+		// multiSearchAnyCaseInsensitive's needle array must be a compile-time
+		// constant — ClickHouse rejects it as a bound parameter, which is
+		// exactly what a user-chosen needle list is, failing the whole query
+		// (ALR-F20). arrayExists with a lambda has the exact same
+		// "does any needle match" semantics but takes its array as an
+		// ordinary runtime argument, so the needles can stay a bound
+		// parameter.
+		expr := "arrayExists(x -> positionCaseInsensitive(toString(" + col + "), x) > 0, ?)"
 		if f.Op == store.OpNotContainsAny {
 			expr = "NOT " + expr
 		}
@@ -237,11 +244,32 @@ func rangeColumn(field, col string, sample any) string {
 	if _, ok := sample.(time.Time); ok {
 		return "parseDateTimeBestEffortOrNull(toString(" + col + "))"
 	}
+	// A numeric path has the same problem one level further down: narrowing
+	// to the Dynamic type the FILTER'S value happens to be (Int64 vs Float64)
+	// only matches rows where this path was ALSO ingested as that exact
+	// type. A row where the same path landed as a different numeric type —
+	// e.g. one vendor sent "443" as a number and another sent it as a
+	// numeric-looking string — reads as NULL under that narrowing and the
+	// range filter silently never matches it (DSH-F22). Reparsing the text
+	// form compares like against like regardless of which Dynamic type the
+	// path actually got, the same fix as the timestamp case just above.
+	if isNumericSample(sample) {
+		return "toFloat64OrNull(toString(" + col + "))"
+	}
 	typ, ok := dynJSONType(sample)
 	if !ok {
 		return col
 	}
 	return "dynamicElement(" + col + ", '" + typ + "')"
+}
+
+func isNumericSample(v any) bool {
+	switch v.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return true
+	default:
+		return false
+	}
 }
 
 // dynJSONType names the ClickHouse Dynamic type that holds v, for the Go

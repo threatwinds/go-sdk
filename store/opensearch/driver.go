@@ -26,6 +26,11 @@ type Config struct {
 
 	TimestampField    string // defaults to @timestamp
 	RetentionPolicyID string // ISM policy; empty disables Retention
+
+	// TextFields names, per dataset, the field holding a record's raw text,
+	// which is what OpSearch reads. A dataset missing here has no text to
+	// search and OpSearch on it is an error, not an empty result.
+	TextFields map[store.Dataset]string
 }
 
 // Driver holds no connection: the os package keeps a process-wide client.
@@ -103,7 +108,9 @@ func (d *Driver) FetchN(ctx context.Context, s store.Scope, filters []store.Filt
 	if err != nil {
 		return nil, err
 	}
-	res, err := sdkos.RawSearch(ctx, idx, map[string]any{"size": n, "query": q})
+	res, err := sdkos.RawSearch(ctx, idx, map[string]any{
+		"size": n, "query": q, "sort": d.sortClause(d.cfg.TimestampField, store.Desc),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -121,13 +128,17 @@ func (d *Driver) FetchPage(ctx context.Context, s store.Scope, filters []store.F
 		"query":            q,
 		"track_total_hits": true,
 	}
-	if page.SortBy != "" {
-		order := page.Order
-		if order == "" {
-			order = store.Desc
-		}
-		body["sort"] = []map[string]any{{page.SortBy: map[string]any{"order": string(order)}}}
+	// Newest first when no sort is named, which is what the ClickHouse driver
+	// does; without it the order is whatever the index holds.
+	sortBy := page.SortBy
+	if sortBy == "" {
+		sortBy = d.cfg.TimestampField
 	}
+	order := page.Order
+	if order == "" {
+		order = store.Desc
+	}
+	body["sort"] = d.sortClause(sortBy, order)
 	res, err := sdkos.RawSearch(ctx, idx, body)
 	if err != nil {
 		return nil, 0, err
@@ -399,6 +410,16 @@ func (d *Driver) diskUsedPct(ctx context.Context) (float64, error) {
 		}
 	}
 	return max, nil
+}
+
+// sortClause marks the timestamp as a date even where an index has no mapping
+// for it, so one stray index in a pattern cannot fail the whole search.
+func (d *Driver) sortClause(field string, order store.SortOrder) []map[string]any {
+	spec := map[string]any{"order": string(order)}
+	if field == d.cfg.TimestampField {
+		spec["unmapped_type"] = "date"
+	}
+	return []map[string]any{{field: spec}}
 }
 
 // prepare is the single entry point for reads, so tenant scoping cannot be missed.

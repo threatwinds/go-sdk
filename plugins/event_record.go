@@ -32,6 +32,15 @@ func EventFromRecord(raw []byte) (*Event, error) {
 		}
 	}
 
+	// Records written before the log field became event still carry it as
+	// "log"; the stored column is only renamed when a deployment migrates.
+	if legacy, ok := fields["log"]; ok {
+		if _, has := fields["event"]; !has {
+			fields["event"] = legacy
+		}
+		delete(fields, "log")
+	}
+
 	cleaned, err := json.Marshal(fields)
 	if err != nil {
 		return nil, err
