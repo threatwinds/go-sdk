@@ -4,32 +4,38 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 )
 
 // ListFiles walks through the directory specified by the route and returns a slice of file paths
-// that match the given filter, sorted in natural numeric order by filename. The filter should be
-// a file extension (e.g., ".txt").
+// that match any of the given filters, sorted in natural numeric order by filename. Each filter
+// should be a file extension (e.g., ".txt"). Pass multiple filters to match more than one
+// extension in a single pass (e.g., ListFiles(route, ".yaml", ".yml")).
 //
 // Parameters:
 //   - route: The root directory to start the file search.
-//   - filter: The file extension to filter files by.
+//   - filters: The file extensions to filter files by.
 //
 // Returns:
-//   - A slice of strings containing the paths of the files that match the filter.
+//   - A slice of strings containing the paths of the files that match any filter.
 //
-// If an error occurs during the file walk, it logs the error and panics if the error is not
-// "no such file or directory".
-func ListFiles(route string, filter string) []string {
+// Entries that disappear while the walk is in progress are skipped, so a tree being
+// rewritten concurrently still yields every file that survived the traversal. Any other
+// error during the walk panics.
+func ListFiles(route string, filters ...string) []string {
 	var files []string
 
 	err := filepath.Walk(route, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return err
 		}
-		if filepath.Ext(path) == filter {
+		if slices.Contains(filters, filepath.Ext(path)) {
 			files = append(files, path)
 		}
 		return nil

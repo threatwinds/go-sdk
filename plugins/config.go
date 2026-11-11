@@ -6,6 +6,8 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,10 +29,14 @@ type fileState struct {
 
 var lastFileStates map[string]fileState
 var statesMutex sync.RWMutex
+var playgroundMode bool
 
-// AcquireLock tries to acquire the lock file to prevent race conditions
-// when loading or modifying configurations. It returns true if the lock
-// was acquired successfully, false otherwise.
+// AcquireLock tries to atomically create the lock file, to prevent race
+// conditions when loading or modifying configurations. It returns true if
+// the lock was acquired successfully, false otherwise. No longer used by
+// this package's own config reload (loadCfg's readers never need it, since
+// every writer of these files already writes atomically via temp file +
+// rename) — kept as a public utility in case other code still depends on it.
 func AcquireLock(processName string) (bool, error) {
 	pipelinePath, err := utils.MkdirJoin(WorkDir, "pipeline")
 
@@ -42,21 +48,14 @@ func AcquireLock(processName string) (bool, error) {
 
 	lockPath := pipelinePath.FileJoin(lockFile)
 
-	// Check if lock file exists
-	if _, err := os.Stat(lockPath); err == nil {
-		// Lock file exists, cannot acquire lock
-		return false, errors.New("lock file already exists")
-	} else if !os.IsNotExist(err) {
-		// Error checking lock file
-		return false, catcher.Error("failed to check lock file status", err, map[string]any{
-			"lockPath": lockPath,
-			"process":  processName,
-		})
-	}
-
-	// Create lock file
-	file, err := os.Create(lockPath)
+	// O_EXCL makes the create-if-absent check atomic — unlike a separate
+	// Stat-then-Create, two callers can't both observe "no lock" and both
+	// proceed to create it.
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
+		if os.IsExist(err) {
+			return false, errors.New("lock file already exists")
+		}
 		return false, catcher.Error("failed to create lock file", err, map[string]any{
 			"lockPath": lockPath,
 			"process":  processName,
@@ -138,7 +137,7 @@ func startLockMonitor(processName string) {
 }
 
 // loadCfg loads configuration files from the "pipeline" directory within the working directory.
-// It reads all YAML files, decodes them into Config objects, and merges their contents into the receiver Config object.
+// It reads all .yaml/.yml files, decodes them into Config objects, and merges their contents into the receiver Config object.
 // The function updates the Pipeline, DisabledRules, Tenants, Patterns, and Plugins fields of the receiver Config object.
 // If an error occurs while reading or unmarshalling a file, the function logs the error and continues with the next file.
 func (c *Config) loadCfg(processName string) {
@@ -152,14 +151,14 @@ func (c *Config) loadCfg(processName string) {
 	}
 
 	if _, err := os.Stat(pipelineFolder.String()); os.IsNotExist(err) {
-		_ = catcher.Error("could not load the pipeline configuration", errors.New("pipeline folder does not exist"), map[string]any{
+		_ = catcher.Error("pipeline folder does not exist", nil, map[string]any{
 			"dir":     pipelineFolder,
 			"process": processName,
 		})
 		return
 	}
 
-	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml")
+	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml", ".yml")
 	for _, cFile := range cFiles {
 		var nCfg = new(Config)
 		b, err := utils.ReadPbYaml(cFile)
@@ -171,6 +170,8 @@ func (c *Config) loadCfg(processName string) {
 			continue
 		}
 
+		b = splitDisabledRules(b)
+
 		err = protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, nCfg)
 		if err != nil {
 			_ = catcher.Error("failed to read YAML file", err, map[string]any{
@@ -180,9 +181,14 @@ func (c *Config) loadCfg(processName string) {
 			continue
 		}
 
+		identity := pipelineIdentity(cFile)
+		for _, p := range nCfg.Pipeline {
+			p.Name = identity
+		}
 		c.Pipeline = append(c.Pipeline, nCfg.Pipeline...)
 
 		c.DisabledRules = append(c.DisabledRules, nCfg.DisabledRules...)
+		c.DisabledRuleNames = append(c.DisabledRuleNames, nCfg.DisabledRuleNames...)
 
 		c.Tenants = append(c.Tenants, nCfg.Tenants...)
 
@@ -195,7 +201,37 @@ func (c *Config) loadCfg(processName string) {
 		}
 	}
 
+	sortPipelinesByOrder(c.Pipeline, processName)
+
 	c.Env = getEnv()
+}
+
+func pipelineIdentity(path string) string {
+	base := filepath.Base(path)
+	return strings.TrimSuffix(base, filepath.Ext(base))
+}
+
+func sortPipelinesByOrder(pipelines []*Pipeline, processName string) {
+	seen := make(map[string]map[int32]bool)
+	for _, p := range pipelines {
+		for _, dataType := range p.DataTypes {
+			if seen[dataType] == nil {
+				seen[dataType] = make(map[int32]bool)
+			}
+			if seen[dataType][p.Order] {
+				_ = catcher.Error("duplicate pipeline order for dataType", errors.New("duplicate pipeline order"), map[string]any{
+					"dataType": dataType,
+					"order":    p.Order,
+					"process":  processName,
+				})
+			}
+			seen[dataType][p.Order] = true
+		}
+	}
+
+	sort.SliceStable(pipelines, func(i, j int) bool {
+		return pipelines[i].Order < pipelines[j].Order
+	})
 }
 
 // RandomDuration returns a random time.Duration between min and max seconds. It panics if max <= 0.
@@ -220,7 +256,7 @@ func getNewStates() (map[string]fileState, bool) {
 		return nil, true
 	}
 
-	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml")
+	cFiles := utils.ListFiles(pipelineFolder.String(), ".yaml", ".yml")
 	newStates := make(map[string]fileState)
 
 	changed := false
@@ -251,11 +287,6 @@ func getNewStates() (map[string]fileState, bool) {
 	return newStates, changed
 }
 
-// updateCfg updates the global configuration by loading new values
-// into a temporary Config object and then replacing the current
-// configuration with the new one. It ensures thread safety by using
-// a mutex lock and a lockfile mechanism to prevent race conditions
-// with other components that might modify the configuration.
 func updateCfg(processName string) {
 	newStates, changed := getNewStates()
 
@@ -267,40 +298,6 @@ func updateCfg(processName string) {
 		return
 	}
 
-	// Try to acquire the lock
-	maxRetries := 5
-
-	for i := 0; i < maxRetries; i++ {
-		acquired, err := AcquireLock(processName)
-
-		if acquired {
-			break
-		}
-
-		// Lock was not acquired, wait and retry
-		if i < maxRetries-1 {
-			_ = catcher.Error("failed to acquire lock", err, map[string]any{
-				"retry": i + 1, "maxRetries": maxRetries,
-				"process": processName,
-			})
-			time.Sleep(RandomDuration(10, 60))
-		} else {
-			_ = catcher.Error("failed to acquire lock after multiple retries", err, map[string]any{
-				"process": processName,
-			})
-			return
-		}
-	}
-
-	defer func() {
-		// Release the lock when done
-		if err := ReleaseLock(); err != nil {
-			_ = catcher.Error("failed to release lock", err, map[string]any{
-				"process": processName,
-			})
-		}
-	}()
-
 	cfgMutex.Lock()
 
 	tmpCfg := new(Config)
@@ -310,10 +307,14 @@ func updateCfg(processName string) {
 
 	cfg.Pipeline = tmpCfg.Pipeline
 	cfg.DisabledRules = tmpCfg.DisabledRules
+	cfg.DisabledRuleNames = tmpCfg.DisabledRuleNames
 	cfg.Tenants = tmpCfg.Tenants
 	cfg.Patterns = tmpCfg.Patterns
 	cfg.Plugins = tmpCfg.Plugins
 	cfg.Env = tmpCfg.Env
+
+	// Resolve the per-tenant view once per load, not once per event.
+	buildPipelineIndex(cfg.Pipeline, cfg.Tenants)
 
 	cfgMutex.Unlock()
 
@@ -330,7 +331,11 @@ func GetCfg(processName string) *Config {
 	cfgOnce.Do(func() {
 		cfg = new(Config)
 
-		// Start the lock monitor goroutine
+		playgroundMode = os.Getenv("MODE") == "playground"
+
+		// Not used by our own reload path anymore, but kept running so any
+		// external caller of AcquireLock/ReleaseLock still gets automatic
+		// stale-lock cleanup, exactly as before.
 		startLockMonitor(processName)
 
 		updateCfg(processName)
@@ -342,6 +347,10 @@ func GetCfg(processName string) *Config {
 			}
 		}()
 	})
+
+	if playgroundMode {
+		updateCfg(processName)
+	}
 
 	for cfg.Env == nil {
 		time.Sleep(1 * time.Second)

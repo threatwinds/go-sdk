@@ -41,6 +41,7 @@ message Alert {
   repeated string errors = 20;
   string parentId = 21;
   repeated string groupBy = 22;
+  Event lastEvent = 23;
 }
 
 message Impact {
@@ -58,7 +59,8 @@ message Event {
   string tenantId = 6;
   string tenantName = 7;
   string raw = 8;
-  map<string, google.protobuf.Value> log = 9;
+  // RENAMED from: map<string, google.protobuf.Value> log = 9;
+  map<string, google.protobuf.Value> event = 9;
   Side target = 10;
   Side origin = 11;
   string protocol = 12;
@@ -69,6 +71,12 @@ message Event {
   string severity = 17;
   repeated string errors = 18;
   map<string, ComplianceValues> compliance = 19;
+  // Compliance control tags (populated by the compliance orchestrator later).
+  repeated string controls = 20;
+  // UTMStack curated, typed, aggregatable event-field bag. Unlike `event`
+  // (flat_object, search-only), `utm` is indexed as a typed object so its
+  // fields can be used as chart dimensions and terms/date aggregations.
+  map<string, google.protobuf.Value> utm = 21;
 }
 
 message ComplianceValues {
@@ -343,11 +351,14 @@ message Add {
 
 message Config {
   repeated Pipeline pipeline = 1;
+  // disabledRules is the numeric-id form the v11 line uses. The filename-
+  // identity form is disabledRuleNames.
   repeated uint64 disabledRules = 2;
   repeated Tenant tenants = 3;
   map<string, string> patterns = 4;
   map<string, google.protobuf.Value> plugins = 5;
   Env env = 6;
+  repeated string disabledRuleNames = 7;
 }
 
 message Tenant {
@@ -355,6 +366,9 @@ message Tenant {
   string id = 2;
   repeated Asset assets = 3;
   repeated uint64 disabledRules = 4;
+  repeated string disabledPipelines = 5;
+  repeated string pipelineOrder = 6;
+  repeated string disabledRuleNames = 7;
 }
 
 message Asset {
@@ -369,6 +383,9 @@ message Asset {
 message Pipeline {
   repeated string dataTypes = 1;
   repeated Step steps = 2;
+  int32 order = 3;
+  string tenantId = 4;
+  string name = 5;
 }
 
 message Env {
@@ -385,28 +402,34 @@ message Variable {
 }
 
 message Rule {
-  uint64 id = 1;
-  string name = 2;
-  string description = 3;
-  string category = 4;
-  string technique = 5;
-  repeated string references = 6;
-  repeated string dataTypes = 7;
-  string adversary = 8;
-  Impact impact = 9;
-  string where = 10;
-  repeated SearchRequest afterEvents = 11;
-  repeated string deduplicateBy = 12;
-  repeated string groupBy = 13;
-  repeated SearchRequest correlation = 14;
+  string name = 1;
+  string description = 2;
+  string category = 3;
+  string technique = 4;
+  repeated string references = 5;
+  repeated string dataTypes = 6;
+  string adversary = 7;
+  Impact impact = 8;
+  string where = 9;
+  repeated SearchRequest afterEvents = 10;
+  repeated string deduplicateBy = 11;
+  repeated string groupBy = 12;
+  repeated SearchRequest correlation = 13;
+  string tenantId = 14;
+  // id is the numeric identity the v11 line gives a rule; v12 identifies a
+  // rule by its file name and leaves it unset.
+  uint64 id = 15;
 }
 
 message SearchRequest {
-  string indexPattern = 1;
+  string dataType = 1;
   repeated Expression with = 2;
   repeated SearchRequest or = 3;
   string within = 4;
   uint64 count = 5;
+  // indexPattern targets an OpenSearch index pattern directly (v11); dataType
+  // targets a store dataset (v12).
+  string indexPattern = 6;
 }
 
 message Expression {

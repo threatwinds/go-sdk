@@ -63,3 +63,28 @@ func TestListFiles_NumericOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestListFiles_MultipleFilters(t *testing.T) {
+	dir := t.TempDir()
+
+	names := []string{"2.yaml", "1.yml", "3.yaml", "notes.txt", "10.yml"}
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(""), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := ListFiles(dir, ".yaml", ".yml")
+
+	expected := []string{"1.yml", "2.yaml", "3.yaml", "10.yml"}
+	if len(got) != len(expected) {
+		t.Fatalf("got %d files, want %d: %v", len(got), len(expected), got)
+	}
+
+	for i, path := range got {
+		base := filepath.Base(path)
+		if base != expected[i] {
+			t.Errorf("index %d: got %q, want %q", i, base, expected[i])
+		}
+	}
+}

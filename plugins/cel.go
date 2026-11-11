@@ -31,6 +31,17 @@ type CELCache struct {
 	processName string
 }
 
+// CELActivation holds the parsed view of an event that CEL expressions evaluate against:
+// the values map (top-level fields as named variables) plus the raw JSON string exposed
+// to the string-keyed overloads as `_data_`. Preparing one per event — instead of per
+// expression — is what lets a rule loop evaluate N expressions against the same data
+// without re-serializing/re-parsing the event N times (see PrepareActivation).
+type CELActivation struct {
+	valuesMap map[string]interface{}
+	jsonData  string
+	keyMat    string
+}
+
 // NewCELCache creates and returns a new instance of CELCache for the specified process.
 func NewCELCache(processName string) *CELCache {
 	return &CELCache{
@@ -135,7 +146,10 @@ type cachedProgram struct {
 	env *cel.Env
 }
 
-func (c *CELCache) getCacheKey(expression string, valuesMap map[string]interface{}) string {
+// keyMaterial is the sorted "key:Type" join of a values map, used to key the compiled
+// program cache. The env declares a variable per top-level key, so the cache must be
+// keyed by which keys (and their types) are present — not by their values.
+func keyMaterial(valuesMap map[string]interface{}) string {
 	keys := make([]string, 0, len(valuesMap))
 	for k, v := range valuesMap {
 		if k == "_data_" {
@@ -144,10 +158,13 @@ func (c *CELCache) getCacheKey(expression string, valuesMap map[string]interface
 		keys = append(keys, fmt.Sprintf("%s:%T", k, v))
 	}
 	sort.Strings(keys)
+	return strings.Join(keys, ",")
+}
 
+func (c *CELCache) getCacheKey(expression, material string) string {
 	h := sha256.New()
 	h.Write([]byte(expression))
-	h.Write([]byte(strings.Join(keys, ",")))
+	h.Write([]byte(material))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -171,9 +188,25 @@ func (c *CELCache) transformExpression(expression string) string {
 
 // Eval evaluates a CEL expression against the given data and returns the boolean result if successful.
 // 'data' can be a proto.Message, a JSON string (or *string), or a map[string]any.
+//
+// It prepares a fresh activation for every call, which means the event is serialized/parsed
+// once per expression. Callers that evaluate many expressions against the same event (e.g. a
+// rule loop) should call PrepareActivation once and EvalWithActivation per expression instead.
 func (c *CELCache) Eval(expression string, data any, envOption ...cel.EnvOption) (bool, error) {
+	act, err := c.PrepareActivation(data)
+	if err != nil {
+		return false, err
+	}
+	return c.EvalWithActivation(expression, act, envOption...)
+}
+
+// PrepareActivation converts 'data' (a proto.Message, JSON string/*string, map, or other
+// JSON-encodable value) into a CELActivation: the values map exposed as named CEL variables
+// plus the raw JSON string exposed as `_data_` to the string-keyed overloads. It is the
+// expensive half of evaluation (proto -> json -> map); do it once per event, not per rule.
+func (c *CELCache) PrepareActivation(data any) (*CELActivation, error) {
 	if data == nil {
-		return false, catcher.Error("failed to evaluate CEL expression", errors.New("required parameter 'data' is nil"), map[string]any{
+		return nil, catcher.Error("failed to evaluate CEL expression", errors.New("required parameter 'data' is nil"), map[string]any{
 			"process": c.processName,
 		})
 	}
@@ -185,27 +218,27 @@ func (c *CELCache) Eval(expression string, data any, envOption ...cel.EnvOption)
 	case proto.Message:
 		jsonPtr, err := utils.ProtoMessageToString(v)
 		if err != nil {
-			return false, catcher.Error("failed to convert proto to string for CEL evaluation", err, map[string]any{
+			return nil, catcher.Error("failed to convert proto to string for CEL evaluation", err, map[string]any{
 				"process": c.processName,
 			})
 		}
 		jsonData = *jsonPtr
 		err = json.Unmarshal([]byte(jsonData), &valuesMap)
 		if err != nil {
-			return false, catcher.Error("failed to convert proto to map for CEL evaluation", err, map[string]any{
+			return nil, catcher.Error("failed to convert proto to map for CEL evaluation", err, map[string]any{
 				"process": c.processName,
 			})
 		}
 	case *string:
 		if v == nil {
-			return false, catcher.Error("failed to evaluate CEL expression", errors.New("data pointer is nil"), map[string]any{
+			return nil, catcher.Error("failed to evaluate CEL expression", errors.New("data pointer is nil"), map[string]any{
 				"process": c.processName,
 			})
 		}
 		jsonData = *v
 		err := json.Unmarshal([]byte(jsonData), &valuesMap)
 		if err != nil {
-			return false, catcher.Error("failed to unmarshal JSON data", err, map[string]any{
+			return nil, catcher.Error("failed to unmarshal JSON data", err, map[string]any{
 				"process": c.processName,
 			})
 		}
@@ -213,7 +246,7 @@ func (c *CELCache) Eval(expression string, data any, envOption ...cel.EnvOption)
 		jsonData = v
 		err := json.Unmarshal([]byte(jsonData), &valuesMap)
 		if err != nil {
-			return false, catcher.Error("failed to unmarshal JSON data", err, map[string]any{
+			return nil, catcher.Error("failed to unmarshal JSON data", err, map[string]any{
 				"process": c.processName,
 			})
 		}
@@ -225,14 +258,14 @@ func (c *CELCache) Eval(expression string, data any, envOption ...cel.EnvOption)
 		// Attempt to handle other types by converting to JSON first
 		b, err := json.Marshal(v)
 		if err != nil {
-			return false, catcher.Error("failed to marshal data to JSON", err, map[string]any{
+			return nil, catcher.Error("failed to marshal data to JSON", err, map[string]any{
 				"process": c.processName,
 			})
 		}
 		jsonData = string(b)
 		err = json.Unmarshal(b, &valuesMap)
 		if err != nil {
-			return false, catcher.Error("failed to unmarshal intermediate JSON data", err, map[string]any{
+			return nil, catcher.Error("failed to unmarshal intermediate JSON data", err, map[string]any{
 				"process": c.processName,
 			})
 		}
@@ -242,11 +275,28 @@ func (c *CELCache) Eval(expression string, data any, envOption ...cel.EnvOption)
 		valuesMap = make(map[string]interface{})
 	}
 
+	// The compiled-program cache is keyed by which top-level keys (and their types) exist,
+	// not by their values. Compute it before injecting the internal _data_ key.
+	keyMat := keyMaterial(valuesMap)
+
 	// Internal data for overloads
 	valuesMap["_data_"] = jsonData
 
-	cacheKey := c.getCacheKey(expression, valuesMap)
-	return c.Get(cacheKey, expression, valuesMap, envOption...)
+	return &CELActivation{valuesMap: valuesMap, jsonData: jsonData, keyMat: keyMat}, nil
+}
+
+// EvalWithActivation evaluates 'expression' against a pre-prepared activation, reusing the
+// parsed values map (and the cached compiled program) instead of re-deriving it. This is the
+// fast path for rule loops: prepare once per event, call this once per rule.
+func (c *CELCache) EvalWithActivation(expression string, act *CELActivation, envOption ...cel.EnvOption) (bool, error) {
+	if act == nil {
+		return false, catcher.Error("failed to evaluate CEL expression", errors.New("activation is nil"), map[string]any{
+			"process": c.processName,
+		})
+	}
+
+	cacheKey := c.getCacheKey(expression, act.keyMat)
+	return c.Get(cacheKey, expression, act.valuesMap, envOption...)
 }
 
 // Evaluate is a wrapper around Eval for backward compatibility.
