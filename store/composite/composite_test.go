@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	dsLogs   store.Dataset = "logs"
-	dsOther  store.Dataset = "statistics"
-	legacyTn               = "default"
+	dsLogs      store.Dataset = "logs"
+	dsOther     store.Dataset = "statistics"
+	secondaryTn               = "default"
 )
 
 var cutover = time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
@@ -275,14 +275,14 @@ func (f *fake) Drop(context.Context, store.Scope) (int64, error) {
 }
 
 // build returns a composite over a primary with 5 records after the cutover and
-// a legacy with 7 before it.
+// a secondary with 7 before it.
 func build(t *testing.T, mutate func(*Config)) (*Store, *fake, *fake) {
 	t.Helper()
 	prim := &fake{rows: run("p", cutover.Add(5*time.Hour), 5, "new")}
-	leg := &fake{rows: run("l", cutover.Add(-time.Hour), 7, "old")}
+	sec := &fake{rows: run("l", cutover.Add(-time.Hour), 7, "old")}
 	cfg := Config{
-		Primary: prim, Legacy: leg, Cutover: cutover,
-		LegacyTenant: legacyTn, LegacyDatasets: []store.Dataset{dsLogs},
+		Primary: prim, Secondary: sec, Cutover: cutover,
+		SecondaryTenant: secondaryTn, SecondaryDatasets: []store.Dataset{dsLogs},
 		Now: func() time.Time { return cutover.Add(6 * time.Hour) },
 	}
 	if mutate != nil {
@@ -292,10 +292,10 @@ func build(t *testing.T, mutate func(*Config)) (*Store, *fake, *fake) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c, prim, leg
+	return c, prim, sec
 }
 
-func scope() store.Scope { return store.Scope{Tenant: legacyTn, Dataset: dsLogs} }
+func scope() store.Scope { return store.Scope{Tenant: secondaryTn, Dataset: dsLogs} }
 
 func ids(docs []json.RawMessage) []string {
 	out := make([]string, len(docs))
@@ -313,13 +313,13 @@ func eq(t *testing.T, got, want []string) {
 }
 
 func TestNewValidatesItsConfig(t *testing.T) {
-	ok := Config{Primary: &fake{}, Legacy: &fake{}, Cutover: cutover, LegacyTenant: "t"}
+	ok := Config{Primary: &fake{}, Secondary: &fake{}, Cutover: cutover, SecondaryTenant: "t"}
 	for name, mut := range map[string]func(*Config){
 		"primary":     func(c *Config) { c.Primary = nil },
-		"legacy":      func(c *Config) { c.Legacy = nil },
+		"secondary":   func(c *Config) { c.Secondary = nil },
 		"cutover":     func(c *Config) { c.Cutover = time.Time{} },
-		"tenant":      func(c *Config) { c.LegacyTenant = "" },
-		"all tenants": func(c *Config) { c.LegacyTenant = store.AllTenants },
+		"tenant":      func(c *Config) { c.SecondaryTenant = "" },
+		"all tenants": func(c *Config) { c.SecondaryTenant = store.AllTenants },
 	} {
 		cfg := ok
 		mut(&cfg)
@@ -347,72 +347,72 @@ func TestRoutingFollowsTheTimeRange(t *testing.T) {
 	}{
 		{"open range reaches both", time.Time{}, time.Time{}, true, true},
 		{"after the cutover is the primary alone", cutover.Add(time.Hour), time.Time{}, true, false},
-		{"before the cutover is the legacy alone", time.Time{}, cutover.Add(-time.Hour), false, true},
+		{"before the cutover is the secondary alone", time.Time{}, cutover.Add(-time.Hour), false, true},
 		{"spanning reaches both", cutover.Add(-time.Hour), cutover.Add(time.Hour), true, true},
 		{"starting at the cutover is the primary alone", cutover, cutover.Add(time.Hour), true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, prim, leg := build(t, nil)
+			c, prim, sec := build(t, nil)
 			s := scope()
 			s.From, s.To = tc.from, tc.to
 			if _, err := c.Count(context.Background(), s, nil); err != nil {
 				t.Fatal(err)
 			}
-			if prim.called() != tc.wantP || leg.called() != tc.wantL {
-				t.Errorf("primary=%v legacy=%v, want %v %v", prim.called(), leg.called(), tc.wantP, tc.wantL)
+			if prim.called() != tc.wantP || sec.called() != tc.wantL {
+				t.Errorf("primary=%v secondary=%v, want %v %v", prim.called(), sec.called(), tc.wantP, tc.wantL)
 			}
 		})
 	}
 }
 
-func TestTheLegacyIsOnlyAskedAboutRecordsBeforeTheCutover(t *testing.T) {
-	c, _, leg := build(t, nil)
+func TestTheSecondaryIsOnlyAskedAboutRecordsBeforeTheCutover(t *testing.T) {
+	c, _, sec := build(t, nil)
 	if _, err := c.Count(context.Background(), scope(), nil); err != nil {
 		t.Fatal(err)
 	}
-	got := leg.scopes[0]
+	got := sec.scopes[0]
 	if !got.To.Equal(cutover) {
-		t.Errorf("legacy To = %v, want the cutover", got.To)
+		t.Errorf("secondary To = %v, want the cutover", got.To)
 	}
 	if got.Tenant != store.AllTenants {
-		t.Errorf("legacy tenant = %q: it has no tenant field, so it must not be scoped by one", got.Tenant)
+		t.Errorf("secondary tenant = %q: it has no tenant field, so it must not be scoped by one", got.Tenant)
 	}
 }
 
-func TestAnotherTenantNeverReadsTheLegacy(t *testing.T) {
-	c, prim, leg := build(t, nil)
+func TestAnotherTenantNeverReadsTheSecondary(t *testing.T) {
+	c, prim, sec := build(t, nil)
 	s := store.Scope{Tenant: "someone-else", Dataset: dsLogs}
 
 	n, err := c.Count(context.Background(), s, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if leg.called() {
-		t.Fatal("the legacy holds one tenant's data and must not be read for another")
+	if sec.called() {
+		t.Fatal("the secondary holds one tenant's data and must not be read for another")
 	}
 	if n != 5 || !prim.called() {
 		t.Errorf("count = %d, want the primary's 5", n)
 	}
 }
 
-func TestADatasetTheLegacyDoesNotServeIsAnsweredFromThePrimary(t *testing.T) {
-	c, _, leg := build(t, nil)
-	if _, err := c.Count(context.Background(), store.Scope{Tenant: legacyTn, Dataset: dsOther}, nil); err != nil {
+func TestADatasetTheSecondaryDoesNotServeIsAnsweredFromThePrimary(t *testing.T) {
+	c, _, sec := build(t, nil)
+	if _, err := c.Count(context.Background(), store.Scope{Tenant: secondaryTn, Dataset: dsOther}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if leg.called() {
-		t.Fatal("an unmapped dataset must not reach the legacy")
+	if sec.called() {
+		t.Fatal("an unmapped dataset must not reach the secondary")
 	}
 }
 
-func TestAllTenantsMayReadTheLegacy(t *testing.T) {
-	c, _, leg := build(t, nil)
+func TestAllTenantsMayReadTheSecondary(t *testing.T) {
+	c, _, sec := build(t, nil)
 	if _, err := c.Count(context.Background(), store.Scope{Tenant: store.AllTenants, Dataset: dsLogs}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if !leg.called() {
-		t.Fatal("an all-tenants read covers the legacy's tenant")
+	if !sec.called() {
+		t.Fatal("an all-tenants read covers the secondary's tenant")
 	}
 }
 
@@ -425,14 +425,14 @@ func TestCountSumsBothStores(t *testing.T) {
 }
 
 func TestCountInWindowIsThePrimarysOwnWhenTheWindowIsAllNew(t *testing.T) {
-	c, prim, leg := build(t, nil)
+	c, prim, sec := build(t, nil)
 	s := scope()
 	s.To = cutover.Add(6 * time.Hour)
 	if _, err := c.CountInWindow(context.Background(), s, nil, 2*time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	if leg.called() {
-		t.Error("a window after the cutover must not reach the legacy")
+	if sec.called() {
+		t.Error("a window after the cutover must not reach the secondary")
 	}
 	if len(prim.writes) == 0 || prim.writes[0] != "CountInWindow" {
 		t.Error("the primary should have answered in its own terms")
@@ -449,7 +449,7 @@ func TestCountInWindowSpanningTheCutoverSumsBoth(t *testing.T) {
 	}
 }
 
-func TestPageNewestFirstReadsThePrimaryThenTheLegacy(t *testing.T) {
+func TestPageNewestFirstReadsThePrimaryThenTheSecondary(t *testing.T) {
 	cases := []struct {
 		name          string
 		offset, limit int
@@ -457,7 +457,7 @@ func TestPageNewestFirstReadsThePrimaryThenTheLegacy(t *testing.T) {
 	}{
 		{"inside the primary", 0, 3, []string{"p0", "p1", "p2"}},
 		{"across the boundary", 3, 4, []string{"p3", "p4", "l0", "l1"}},
-		{"inside the legacy", 6, 3, []string{"l1", "l2", "l3"}},
+		{"inside the secondary", 6, 3, []string{"l1", "l2", "l3"}},
 		{"to the end", 9, 10, []string{"l4", "l5", "l6"}},
 		{"past the end", 12, 5, []string{}},
 		{"exactly the primary", 0, 5, []string{"p0", "p1", "p2", "p3", "p4"}},
@@ -477,7 +477,7 @@ func TestPageNewestFirstReadsThePrimaryThenTheLegacy(t *testing.T) {
 	}
 }
 
-func TestPageOldestFirstReadsTheLegacyThenThePrimary(t *testing.T) {
+func TestPageOldestFirstReadsTheSecondaryThenThePrimary(t *testing.T) {
 	c, _, _ := build(t, nil)
 	rows, total, err := c.FetchPage(context.Background(), scope(), nil, store.Page{Offset: 5, Limit: 4, Order: store.Asc})
 	if err != nil {
@@ -491,7 +491,7 @@ func TestPageOldestFirstReadsTheLegacyThenThePrimary(t *testing.T) {
 
 func TestPageSortedByAnotherFieldMergesBothStores(t *testing.T) {
 	c, _, _ := build(t, nil)
-	// n runs 0..4 in the primary and 0..6 in the legacy.
+	// n runs 0..4 in the primary and 0..6 in the secondary.
 	rows, total, err := c.FetchPage(context.Background(), scope(), nil, store.Page{Offset: 0, Limit: 5, SortBy: "n", Order: store.Desc})
 	if err != nil {
 		t.Fatal(err)
@@ -520,31 +520,31 @@ func TestAPageTooDeepToMergeIsRefusedRatherThanReadInFull(t *testing.T) {
 }
 
 func TestFetchNTakesTheNewestAcrossBoth(t *testing.T) {
-	c, _, leg := build(t, nil)
+	c, _, sec := build(t, nil)
 
 	rows, err := c.FetchN(context.Background(), scope(), nil, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	eq(t, ids(rows), []string{"p0", "p1", "p2"})
-	if leg.called() {
-		t.Error("the legacy was read although the primary filled the request")
+	if sec.called() {
+		t.Error("the secondary was read although the primary filled the request")
 	}
 
 	rows, _ = c.FetchN(context.Background(), scope(), nil, 7)
 	eq(t, ids(rows), []string{"p0", "p1", "p2", "p3", "p4", "l0", "l1"})
 }
 
-func TestFetchByIDFallsBackToTheLegacyOnlyWhenTheRecordIsNotInThePrimary(t *testing.T) {
-	c, prim, leg := build(t, nil)
-	leg.byID = map[string]json.RawMessage{"old": json.RawMessage(`{"id":"old"}`)}
+func TestFetchByIDFallsBackToTheSecondaryOnlyWhenTheRecordIsNotInThePrimary(t *testing.T) {
+	c, prim, sec := build(t, nil)
+	sec.byID = map[string]json.RawMessage{"old": json.RawMessage(`{"id":"old"}`)}
 	prim.byID = map[string]json.RawMessage{"new": json.RawMessage(`{"id":"new"}`)}
 
 	if d, err := c.FetchByID(context.Background(), scope(), "new"); err != nil || gjson.GetBytes(d, "id").String() != "new" {
 		t.Fatalf("new: %s %v", d, err)
 	}
-	if leg.called() {
-		t.Error("a hit in the primary must not touch the legacy")
+	if sec.called() {
+		t.Error("a hit in the primary must not touch the secondary")
 	}
 	if d, err := c.FetchByID(context.Background(), scope(), "old"); err != nil || gjson.GetBytes(d, "id").String() != "old" {
 		t.Fatalf("old: %s %v", d, err)
@@ -553,17 +553,17 @@ func TestFetchByIDFallsBackToTheLegacyOnlyWhenTheRecordIsNotInThePrimary(t *test
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 	other := store.Scope{Tenant: "x", Dataset: dsLogs}
-	before := len(leg.scopes)
+	before := len(sec.scopes)
 	_, _ = c.FetchByID(context.Background(), other, "old")
-	if len(leg.scopes) != before {
-		t.Error("another tenant must not fall back to the legacy")
+	if len(sec.scopes) != before {
+		t.Error("another tenant must not fall back to the secondary")
 	}
 }
 
 func TestTopValuesSumsTheSameKeyAcrossStores(t *testing.T) {
-	c, prim, leg := build(t, nil)
+	c, prim, sec := build(t, nil)
 	prim.rows = append(prim.rows, run("x", cutover.Add(time.Hour), 4, "shared")...)
-	leg.rows = append(leg.rows, run("y", cutover.Add(-time.Hour), 3, "shared")...)
+	sec.rows = append(sec.rows, run("y", cutover.Add(-time.Hour), 3, "shared")...)
 
 	got, err := c.TopValues(context.Background(), scope(), "host", nil, 2)
 	if err != nil {
@@ -576,10 +576,10 @@ func TestTopValuesSumsTheSameKeyAcrossStores(t *testing.T) {
 }
 
 func TestTimelineAddsTheBucketThatHoldsTheCutover(t *testing.T) {
-	c, prim, leg := build(t, nil)
+	c, prim, sec := build(t, nil)
 	// Both stores have records on the cutover's own day.
 	prim.rows = []json.RawMessage{row("a", cutover.Add(time.Hour), "h", 1), row("b", cutover.Add(26*time.Hour), "h", 1)}
-	leg.rows = []json.RawMessage{row("c", cutover.Add(-time.Hour), "h", 1), row("d", cutover.Add(-30*time.Hour), "h", 1)}
+	sec.rows = []json.RawMessage{row("c", cutover.Add(-time.Hour), "h", 1), row("d", cutover.Add(-30*time.Hour), "h", 1)}
 
 	pts, err := c.Timeline(context.Background(), scope(), nil, store.Interval{Calendar: store.CalendarDay})
 	if err != nil {
@@ -596,9 +596,9 @@ func TestTimelineAddsTheBucketThatHoldsTheCutover(t *testing.T) {
 }
 
 func TestGroupByMergesGroupsAndKeepsTheRequestedLimit(t *testing.T) {
-	c, prim, leg := build(t, nil)
+	c, prim, sec := build(t, nil)
 	prim.rows = append(prim.rows, run("x", cutover.Add(time.Hour), 2, "shared")...)
-	leg.rows = append(leg.rows, run("y", cutover.Add(-time.Hour), 6, "shared")...)
+	sec.rows = append(sec.rows, run("y", cutover.Add(-time.Hour), 6, "shared")...)
 
 	got, err := c.GroupBy(context.Background(), scope(), []string{"host"}, nil, store.GroupOpts{Limit: 2})
 	if err != nil {
@@ -610,7 +610,7 @@ func TestGroupByMergesGroupsAndKeepsTheRequestedLimit(t *testing.T) {
 }
 
 func TestEveryWriteGoesToThePrimary(t *testing.T) {
-	c, prim, leg := build(t, nil)
+	c, prim, sec := build(t, nil)
 	ctx := context.Background()
 	s := scope()
 
@@ -624,14 +624,14 @@ func TestEveryWriteGoesToThePrimary(t *testing.T) {
 	if len(prim.writes) != 6 {
 		t.Errorf("primary saw %v", prim.writes)
 	}
-	if len(leg.writes) != 0 {
-		t.Errorf("the legacy is read-only but saw %v", leg.writes)
+	if len(sec.writes) != 0 {
+		t.Errorf("the secondary is read-only but saw %v", sec.writes)
 	}
 }
 
-func TestALegacyFailureFailsTheReadByDefault(t *testing.T) {
-	c, _, leg := build(t, nil)
-	leg.err = errors.New("opensearch is down")
+func TestASecondaryFailureFailsTheReadByDefault(t *testing.T) {
+	c, _, sec := build(t, nil)
+	sec.err = errors.New("opensearch is down")
 
 	if _, err := c.Count(context.Background(), scope(), nil); err == nil {
 		t.Fatal("a half answer must not look like a whole one")
@@ -641,20 +641,20 @@ func TestALegacyFailureFailsTheReadByDefault(t *testing.T) {
 	}
 }
 
-func TestALegacyFailureDegradesToThePrimaryWhenTolerated(t *testing.T) {
+func TestASecondaryFailureDegradesToThePrimaryWhenTolerated(t *testing.T) {
 	var gotOp string
-	c, _, leg := build(t, func(cfg *Config) {
-		cfg.TolerateLegacy = true
-		cfg.OnLegacyError = func(op string, _ error) { gotOp = op }
+	c, _, sec := build(t, func(cfg *Config) {
+		cfg.TolerateSecondary = true
+		cfg.OnSecondaryError = func(op string, _ error) { gotOp = op }
 	})
-	leg.err = errors.New("opensearch is down")
+	sec.err = errors.New("opensearch is down")
 
 	n, err := c.Count(context.Background(), scope(), nil)
 	if err != nil || n != 5 {
 		t.Fatalf("count = %d, %v; want the primary's 5", n, err)
 	}
 	if gotOp != "Count" {
-		t.Errorf("OnLegacyError got %q", gotOp)
+		t.Errorf("OnSecondaryError got %q", gotOp)
 	}
 
 	rows, total, err := c.FetchPage(context.Background(), scope(), nil, store.Page{Offset: 3, Limit: 4})
@@ -668,21 +668,21 @@ func TestALegacyFailureDegradesToThePrimaryWhenTolerated(t *testing.T) {
 }
 
 func TestAPrimaryFailureIsNeverHidden(t *testing.T) {
-	c, prim, _ := build(t, func(cfg *Config) { cfg.TolerateLegacy = true })
+	c, prim, _ := build(t, func(cfg *Config) { cfg.TolerateSecondary = true })
 	prim.err = errors.New("clickhouse is down")
 	if _, err := c.Count(context.Background(), scope(), nil); err == nil {
 		t.Fatal("the primary's failure must surface")
 	}
 }
 
-func TestLegacyQueriesUseTheLegacyFieldNamesAndComeBackInTheCurrentShape(t *testing.T) {
-	toLegacy, fromLegacy := PrefixMap("log", "event")
-	c, prim, leg := build(t, func(cfg *Config) {
-		cfg.LegacyField = toLegacy
-		cfg.LegacyFieldBack = fromLegacy
-		cfg.LegacyDocument = RenameDocKey("event", "log")
+func TestSecondaryQueriesUseTheSecondaryFieldNamesAndComeBackInTheCurrentShape(t *testing.T) {
+	toSecondary, fromSecondary := PrefixMap("log", "event")
+	c, prim, sec := build(t, func(cfg *Config) {
+		cfg.SecondaryField = toSecondary
+		cfg.SecondaryFieldBack = fromSecondary
+		cfg.SecondaryDocument = RenameDocKey("event", "log")
 	})
-	leg.rows = []json.RawMessage{json.RawMessage(`{"@timestamp":"2026-10-31T23:00:00Z","id":"l0","event":{"user":"root"}}`)}
+	sec.rows = []json.RawMessage{json.RawMessage(`{"@timestamp":"2026-10-31T23:00:00Z","id":"l0","event":{"user":"root"}}`)}
 	prim.rows = nil
 
 	filters := []store.Filter{{Field: "log.user", Op: store.OpEq, Value: "root"}, {Op: store.OpSearch, Value: "x"}}
@@ -690,19 +690,19 @@ func TestLegacyQueriesUseTheLegacyFieldNamesAndComeBackInTheCurrentShape(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := leg.filter[len(leg.filter)-1]; got[0].Field != "event.user" || got[1].Field != "" {
-		t.Errorf("legacy filters = %+v", got)
+	if got := sec.filter[len(sec.filter)-1]; got[0].Field != "event.user" || got[1].Field != "" {
+		t.Errorf("secondary filters = %+v", got)
 	}
 	if len(rows) != 1 || gjson.GetBytes(rows[0], "log.user").String() != "root" {
-		t.Errorf("the legacy record was not put in the current shape: %s", rows)
+		t.Errorf("the secondary record was not put in the primary's shape: %s", rows)
 	}
 }
 
 func TestDescribeFieldsUnitesBothAndFlagsADisagreement(t *testing.T) {
-	toLegacy, fromLegacy := PrefixMap("log", "event")
-	c, prim, leg := build(t, func(cfg *Config) { cfg.LegacyField = toLegacy; cfg.LegacyFieldBack = fromLegacy })
+	toSecondary, fromSecondary := PrefixMap("log", "event")
+	c, prim, sec := build(t, func(cfg *Config) { cfg.SecondaryField = toSecondary; cfg.SecondaryFieldBack = fromSecondary })
 	prim.fields = []store.Field{{Name: "log.user", Type: "string", Filterable: true, Searchable: true}, {Name: "new", Type: "string", Filterable: true}}
-	leg.fields = []store.Field{{Name: "event.user", Type: "keyword", Filterable: true}, {Name: "old", Type: "long", Filterable: true}}
+	sec.fields = []store.Field{{Name: "event.user", Type: "keyword", Filterable: true}, {Name: "old", Type: "long", Filterable: true}}
 
 	got, err := c.DescribeFields(context.Background(), scope())
 	if err != nil {
@@ -724,9 +724,9 @@ func TestDescribeFieldsUnitesBothAndFlagsADisagreement(t *testing.T) {
 	}
 }
 
-func TestHealthIsDegradedNotDownWhenOnlyTheLegacyIsUnwell(t *testing.T) {
-	c, _, leg := build(t, nil)
-	leg.health = store.Health{Status: store.HealthUnavailable, Message: "red"}
+func TestHealthIsDegradedNotDownWhenOnlyTheSecondaryIsUnwell(t *testing.T) {
+	c, _, sec := build(t, nil)
+	sec.health = store.Health{Status: store.HealthUnavailable, Message: "red"}
 
 	h, err := c.Health(context.Background())
 	if err != nil {
@@ -736,7 +736,7 @@ func TestHealthIsDegradedNotDownWhenOnlyTheLegacyIsUnwell(t *testing.T) {
 		t.Errorf("status = %q, want degraded", h.Status)
 	}
 
-	leg.health = store.Health{}
+	sec.health = store.Health{}
 	if h, _ := c.Health(context.Background()); h.Status != store.HealthOK {
 		t.Errorf("status = %q, want ok", h.Status)
 	}
@@ -765,31 +765,31 @@ func TestPrefixMapAndRenameDocKey(t *testing.T) {
 	}
 }
 
-func TestAfterTheLegacyExpiresItIsNeverReached(t *testing.T) {
+func TestAfterTheSecondaryExpiresItIsNeverReached(t *testing.T) {
 	now := cutover.Add(6 * time.Hour)
-	c, _, leg := build(t, func(cfg *Config) {
-		cfg.LegacyExpires = cutover.Add(12 * time.Hour)
+	c, _, sec := build(t, func(cfg *Config) {
+		cfg.SecondaryExpires = cutover.Add(12 * time.Hour)
 		cfg.Now = func() time.Time { return now }
 	})
 	ctx := context.Background()
 
-	if !c.LegacyActive() {
-		t.Fatal("the legacy must be active before it expires")
+	if !c.SecondaryActive() {
+		t.Fatal("the secondary must be active before it expires")
 	}
 	if n, _ := c.Count(ctx, scope(), nil); n != 12 {
-		t.Fatalf("before expiry the legacy still counts: got %d, want 12", n)
+		t.Fatalf("before expiry the secondary still counts: got %d, want 12", n)
 	}
 
 	now = cutover.Add(13 * time.Hour)
-	leg.mu.Lock()
-	leg.scopes = nil
-	leg.mu.Unlock()
-	// A legacy that has been switched off must not be able to hurt anything.
-	leg.err = errors.New("opensearch is gone")
-	leg.byID = map[string]json.RawMessage{"old": json.RawMessage(`{"id":"old"}`)}
+	sec.mu.Lock()
+	sec.scopes = nil
+	sec.mu.Unlock()
+	// A secondary that has been switched off must not be able to hurt anything.
+	sec.err = errors.New("opensearch is gone")
+	sec.byID = map[string]json.RawMessage{"old": json.RawMessage(`{"id":"old"}`)}
 
-	if c.LegacyActive() {
-		t.Fatal("the legacy must be inactive once it has expired")
+	if c.SecondaryActive() {
+		t.Fatal("the secondary must be inactive once it has expired")
 	}
 	if n, err := c.Count(ctx, scope(), nil); err != nil || n != 5 {
 		t.Fatalf("count = %d, %v; want the primary's 5", n, err)
@@ -813,31 +813,31 @@ func TestAfterTheLegacyExpiresItIsNeverReached(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := c.FetchByID(ctx, scope(), "old"); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("a record only the legacy had must be gone, got %v", err)
+		t.Fatalf("a record only the secondary had must be gone, got %v", err)
 	}
 	if _, err := c.Usage(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if h, err := c.Health(ctx); err != nil || h.Status != store.HealthOK {
-		t.Fatalf("health = %+v, %v; a switched-off legacy must not degrade it", h, err)
+		t.Fatalf("health = %+v, %v; a switched-off secondary must not degrade it", h, err)
 	}
-	if leg.called() {
-		t.Fatalf("the legacy was reached after it expired: %v", leg.scopes)
+	if sec.called() {
+		t.Fatalf("the secondary was reached after it expired: %v", sec.scopes)
 	}
 }
 
-func TestLegacyExpiresMustBeAfterTheCutover(t *testing.T) {
-	cfg := Config{Primary: &fake{}, Legacy: &fake{}, Cutover: cutover, LegacyTenant: "t"}
+func TestSecondaryExpiresMustBeAfterTheCutover(t *testing.T) {
+	cfg := Config{Primary: &fake{}, Secondary: &fake{}, Cutover: cutover, SecondaryTenant: "t"}
 
-	cfg.LegacyExpires = cutover
+	cfg.SecondaryExpires = cutover
 	if _, err := New(cfg); err == nil {
-		t.Error("an expiry at the cutover leaves the legacy no life at all")
+		t.Error("an expiry at the cutover leaves the secondary no life at all")
 	}
-	cfg.LegacyExpires = cutover.Add(-time.Hour)
+	cfg.SecondaryExpires = cutover.Add(-time.Hour)
 	if _, err := New(cfg); err == nil {
 		t.Error("an expiry before the cutover is a mistake")
 	}
-	cfg.LegacyExpires = cutover.Add(30 * 24 * time.Hour)
+	cfg.SecondaryExpires = cutover.Add(30 * 24 * time.Hour)
 	if _, err := New(cfg); err != nil {
 		t.Errorf("a valid expiry was refused: %v", err)
 	}

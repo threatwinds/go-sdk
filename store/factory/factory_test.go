@@ -16,7 +16,7 @@ primary:
     database: utmstack
     tenantColumn: tenantId
     tables: {logs: logs, alerts: alerts}
-legacy:
+secondary:
   engine: opensearch
   opensearch:
     urls: ["https://127.0.0.1:9200"]
@@ -31,7 +31,7 @@ legacy:
   expires: "2026-12-01T00:00:00Z"
   tenant: default-tenant
   datasets: [logs, alerts]
-  fieldPrefix: {current: log, legacy: event}
+  fieldPrefix: {primary: log, secondary: event}
 `
 
 const single = `
@@ -63,14 +63,14 @@ func TestAPrimaryAloneBuildsThePrimaryItself(t *testing.T) {
 		t.Fatal("no store")
 	}
 	if b.Composite != nil {
-		t.Error("without a legacy there is nothing to composite")
+		t.Error("without a secondary there is nothing to composite")
 	}
 	if b.ResolveIndexPattern != nil {
 		t.Error("a ClickHouse primary has no index patterns to resolve")
 	}
 }
 
-func TestADualConfigurationBuildsACompositeThatKnowsWhenTheLegacyEnds(t *testing.T) {
+func TestADualConfigurationBuildsACompositeThatKnowsWhenTheSecondaryEnds(t *testing.T) {
 	now := time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)
 	b, err := New(mustParse(t, dual), Options{Now: func() time.Time { return now }})
 	if err != nil {
@@ -79,19 +79,19 @@ func TestADualConfigurationBuildsACompositeThatKnowsWhenTheLegacyEnds(t *testing
 	t.Cleanup(func() { _ = b.Close() })
 
 	if b.Composite == nil || b.Store != store.Store(b.Composite) {
-		t.Fatal("a legacy must give a composite")
+		t.Fatal("a secondary must give a composite")
 	}
-	if !b.Composite.LegacyActive() {
-		t.Error("the legacy is active before it expires")
+	if !b.Composite.SecondaryActive() {
+		t.Error("the secondary is active before it expires")
 	}
 
 	now = time.Date(2026, 12, 2, 0, 0, 0, 0, time.UTC)
-	if b.Composite.LegacyActive() {
-		t.Error("the legacy must be inactive after the configured expiry")
+	if b.Composite.SecondaryActive() {
+		t.Error("the secondary must be inactive after the configured expiry")
 	}
 }
 
-func TestTheLegacyLayoutResolvesTheIndexPatternsOfV11Rules(t *testing.T) {
+func TestTheSecondaryLayoutResolvesTheIndexPatternsOfV11Rules(t *testing.T) {
 	b, err := New(mustParse(t, dual), Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -134,12 +134,12 @@ func TestNewRefusesAConfigurationThatCannotWork(t *testing.T) {
 		{"engine without its section", func(s string) string {
 			return "primary:\n  engine: opensearch\n"
 		}, "primary.opensearch is missing"},
-		{"legacy without cutover", func(s string) string { return strings.Replace(s, `  cutover: "2026-11-01T00:00:00Z"`, "", 1) }, "legacy.cutover"},
-		{"cutover not a time", func(s string) string { return strings.Replace(s, "2026-11-01T00:00:00Z", "yesterday", 1) }, "legacy.cutover"},
-		{"expiry before cutover", func(s string) string { return strings.Replace(s, "2026-12-01T00:00:00Z", "2026-10-01T00:00:00Z", 1) }, "after legacy.cutover"},
-		{"legacy without tenant", func(s string) string { return strings.Replace(s, "  tenant: default-tenant", "", 1) }, "legacy.tenant is required"},
-		{"field prefix without a legacy name", func(s string) string { return strings.Replace(s, "legacy: event", "legacy: log", 1) }, "fieldPrefix"},
-		{"legacy without datasets", func(s string) string { return strings.Replace(s, "  datasets: [logs, alerts]", "", 1) }, "legacy.datasets"},
+		{"secondary without cutover", func(s string) string { return strings.Replace(s, `  cutover: "2026-11-01T00:00:00Z"`, "", 1) }, "secondary.cutover"},
+		{"cutover not a time", func(s string) string { return strings.Replace(s, "2026-11-01T00:00:00Z", "yesterday", 1) }, "secondary.cutover"},
+		{"expiry before cutover", func(s string) string { return strings.Replace(s, "2026-12-01T00:00:00Z", "2026-10-01T00:00:00Z", 1) }, "after secondary.cutover"},
+		{"secondary without tenant", func(s string) string { return strings.Replace(s, "  tenant: default-tenant", "", 1) }, "secondary.tenant is required"},
+		{"field prefix without a secondary name", func(s string) string { return strings.Replace(s, "secondary: event", "secondary: log", 1) }, "fieldPrefix"},
+		{"secondary without datasets", func(s string) string { return strings.Replace(s, "  datasets: [logs, alerts]", "", 1) }, "secondary.datasets"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -163,7 +163,7 @@ primary:
     urls: ["https://a:9200"]
     tenantField: tenantId
     layout: {logs: {prefix: log, includeDataType: true}}
-legacy:
+secondary:
   engine: opensearch
   opensearch:
     urls: ["https://b:9200"]
@@ -176,5 +176,93 @@ legacy:
 	_, err := New(mustParse(t, raw), Options{})
 	if err == nil || !strings.Contains(err.Error(), "same one") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestADisabledSecondaryIsNeverBuiltAndTheRestOfTheSectionIsKept(t *testing.T) {
+	enabled := mustParse(t, dual)
+	disabled := mustParse(t, dual+"  disabled: true\n")
+
+	if !disabled.Secondary.Disabled || disabled.Secondary.Tenant != enabled.Secondary.Tenant || disabled.Secondary.Cutover != enabled.Secondary.Cutover {
+		t.Fatal("disabling must only flip the flag and leave the other settings in place")
+	}
+
+	b, err := New(disabled, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = b.Close() })
+
+	if b.Composite != nil {
+		t.Error("a disabled secondary must not produce a composite")
+	}
+	if !b.SecondaryDisabled {
+		t.Error("SecondaryDisabled must say so")
+	}
+	if b.Store == nil {
+		t.Fatal("the primary must still be served")
+	}
+	if _, isComposite := b.Store.(interface{ SecondaryActive() bool }); isComposite {
+		t.Error("the store must be the primary alone")
+	}
+	if dt, ok := b.ResolveIndexPattern("logs", "v11-log-deceptive-bytes-*"); !ok || dt != "deceptive-bytes" {
+		t.Errorf("v11 rules still name their indices, so the resolver must survive: (%q, %v)", dt, ok)
+	}
+}
+
+func TestADisabledSecondaryNeverConnects(t *testing.T) {
+	var calls [][]string
+	prev := connectOpenSearch
+	connectOpenSearch = func(urls []string, _, _ string) error {
+		calls = append(calls, urls)
+		return nil
+	}
+	t.Cleanup(func() { connectOpenSearch = prev })
+
+	b, err := New(mustParse(t, dual+"  disabled: true\n"), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = b.Close()
+	if len(calls) != 0 {
+		t.Fatalf("a disabled secondary must not be connected, got %v", calls)
+	}
+
+	// The same configuration, enabled, does connect: the check above is not
+	// passing because nothing ever would.
+	b, err = New(mustParse(t, dual), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = b.Close()
+	if len(calls) != 1 || calls[0][0] != "https://127.0.0.1:9200" {
+		t.Fatalf("an enabled secondary must connect once, got %v", calls)
+	}
+}
+
+func TestADisabledSecondaryIsNotCheckedForTheSettingsItNoLongerNeeds(t *testing.T) {
+	// The rest of a disabled section may be stale; it must not stop a process
+	// from starting.
+	stale := strings.Replace(dual, `  cutover: "2026-11-01T00:00:00Z"`, "", 1)
+	stale = strings.Replace(stale, "  tenant: default-tenant", "", 1)
+
+	if _, err := New(mustParse(t, stale), Options{}); err == nil {
+		t.Fatal("while enabled, the missing settings are an error")
+	}
+	b, err := New(mustParse(t, stale+"  disabled: true\n"), Options{})
+	if err != nil {
+		t.Fatalf("once disabled they are not: %v", err)
+	}
+	_ = b.Close()
+}
+
+func TestTheIndexPatternResolverSurvivesWithoutASecondaryBlock(t *testing.T) {
+	b, err := New(mustParse(t, single), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = b.Close()
+	if b.SecondaryDisabled {
+		t.Error("no secondary block is not a disabled one")
 	}
 }

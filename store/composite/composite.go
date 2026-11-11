@@ -1,15 +1,15 @@
 // Package composite serves one logical store from two: a primary that takes
-// every write and holds everything from Cutover on, and a read-only legacy
+// every write and holds everything from Cutover on, and a read-only secondary
 // store that holds what came before.
 //
-// It exists for the period in which an installation has moved to ClickHouse
-// but its history still sits in OpenSearch. The split is by time, so a record
-// is in exactly one of them and the two never need reconciling; what the
+// It serves an installation whose older data sits in a different store than its
+// new data, for as long as that older data is kept. The split is by time, so a
+// record is in exactly one of them and the two never need reconciling; what the
 // composite does is route a query to whichever holds the range asked about, and
 // merge when the range spans Cutover.
 //
 // The invariant it relies on: the primary holds nothing older than Cutover and
-// the legacy holds nothing newer. Cutover must be the instant the legacy
+// the secondary holds nothing newer. Cutover must be the instant the secondary
 // stopped receiving writes.
 package composite
 
@@ -30,47 +30,47 @@ type Config struct {
 	// Primary takes every write and is authoritative for records from Cutover.
 	Primary store.Store
 
-	// Legacy is only ever read. Nothing here writes to it.
-	Legacy store.Store
+	// Secondary is only ever read. Nothing here writes to it.
+	Secondary store.Store
 
-	// Cutover is the instant the legacy stopped receiving writes.
+	// Cutover is the instant the secondary stopped receiving writes.
 	Cutover time.Time
 
-	// LegacyExpires is when the legacy store is switched off. From then on the
+	// SecondaryExpires is when the secondary store is switched off. From then on the
 	// composite never reaches it, so a query that would have crossed Cutover is
 	// answered from the primary alone instead of failing against a store that
 	// is gone. The zero value means it never expires. Set it to the cutover plus
-	// the legacy's retention.
-	LegacyExpires time.Time
+	// the secondary's retention.
+	SecondaryExpires time.Time
 
-	// LegacyTenant is the one tenant the legacy data belongs to. A legacy store
+	// SecondaryTenant is the one tenant the secondary data belongs to. A secondary store
 	// built for a single-tenant installation has no tenant field, so it cannot
 	// tell tenants apart: only this tenant (or store.AllTenants) may read it,
 	// and any other tenant sees the primary alone.
-	LegacyTenant string
+	SecondaryTenant string
 
-	// LegacyDatasets lists the datasets the legacy store serves. Anything else
+	// SecondaryDatasets lists the datasets the secondary store serves. Anything else
 	// is answered from the primary only, so an unmapped dataset is not mistaken
 	// for an empty one.
-	LegacyDatasets []store.Dataset
+	SecondaryDatasets []store.Dataset
 
 	// TimeField is the field both stores order by. Defaults to "@timestamp".
 	TimeField string
 
-	// TolerateLegacy lets a failing legacy store degrade a read to the
+	// TolerateSecondary lets a failing secondary store degrade a read to the
 	// primary's answer instead of failing it. A partial answer can look like
 	// "nothing happened", so it is off unless the caller says otherwise, and
-	// OnLegacyError is how it finds out.
-	TolerateLegacy bool
-	OnLegacyError  func(op string, err error)
+	// OnSecondaryError is how it finds out.
+	TolerateSecondary bool
+	OnSecondaryError  func(op string, err error)
 
-	// LegacyField maps a field name as the composite's callers write it to the
-	// name the legacy store knows it by, and LegacyFieldBack does the reverse.
-	// LegacyDocument rewrites a legacy record into the shape the primary's
+	// SecondaryField maps a field name as the composite's callers write it to the
+	// name the secondary store knows it by, and SecondaryFieldBack does the reverse.
+	// SecondaryDocument rewrites a secondary record into the shape the primary's
 	// records have. All three are optional.
-	LegacyField     func(string) string
-	LegacyFieldBack func(string) string
-	LegacyDocument  func(json.RawMessage) json.RawMessage
+	SecondaryField     func(string) string
+	SecondaryFieldBack func(string) string
+	SecondaryDocument  func(json.RawMessage) json.RawMessage
 
 	// Now is the clock, replaceable in tests.
 	Now func() time.Time
@@ -87,16 +87,16 @@ func New(cfg Config) (*Store, error) {
 	switch {
 	case cfg.Primary == nil:
 		return nil, errors.New("composite: Config.Primary is required")
-	case cfg.Legacy == nil:
-		return nil, errors.New("composite: Config.Legacy is required")
+	case cfg.Secondary == nil:
+		return nil, errors.New("composite: Config.Secondary is required")
 	case cfg.Cutover.IsZero():
 		return nil, errors.New("composite: Config.Cutover is required")
-	case cfg.LegacyTenant == "":
-		return nil, errors.New("composite: Config.LegacyTenant is required, so that no other tenant can read the legacy data")
-	case cfg.LegacyTenant == store.AllTenants:
-		return nil, errors.New("composite: Config.LegacyTenant must name one tenant")
-	case !cfg.LegacyExpires.IsZero() && !cfg.LegacyExpires.After(cfg.Cutover):
-		return nil, errors.New("composite: Config.LegacyExpires must be after Config.Cutover")
+	case cfg.SecondaryTenant == "":
+		return nil, errors.New("composite: Config.SecondaryTenant is required, so that no other tenant can read the secondary data")
+	case cfg.SecondaryTenant == store.AllTenants:
+		return nil, errors.New("composite: Config.SecondaryTenant must name one tenant")
+	case !cfg.SecondaryExpires.IsZero() && !cfg.SecondaryExpires.After(cfg.Cutover):
+		return nil, errors.New("composite: Config.SecondaryExpires must be after Config.Cutover")
 	}
 	if cfg.TimeField == "" {
 		cfg.TimeField = defaultTimeField
@@ -105,8 +105,8 @@ func New(cfg Config) (*Store, error) {
 		cfg.Now = time.Now
 	}
 
-	ds := make(map[store.Dataset]bool, len(cfg.LegacyDatasets))
-	for _, d := range cfg.LegacyDatasets {
+	ds := make(map[store.Dataset]bool, len(cfg.SecondaryDatasets))
+	for _, d := range cfg.SecondaryDatasets {
 		ds[d] = true
 	}
 	return &Store{cfg: cfg, datasets: ds}, nil
@@ -114,18 +114,18 @@ func New(cfg Config) (*Store, error) {
 
 // plan says which stores a scope reaches and with what scope each is asked.
 type plan struct {
-	primary *store.Scope
-	legacy  *store.Scope
+	primary   *store.Scope
+	secondary *store.Scope
 }
 
-// LegacyActive reports whether the legacy store can still be reached: it is
-// until LegacyExpires, if one is set.
-func (c *Store) LegacyActive() bool {
-	return c.cfg.LegacyExpires.IsZero() || c.cfg.Now().Before(c.cfg.LegacyExpires)
+// SecondaryActive reports whether the secondary store can still be reached: it is
+// until SecondaryExpires, if one is set.
+func (c *Store) SecondaryActive() bool {
+	return c.cfg.SecondaryExpires.IsZero() || c.cfg.Now().Before(c.cfg.SecondaryExpires)
 }
 
-func (c *Store) eligibleForLegacy(s store.Scope) bool {
-	return c.LegacyActive() && c.datasets[s.Dataset] && (s.Tenant == c.cfg.LegacyTenant || s.Tenant == store.AllTenants)
+func (c *Store) eligibleForSecondary(s store.Scope) bool {
+	return c.SecondaryActive() && c.datasets[s.Dataset] && (s.Tenant == c.cfg.SecondaryTenant || s.Tenant == store.AllTenants)
 }
 
 func (c *Store) plan(s store.Scope) plan {
@@ -136,88 +136,88 @@ func (c *Store) plan(s store.Scope) plan {
 		p.primary = &ps
 	}
 
-	if c.eligibleForLegacy(s) && (s.From.IsZero() || s.From.Before(c.cfg.Cutover)) {
-		ls := s
-		// The legacy has no tenant field to scope by, which is why only its own
+	if c.eligibleForSecondary(s) && (s.From.IsZero() || s.From.Before(c.cfg.Cutover)) {
+		ss := s
+		// The secondary has no tenant field to scope by, which is why only its own
 		// tenant gets here.
-		ls.Tenant = store.AllTenants
-		if ls.To.IsZero() || ls.To.After(c.cfg.Cutover) {
-			ls.To = c.cfg.Cutover
+		ss.Tenant = store.AllTenants
+		if ss.To.IsZero() || ss.To.After(c.cfg.Cutover) {
+			ss.To = c.cfg.Cutover
 		}
-		p.legacy = &ls
+		p.secondary = &ss
 	}
 	return p
 }
 
-func (p plan) both() bool { return p.primary != nil && p.legacy != nil }
+func (p plan) both() bool { return p.primary != nil && p.secondary != nil }
 
-func (c *Store) legacyFilters(filters []store.Filter) []store.Filter {
-	if c.cfg.LegacyField == nil || len(filters) == 0 {
+func (c *Store) secondaryFilters(filters []store.Filter) []store.Filter {
+	if c.cfg.SecondaryField == nil || len(filters) == 0 {
 		return filters
 	}
 	out := make([]store.Filter, len(filters))
 	for i, f := range filters {
 		if f.Field != "" {
-			f.Field = c.cfg.LegacyField(f.Field)
+			f.Field = c.cfg.SecondaryField(f.Field)
 		}
 		out[i] = f
 	}
 	return out
 }
 
-func (c *Store) legacyName(field string) string {
-	if c.cfg.LegacyField == nil || field == "" {
+func (c *Store) secondaryName(field string) string {
+	if c.cfg.SecondaryField == nil || field == "" {
 		return field
 	}
-	return c.cfg.LegacyField(field)
+	return c.cfg.SecondaryField(field)
 }
 
-func (c *Store) legacyNames(fields []string) []string {
-	if c.cfg.LegacyField == nil {
+func (c *Store) secondaryNames(fields []string) []string {
+	if c.cfg.SecondaryField == nil {
 		return fields
 	}
 	out := make([]string, len(fields))
 	for i, f := range fields {
-		out[i] = c.cfg.LegacyField(f)
+		out[i] = c.cfg.SecondaryField(f)
 	}
 	return out
 }
 
-func (c *Store) legacyDoc(d json.RawMessage) json.RawMessage {
-	if c.cfg.LegacyDocument == nil {
+func (c *Store) secondaryDoc(d json.RawMessage) json.RawMessage {
+	if c.cfg.SecondaryDocument == nil {
 		return d
 	}
-	return c.cfg.LegacyDocument(d)
+	return c.cfg.SecondaryDocument(d)
 }
 
-func (c *Store) legacyDocs(docs []json.RawMessage) []json.RawMessage {
-	if c.cfg.LegacyDocument == nil {
+func (c *Store) secondaryDocs(docs []json.RawMessage) []json.RawMessage {
+	if c.cfg.SecondaryDocument == nil {
 		return docs
 	}
 	out := make([]json.RawMessage, len(docs))
 	for i, d := range docs {
-		out[i] = c.cfg.LegacyDocument(d)
+		out[i] = c.cfg.SecondaryDocument(d)
 	}
 	return out
 }
 
-// legacyFailed applies the tolerance policy. It reports whether the failure
+// secondaryFailed applies the tolerance policy. It reports whether the failure
 // should be swallowed.
-func (c *Store) legacyFailed(op string, err error) bool {
-	if !c.cfg.TolerateLegacy {
+func (c *Store) secondaryFailed(op string, err error) bool {
+	if !c.cfg.TolerateSecondary {
 		return false
 	}
-	if c.cfg.OnLegacyError != nil {
-		c.cfg.OnLegacyError(op, err)
+	if c.cfg.OnSecondaryError != nil {
+		c.cfg.OnSecondaryError(op, err)
 	}
 	return true
 }
 
-// fanOut runs the primary and legacy halves of a plan together. A legacy
+// fanOut runs the primary and secondary halves of a plan together. A secondary
 // failure is an error unless tolerated, in which case that half is empty.
-func fanOut[T any](c *Store, p plan, op string, run func(st store.Store, s store.Scope, legacy bool) (T, error)) (T, T, error) {
+func fanOut[T any](c *Store, p plan, op string, run func(st store.Store, s store.Scope, secondary bool) (T, error)) (T, T, error) {
 	var (
-		prim, leg  T
+		prim, sec  T
 		pErr, lErr error
 		wg         sync.WaitGroup
 	)
@@ -228,11 +228,11 @@ func fanOut[T any](c *Store, p plan, op string, run func(st store.Store, s store
 			prim, pErr = run(c.cfg.Primary, *p.primary, false)
 		}()
 	}
-	if p.legacy != nil {
+	if p.secondary != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			leg, lErr = run(c.cfg.Legacy, *p.legacy, true)
+			sec, lErr = run(c.cfg.Secondary, *p.secondary, true)
 		}()
 	}
 	wg.Wait()
@@ -242,21 +242,21 @@ func fanOut[T any](c *Store, p plan, op string, run func(st store.Store, s store
 		return zero, zero, pErr
 	}
 	if lErr != nil {
-		if !c.legacyFailed(op, lErr) {
+		if !c.secondaryFailed(op, lErr) {
 			var zero T
-			return zero, zero, fmt.Errorf("composite: legacy %s: %w", op, lErr)
+			return zero, zero, fmt.Errorf("composite: secondary %s: %w", op, lErr)
 		}
 		var zero T
-		leg = zero
+		sec = zero
 	}
-	return prim, leg, nil
+	return prim, sec, nil
 }
 
 // ---- Writer -----------------------------------------------------------------
 
-// Every write goes to the primary. The legacy is read-only, so a record there
+// Every write goes to the primary. The secondary is read-only, so a record there
 // is never changed: UpdateWhere reaches only primary records, and an alert that
-// lives in the legacy cannot be updated.
+// lives in the secondary cannot be updated.
 
 func (c *Store) Insert(ctx context.Context, s store.Scope, id string, doc any) error {
 	return c.cfg.Primary.Insert(ctx, s, id, doc)
@@ -284,60 +284,60 @@ func (c *Store) SetRetention(ctx context.Context, dataset store.Dataset, r store
 	return c.cfg.Primary.SetRetention(ctx, dataset, r)
 }
 
-// Drop removes records from the primary only; the legacy is read-only and its
+// Drop removes records from the primary only; the secondary is read-only and its
 // own retention ends it.
 func (c *Store) Drop(ctx context.Context, s store.Scope) (int64, error) {
 	return c.cfg.Primary.Drop(ctx, s)
 }
 
-// Usage lists both stores' datasets, the legacy's after the primary's.
+// Usage lists both stores' datasets, the secondary's after the primary's.
 func (c *Store) Usage(ctx context.Context) ([]store.DatasetUsage, error) {
 	prim, err := c.cfg.Primary.Usage(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if !c.LegacyActive() {
+	if !c.SecondaryActive() {
 		return prim, nil
 	}
-	leg, err := c.cfg.Legacy.Usage(ctx)
+	sec, err := c.cfg.Secondary.Usage(ctx)
 	if err != nil {
-		if !c.legacyFailed("Usage", err) {
-			return nil, fmt.Errorf("composite: legacy Usage: %w", err)
+		if !c.secondaryFailed("Usage", err) {
+			return nil, fmt.Errorf("composite: secondary Usage: %w", err)
 		}
 		return prim, nil
 	}
-	return append(prim, leg...), nil
+	return append(prim, sec...), nil
 }
 
-// Health is the primary's, degraded further when the legacy is not well. A
-// legacy that is down must not make the installation look down.
+// Health is the primary's, degraded further when the secondary is not well. A
+// secondary that is down must not make the installation look down.
 func (c *Store) Health(ctx context.Context) (store.Health, error) {
 	h, err := c.cfg.Primary.Health(ctx)
-	if err != nil || !c.LegacyActive() {
+	if err != nil || !c.SecondaryActive() {
 		return h, err
 	}
 
-	lh, lerr := c.cfg.Legacy.Health(ctx)
+	sh, serr := c.cfg.Secondary.Health(ctx)
 	switch {
-	case lerr != nil:
-		lh = store.Health{Status: store.HealthUnavailable, Message: lerr.Error()}
-	case lh.Status == store.HealthOK || lh.Status == "":
+	case serr != nil:
+		sh = store.Health{Status: store.HealthUnavailable, Message: serr.Error()}
+	case sh.Status == store.HealthOK || sh.Status == "":
 		return h, nil
 	}
 
 	if h.Status == store.HealthOK {
 		h.Status = store.HealthDegraded
 	}
-	msg := "legacy store: " + string(lh.Status)
-	if lh.Message != "" {
-		msg += ": " + lh.Message
+	msg := "secondary store: " + string(sh.Status)
+	if sh.Message != "" {
+		msg += ": " + sh.Message
 	}
 	if h.Message != "" {
 		msg = h.Message + "; " + msg
 	}
 	h.Message = msg
-	if lh.DiskUsedPct > h.DiskUsedPct {
-		h.DiskUsedPct = lh.DiskUsedPct
+	if sh.DiskUsedPct > h.DiskUsedPct {
+		h.DiskUsedPct = sh.DiskUsedPct
 	}
 	return h, nil
 }

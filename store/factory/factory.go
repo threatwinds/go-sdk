@@ -2,8 +2,8 @@
 // an installation — the event processor, the backend, the plugins — reaches
 // its data the same way and the choice of engine is a setting, not code.
 //
-// The configuration names a primary store and, optionally, a legacy one that
-// is read-only and holds what came before a cutover. With a legacy configured
+// The configuration names a primary store and, optionally, a secondary one that
+// is read-only and holds what came before a cutover. With a secondary configured
 // the result is a composite store; without one it is the primary alone.
 //
 //	primary:
@@ -13,7 +13,7 @@
 //	    database: utmstack
 //	    tenantColumn: tenantId
 //	    tables: {logs: logs, alerts: alerts}
-//	legacy:
+//	secondary:
 //	  engine: opensearch
 //	  opensearch:
 //	    urls: ["https://opensearch:9200"]
@@ -23,7 +23,14 @@
 //	  expires: "2026-12-01T00:00:00Z"
 //	  tenant: ce66672c-e36d-4761-a8c8-90058fee1a24
 //	  datasets: [logs]
-//	  fieldPrefix: {current: log, legacy: event}
+//	  fieldPrefix: {primary: log, secondary: event}
+//	  disabled: false
+//
+// Switching the secondary off is a setting too: secondary.disabled set to true keeps
+// the rest of the section where it is. A process that starts with it set never
+// connects to the secondary and answers from the primary alone. The configuration
+// is read when a process starts, so one that was already running has to be
+// restarted to see it.
 package factory
 
 import (
@@ -47,8 +54,8 @@ const (
 )
 
 type Config struct {
-	Primary Engine  `json:"primary"`
-	Legacy  *Legacy `json:"legacy,omitempty"`
+	Primary   Engine     `json:"primary"`
+	Secondary *Secondary `json:"secondary,omitempty"`
 }
 
 // Engine selects one engine and carries the settings of the one it selects.
@@ -90,36 +97,41 @@ type DatasetLayout struct {
 	DateFormat      string `json:"dateFormat,omitempty"`
 }
 
-// Legacy is a read-only store holding what came before Cutover.
-type Legacy struct {
+// Secondary is a read-only store holding what came before Cutover.
+type Secondary struct {
 	Engine
 
-	// Cutover is when the legacy stopped receiving writes (RFC 3339).
+	// Cutover is when the secondary stopped receiving writes (RFC 3339).
 	Cutover string `json:"cutover"`
-	// Expires is when the legacy is switched off (RFC 3339); empty means never.
+	// Expires is when the secondary is switched off (RFC 3339); empty means never.
 	Expires string `json:"expires,omitempty"`
-	// Tenant is the one tenant the legacy data belongs to.
+	// Disabled switches the secondary off without removing its settings: nothing
+	// connects to it and the rest of the section is not even checked, since it
+	// is no longer used. The index pattern resolver still works, because v11
+	// rules keep naming the indices they were written against.
+	Disabled bool `json:"disabled,omitempty"`
+	// Tenant is the one tenant the secondary data belongs to.
 	Tenant string `json:"tenant"`
-	// Datasets lists the datasets the legacy serves.
+	// Datasets lists the datasets the secondary serves.
 	Datasets []string `json:"datasets"`
-	// TolerateFailure answers from the primary when the legacy fails, instead
+	// TolerateFailure answers from the primary when the secondary fails, instead
 	// of failing the read.
 	TolerateFailure bool `json:"tolerateFailure,omitempty"`
 	// FieldPrefix maps the object that holds parsed fields: the primary's name
-	// for it and the legacy's ("log" and "event"). It applies to field names in
+	// for it and the secondary's ("log" and "event"). It applies to field names in
 	// queries and to the records that come back.
 	FieldPrefix *FieldPrefix `json:"fieldPrefix,omitempty"`
 }
 
 type FieldPrefix struct {
-	Current string `json:"current"`
-	Legacy  string `json:"legacy"`
+	Primary   string `json:"primary"`
+	Secondary string `json:"secondary"`
 }
 
 // Options are what cannot come from a file.
 type Options struct {
-	// OnLegacyError is told about a legacy failure that TolerateFailure hid.
-	OnLegacyError func(op string, err error)
+	// OnSecondaryError is told about a secondary failure that TolerateFailure hid.
+	OnSecondaryError func(op string, err error)
 	// OnReject is told about every row a ClickHouse writer permanently drops.
 	OnReject func(row []byte, err error)
 	// Now is the clock, replaceable in tests.
@@ -131,9 +143,12 @@ type Built struct {
 	// Store is the store to use.
 	Store store.Store
 
-	// Composite is Store when a legacy is configured, and nil otherwise. It
-	// reports whether the legacy is still reachable.
+	// Composite is Store when a secondary is configured and enabled, and nil
+	// otherwise. It reports whether the secondary is still reachable.
 	Composite *composite.Store
+
+	// SecondaryDisabled is true when a secondary is configured but switched off.
+	SecondaryDisabled bool
 
 	// ResolveIndexPattern turns the index pattern a v11 rule names into a
 	// dataType. It is nil when no OpenSearch layout is configured. Install it
@@ -153,6 +168,10 @@ func (b *Built) Close() error {
 	}
 	return errors.Join(errs...)
 }
+
+// connectOpenSearch is how an OpenSearch store is connected; a test replaces it
+// to see whether anything tried.
+var connectOpenSearch = sdkos.Connect
 
 // Parse reads YAML or JSON. An unknown field is an error, so a misspelt setting
 // is found at startup rather than ignored.
@@ -181,42 +200,55 @@ func New(cfg Config, opts Options) (*Built, error) {
 		return fail(err)
 	}
 
-	if cfg.Legacy == nil {
+	if cfg.Secondary == nil {
 		b.Store = primary
 		b.ResolveIndexPattern = resolverFor(cfg.Primary)
 		return b, nil
 	}
 
-	legacy, err := b.engine(cfg.Legacy.Engine, "legacy", opts)
+	if cfg.Secondary.Disabled {
+		b.Store = primary
+		b.SecondaryDisabled = true
+		// v11 rules still name the indices they were written against, so the
+		// layout that reads those names stays available.
+		if r := resolverFor(cfg.Secondary.Engine); r != nil {
+			b.ResolveIndexPattern = r
+		} else {
+			b.ResolveIndexPattern = resolverFor(cfg.Primary)
+		}
+		return b, nil
+	}
+
+	secondary, err := b.engine(cfg.Secondary.Engine, "secondary", opts)
 	if err != nil {
 		return fail(err)
 	}
 
-	cutover, _ := time.Parse(time.RFC3339, cfg.Legacy.Cutover)
+	cutover, _ := time.Parse(time.RFC3339, cfg.Secondary.Cutover)
 	var expires time.Time
-	if cfg.Legacy.Expires != "" {
-		expires, _ = time.Parse(time.RFC3339, cfg.Legacy.Expires)
+	if cfg.Secondary.Expires != "" {
+		expires, _ = time.Parse(time.RFC3339, cfg.Secondary.Expires)
 	}
 
-	datasets := make([]store.Dataset, len(cfg.Legacy.Datasets))
-	for i, d := range cfg.Legacy.Datasets {
+	datasets := make([]store.Dataset, len(cfg.Secondary.Datasets))
+	for i, d := range cfg.Secondary.Datasets {
 		datasets[i] = store.Dataset(d)
 	}
 
 	cc := composite.Config{
-		Primary:        primary,
-		Legacy:         legacy,
-		Cutover:        cutover,
-		LegacyExpires:  expires,
-		LegacyTenant:   cfg.Legacy.Tenant,
-		LegacyDatasets: datasets,
-		TolerateLegacy: cfg.Legacy.TolerateFailure,
-		OnLegacyError:  opts.OnLegacyError,
-		Now:            opts.Now,
+		Primary:           primary,
+		Secondary:         secondary,
+		Cutover:           cutover,
+		SecondaryExpires:  expires,
+		SecondaryTenant:   cfg.Secondary.Tenant,
+		SecondaryDatasets: datasets,
+		TolerateSecondary: cfg.Secondary.TolerateFailure,
+		OnSecondaryError:  opts.OnSecondaryError,
+		Now:               opts.Now,
 	}
-	if fp := cfg.Legacy.FieldPrefix; fp != nil {
-		cc.LegacyField, cc.LegacyFieldBack = composite.PrefixMap(fp.Current, fp.Legacy)
-		cc.LegacyDocument = composite.RenameDocKey(fp.Legacy, fp.Current)
+	if fp := cfg.Secondary.FieldPrefix; fp != nil {
+		cc.SecondaryField, cc.SecondaryFieldBack = composite.PrefixMap(fp.Primary, fp.Secondary)
+		cc.SecondaryDocument = composite.RenameDocKey(fp.Secondary, fp.Primary)
 	}
 
 	comp, err := composite.New(cc)
@@ -226,9 +258,9 @@ func New(cfg Config, opts Options) (*Built, error) {
 	b.Store = comp
 	b.Composite = comp
 
-	// A v11 rule names legacy indices, so the legacy's layout is the one that
-	// reads them; the primary's is the fallback when the legacy is not OpenSearch.
-	if r := resolverFor(cfg.Legacy.Engine); r != nil {
+	// A v11 rule names secondary indices, so the secondary's layout is the one that
+	// reads them; the primary's is the fallback when the secondary is not OpenSearch.
+	if r := resolverFor(cfg.Secondary.Engine); r != nil {
 		b.ResolveIndexPattern = r
 	} else {
 		b.ResolveIndexPattern = resolverFor(cfg.Primary)
@@ -240,35 +272,35 @@ func validate(cfg Config) error {
 	if err := validateEngine(cfg.Primary, "primary"); err != nil {
 		return err
 	}
-	l := cfg.Legacy
-	if l == nil {
+	l := cfg.Secondary
+	if l == nil || l.Disabled {
 		return nil
 	}
-	if err := validateEngine(l.Engine, "legacy"); err != nil {
+	if err := validateEngine(l.Engine, "secondary"); err != nil {
 		return err
 	}
 
 	cutover, err := time.Parse(time.RFC3339, l.Cutover)
 	if err != nil {
-		return fmt.Errorf("store config: legacy.cutover must be an RFC 3339 time: %w", err)
+		return fmt.Errorf("store config: secondary.cutover must be an RFC 3339 time: %w", err)
 	}
 	if l.Expires != "" {
 		expires, err := time.Parse(time.RFC3339, l.Expires)
 		if err != nil {
-			return fmt.Errorf("store config: legacy.expires must be an RFC 3339 time: %w", err)
+			return fmt.Errorf("store config: secondary.expires must be an RFC 3339 time: %w", err)
 		}
 		if !expires.After(cutover) {
-			return errors.New("store config: legacy.expires must be after legacy.cutover")
+			return errors.New("store config: secondary.expires must be after secondary.cutover")
 		}
 	}
-	if fp := l.FieldPrefix; fp != nil && (fp.Current == "" || fp.Legacy == "" || fp.Current == fp.Legacy) {
-		return errors.New("store config: legacy.fieldPrefix needs a current and a legacy name that differ")
+	if fp := l.FieldPrefix; fp != nil && (fp.Primary == "" || fp.Secondary == "" || fp.Primary == fp.Secondary) {
+		return errors.New("store config: secondary.fieldPrefix needs a primary and a secondary name that differ")
 	}
 	if l.Tenant == "" {
-		return errors.New("store config: legacy.tenant is required, so that no other tenant can read the legacy data")
+		return errors.New("store config: secondary.tenant is required, so that no other tenant can read the secondary data")
 	}
 	if len(l.Datasets) == 0 {
-		return errors.New("store config: legacy.datasets must list the datasets the legacy serves")
+		return errors.New("store config: secondary.datasets must list the datasets the secondary serves")
 	}
 
 	// The OpenSearch client is one per process, so two OpenSearch stores can
@@ -276,7 +308,7 @@ func validate(cfg Config) error {
 	p, lo := cfg.Primary.OpenSearch, l.OpenSearch
 	if cfg.Primary.Engine == EngineOpenSearch && l.Engine.Engine == EngineOpenSearch && p != nil && lo != nil {
 		if !slices.Equal(p.URLs, lo.URLs) || p.Username != lo.Username || p.Password != lo.Password {
-			return errors.New("store config: primary and legacy are both OpenSearch but name different clusters; the client is shared by the process, so they must be the same one")
+			return errors.New("store config: primary and secondary are both OpenSearch but name different clusters; the client is shared by the process, so they must be the same one")
 		}
 	}
 	return nil
@@ -330,7 +362,7 @@ func (b *Built) engine(e Engine, which string, opts Options) (store.Store, error
 
 	default:
 		o := e.OpenSearch
-		if err := sdkos.Connect(o.URLs, o.Username, o.Password); err != nil {
+		if err := connectOpenSearch(o.URLs, o.Username, o.Password); err != nil {
 			return nil, fmt.Errorf("store config: %s: connect to opensearch: %w", which, err)
 		}
 		d, err := opensearch.New(opensearch.Config{

@@ -29,13 +29,13 @@ func (c *Store) Count(ctx context.Context, s store.Scope, filters []store.Filter
 		return 0, err
 	}
 	p := c.plan(s)
-	prim, leg, err := fanOut(c, p, "Count", func(st store.Store, sc store.Scope, legacy bool) (int64, error) {
-		if legacy {
-			return st.Count(ctx, sc, c.legacyFilters(filters))
+	prim, sec, err := fanOut(c, p, "Count", func(st store.Store, sc store.Scope, secondary bool) (int64, error) {
+		if secondary {
+			return st.Count(ctx, sc, c.secondaryFilters(filters))
 		}
 		return st.Count(ctx, sc, filters)
 	})
-	return prim + leg, err
+	return prim + sec, err
 }
 
 func (c *Store) CountInWindow(ctx context.Context, s store.Scope, filters []store.Filter, window time.Duration) (int64, error) {
@@ -52,7 +52,7 @@ func (c *Store) CountInWindow(ctx context.Context, s store.Scope, filters []stor
 	w.To = end
 
 	p := c.plan(w)
-	if p.legacy == nil {
+	if p.secondary == nil {
 		// Entirely within the primary: let it answer in its own terms.
 		return c.cfg.Primary.CountInWindow(ctx, s, filters, window)
 	}
@@ -67,26 +67,26 @@ func (c *Store) FetchByID(ctx context.Context, s store.Scope, id string) (json.R
 	if err == nil || !errors.Is(err, store.ErrNotFound) {
 		return doc, err
 	}
-	if !c.eligibleForLegacy(s) {
+	if !c.eligibleForSecondary(s) {
 		return nil, err
 	}
 
-	ls := s
-	ls.Tenant = store.AllTenants
-	doc, lerr := c.cfg.Legacy.FetchByID(ctx, ls, id)
+	ss := s
+	ss.Tenant = store.AllTenants
+	doc, serr := c.cfg.Secondary.FetchByID(ctx, ss, id)
 	switch {
-	case lerr == nil:
-		return c.legacyDoc(doc), nil
-	case errors.Is(lerr, store.ErrNotFound):
-		return nil, lerr
-	case c.legacyFailed("FetchByID", lerr):
+	case serr == nil:
+		return c.secondaryDoc(doc), nil
+	case errors.Is(serr, store.ErrNotFound):
+		return nil, serr
+	case c.secondaryFailed("FetchByID", serr):
 		return nil, store.ErrNotFound
 	default:
-		return nil, fmt.Errorf("composite: legacy FetchByID: %w", lerr)
+		return nil, fmt.Errorf("composite: secondary FetchByID: %w", serr)
 	}
 }
 
-// FetchN returns the newest n records: the primary's first, and the legacy's
+// FetchN returns the newest n records: the primary's first, and the secondary's
 // only for what the primary could not fill.
 func (c *Store) FetchN(ctx context.Context, s store.Scope, filters []store.Filter, n int) ([]json.RawMessage, error) {
 	if err := c.check(s); err != nil {
@@ -105,25 +105,25 @@ func (c *Store) FetchN(ctx context.Context, s store.Scope, filters []store.Filte
 		}
 		out = rows
 	}
-	if p.legacy == nil || len(out) >= n {
+	if p.secondary == nil || len(out) >= n {
 		return out, nil
 	}
 
-	rows, _, err := c.cfg.Legacy.FetchPage(ctx, *p.legacy, c.legacyFilters(filters), store.Page{
-		Limit: n - len(out), SortBy: c.legacyName(c.cfg.TimeField), Order: store.Desc,
+	rows, _, err := c.cfg.Secondary.FetchPage(ctx, *p.secondary, c.secondaryFilters(filters), store.Page{
+		Limit: n - len(out), SortBy: c.secondaryName(c.cfg.TimeField), Order: store.Desc,
 	})
 	if err != nil {
-		if c.legacyFailed("FetchN", err) {
+		if c.secondaryFailed("FetchN", err) {
 			return out, nil
 		}
-		return nil, fmt.Errorf("composite: legacy FetchN: %w", err)
+		return nil, fmt.Errorf("composite: secondary FetchN: %w", err)
 	}
-	return append(out, c.legacyDocs(rows)...), nil
+	return append(out, c.secondaryDocs(rows)...), nil
 }
 
 // FetchPage pages across both stores. Sorted by time, which is the default, the
 // two are consecutive runs — the primary's records are all newer than the
-// legacy's — so the page is read from one or both without sorting anything. Any
+// secondary's — so the page is read from one or both without sorting anything. Any
 // other order has to read offset+limit rows from each and merge them.
 func (c *Store) FetchPage(ctx context.Context, s store.Scope, filters []store.Filter, page store.Page) ([]json.RawMessage, int64, error) {
 	if err := c.check(s); err != nil {
@@ -144,13 +144,13 @@ func (c *Store) FetchPage(ctx context.Context, s store.Scope, filters []store.Fi
 
 	p := c.plan(s)
 	switch {
-	case p.primary == nil && p.legacy == nil:
+	case p.primary == nil && p.secondary == nil:
 		return nil, 0, nil
-	case p.legacy == nil:
+	case p.secondary == nil:
 		return c.cfg.Primary.FetchPage(ctx, *p.primary, filters, page)
 	case p.primary == nil:
-		rows, total, err := c.legacyPage(ctx, *p.legacy, filters, page)
-		if err != nil && c.legacyFailed("FetchPage", err) {
+		rows, total, err := c.secondaryPage(ctx, *p.secondary, filters, page)
+		if err != nil && c.secondaryFailed("FetchPage", err) {
 			return nil, 0, nil
 		}
 		return rows, total, err
@@ -162,35 +162,35 @@ func (c *Store) FetchPage(ctx context.Context, s store.Scope, filters []store.Fi
 	return c.mergedPage(ctx, p, filters, page)
 }
 
-func (c *Store) legacyPage(ctx context.Context, s store.Scope, filters []store.Filter, page store.Page) ([]json.RawMessage, int64, error) {
-	page.SortBy = c.legacyName(page.SortBy)
-	rows, total, err := c.cfg.Legacy.FetchPage(ctx, s, c.legacyFilters(filters), page)
+func (c *Store) secondaryPage(ctx context.Context, s store.Scope, filters []store.Filter, page store.Page) ([]json.RawMessage, int64, error) {
+	page.SortBy = c.secondaryName(page.SortBy)
+	rows, total, err := c.cfg.Secondary.FetchPage(ctx, s, c.secondaryFilters(filters), page)
 	if err != nil {
 		return nil, 0, err
 	}
-	return c.legacyDocs(rows), total, nil
+	return c.secondaryDocs(rows), total, nil
 }
 
 // timePage reads a page out of two stores that split the time axis between
 // them. The run that comes first in the requested order is read first; the
 // second is read only for what the first could not supply.
 func (c *Store) timePage(ctx context.Context, p plan, filters []store.Filter, page store.Page) ([]json.RawMessage, int64, error) {
-	fetch := func(legacy bool, pg store.Page) ([]json.RawMessage, int64, error) {
-		if legacy {
-			return c.legacyPage(ctx, *p.legacy, filters, pg)
+	fetch := func(secondary bool, pg store.Page) ([]json.RawMessage, int64, error) {
+		if secondary {
+			return c.secondaryPage(ctx, *p.secondary, filters, pg)
 		}
 		return c.cfg.Primary.FetchPage(ctx, *p.primary, filters, pg)
 	}
 
 	// Newest first reads the primary, which is the newer, first.
-	firstLegacy := page.Order == store.Asc
+	firstSecondary := page.Order == store.Asc
 
-	rows1, t1, err := fetch(firstLegacy, page)
+	rows1, t1, err := fetch(firstSecondary, page)
 	if err != nil {
-		if firstLegacy && c.legacyFailed("FetchPage", err) {
+		if firstSecondary && c.secondaryFailed("FetchPage", err) {
 			return c.cfg.Primary.FetchPage(ctx, *p.primary, filters, page)
 		}
-		return nil, 0, c.wrap(firstLegacy, err)
+		return nil, 0, c.wrap(firstSecondary, err)
 	}
 
 	var rows2 []json.RawMessage
@@ -203,30 +203,30 @@ func (c *Store) timePage(ctx context.Context, p plan, filters []store.Filter, pa
 		if next.Offset < 0 {
 			next.Offset = 0
 		}
-		rows2, t2, err = fetch(!firstLegacy, next)
+		rows2, t2, err = fetch(!firstSecondary, next)
 	} else {
 		// The page is full from the first run; the second is only counted.
-		t2, err = c.countOne(ctx, p, !firstLegacy, filters)
+		t2, err = c.countOne(ctx, p, !firstSecondary, filters)
 	}
 	if err != nil {
-		if !firstLegacy && c.legacyFailed("FetchPage", err) {
+		if !firstSecondary && c.secondaryFailed("FetchPage", err) {
 			return rows1, t1, nil
 		}
-		return nil, 0, c.wrap(!firstLegacy, err)
+		return nil, 0, c.wrap(!firstSecondary, err)
 	}
 	return append(rows1, rows2...), t1 + t2, nil
 }
 
-func (c *Store) countOne(ctx context.Context, p plan, legacy bool, filters []store.Filter) (int64, error) {
-	if legacy {
-		return c.cfg.Legacy.Count(ctx, *p.legacy, c.legacyFilters(filters))
+func (c *Store) countOne(ctx context.Context, p plan, secondary bool, filters []store.Filter) (int64, error) {
+	if secondary {
+		return c.cfg.Secondary.Count(ctx, *p.secondary, c.secondaryFilters(filters))
 	}
 	return c.cfg.Primary.Count(ctx, *p.primary, filters)
 }
 
-func (c *Store) wrap(legacy bool, err error) error {
-	if legacy {
-		return fmt.Errorf("composite: legacy FetchPage: %w", err)
+func (c *Store) wrap(secondary bool, err error) error {
+	if secondary {
+		return fmt.Errorf("composite: secondary FetchPage: %w", err)
 	}
 	return err
 }
@@ -245,11 +245,11 @@ func (c *Store) mergedPage(ctx context.Context, p plan, filters []store.Filter, 
 		total int64
 	}
 	head := store.Page{Offset: 0, Limit: window, SortBy: page.SortBy, Order: page.Order}
-	prim, leg, err := fanOut(c, p, "FetchPage", func(st store.Store, sc store.Scope, legacy bool) (result, error) {
+	prim, sec, err := fanOut(c, p, "FetchPage", func(st store.Store, sc store.Scope, secondary bool) (result, error) {
 		var r result
 		var err error
-		if legacy {
-			r.rows, r.total, err = c.legacyPage(ctx, sc, filters, head)
+		if secondary {
+			r.rows, r.total, err = c.secondaryPage(ctx, sc, filters, head)
 		} else {
 			r.rows, r.total, err = st.FetchPage(ctx, sc, filters, head)
 		}
@@ -259,15 +259,15 @@ func (c *Store) mergedPage(ctx context.Context, p plan, filters []store.Filter, 
 		return nil, 0, err
 	}
 
-	merged := mergeSorted(prim.rows, leg.rows, page.SortBy, page.Order)
+	merged := mergeSorted(prim.rows, sec.rows, page.SortBy, page.Order)
 	if page.Offset >= len(merged) {
-		return nil, prim.total + leg.total, nil
+		return nil, prim.total + sec.total, nil
 	}
 	end := page.Offset + page.Limit
 	if end > len(merged) {
 		end = len(merged)
 	}
-	return merged[page.Offset:end], prim.total + leg.total, nil
+	return merged[page.Offset:end], prim.total + sec.total, nil
 }
 
 // TopValues is exact when one store answers. When both do, each is asked for
@@ -282,16 +282,16 @@ func (c *Store) TopValues(ctx context.Context, s store.Scope, field string, filt
 	if p.both() {
 		ask = widen(n)
 	}
-	prim, leg, err := fanOut(c, p, "TopValues", func(st store.Store, sc store.Scope, legacy bool) ([]store.Bucket, error) {
-		if legacy {
-			return st.TopValues(ctx, sc, c.legacyName(field), c.legacyFilters(filters), ask)
+	prim, sec, err := fanOut(c, p, "TopValues", func(st store.Store, sc store.Scope, secondary bool) ([]store.Bucket, error) {
+		if secondary {
+			return st.TopValues(ctx, sc, c.secondaryName(field), c.secondaryFilters(filters), ask)
 		}
 		return st.TopValues(ctx, sc, field, filters, ask)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return mergeBuckets(prim, leg, n), nil
+	return mergeBuckets(prim, sec, n), nil
 }
 
 // Timeline sums buckets with the same start. The bucket that holds Cutover is
@@ -301,16 +301,16 @@ func (c *Store) Timeline(ctx context.Context, s store.Scope, filters []store.Fil
 	if err := c.check(s); err != nil {
 		return nil, err
 	}
-	prim, leg, err := fanOut(c, c.plan(s), "Timeline", func(st store.Store, sc store.Scope, legacy bool) ([]store.Point, error) {
-		if legacy {
-			return st.Timeline(ctx, sc, c.legacyFilters(filters), interval)
+	prim, sec, err := fanOut(c, c.plan(s), "Timeline", func(st store.Store, sc store.Scope, secondary bool) ([]store.Point, error) {
+		if secondary {
+			return st.Timeline(ctx, sc, c.secondaryFilters(filters), interval)
 		}
 		return st.Timeline(ctx, sc, filters, interval)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return mergePoints(prim, leg), nil
+	return mergePoints(prim, sec), nil
 }
 
 func (c *Store) TimelineByField(ctx context.Context, s store.Scope, field string, filters []store.Filter, interval store.Interval, n int) ([]store.Series, error) {
@@ -322,16 +322,16 @@ func (c *Store) TimelineByField(ctx context.Context, s store.Scope, field string
 	if p.both() {
 		ask = widen(n)
 	}
-	prim, leg, err := fanOut(c, p, "TimelineByField", func(st store.Store, sc store.Scope, legacy bool) ([]store.Series, error) {
-		if legacy {
-			return st.TimelineByField(ctx, sc, c.legacyName(field), c.legacyFilters(filters), interval, ask)
+	prim, sec, err := fanOut(c, p, "TimelineByField", func(st store.Store, sc store.Scope, secondary bool) ([]store.Series, error) {
+		if secondary {
+			return st.TimelineByField(ctx, sc, c.secondaryName(field), c.secondaryFilters(filters), interval, ask)
 		}
 		return st.TimelineByField(ctx, sc, field, filters, interval, ask)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return mergeSeries(prim, leg, n), nil
+	return mergeSeries(prim, sec, n), nil
 }
 
 func (c *Store) GroupBy(ctx context.Context, s store.Scope, fields []string, filters []store.Filter, opts store.GroupOpts) ([]store.Group, error) {
@@ -343,10 +343,10 @@ func (c *Store) GroupBy(ctx context.Context, s store.Scope, fields []string, fil
 	if p.both() && opts.Limit > 0 {
 		ask.Limit = widen(opts.Limit)
 	}
-	prim, leg, err := fanOut(c, p, "GroupBy", func(st store.Store, sc store.Scope, legacy bool) ([]store.Group, error) {
-		if legacy {
-			gs, err := st.GroupBy(ctx, sc, c.legacyNames(fields), c.legacyFilters(filters), ask)
-			return c.fromLegacyGroups(gs, fields), err
+	prim, sec, err := fanOut(c, p, "GroupBy", func(st store.Store, sc store.Scope, secondary bool) ([]store.Group, error) {
+		if secondary {
+			gs, err := st.GroupBy(ctx, sc, c.secondaryNames(fields), c.secondaryFilters(filters), ask)
+			return c.fromSecondaryGroups(gs, fields), err
 		}
 		return st.GroupBy(ctx, sc, fields, filters, ask)
 	})
@@ -354,22 +354,22 @@ func (c *Store) GroupBy(ctx context.Context, s store.Scope, fields []string, fil
 		return nil, err
 	}
 	if !p.both() {
-		return append(prim, leg...), nil
+		return append(prim, sec...), nil
 	}
-	return mergeGroups(prim, leg, opts), nil
+	return mergeGroups(prim, sec, opts), nil
 }
 
-// fromLegacyGroups puts a legacy answer back in the caller's field names and
+// fromSecondaryGroups puts a secondary answer back in the caller's field names and
 // record shape. Each level is named by the first of the fields that remain.
-func (c *Store) fromLegacyGroups(gs []store.Group, fields []string) []store.Group {
+func (c *Store) fromSecondaryGroups(gs []store.Group, fields []string) []store.Group {
 	for i := range gs {
 		g := &gs[i]
 		if len(fields) > 0 && g.Field != "" {
 			g.Field = fields[0]
 		}
-		g.Hits = c.legacyDocs(g.Hits)
+		g.Hits = c.secondaryDocs(g.Hits)
 		if len(g.Children) > 0 && len(fields) > 1 {
-			g.Children = c.fromLegacyGroups(g.Children, fields[1:])
+			g.Children = c.fromSecondaryGroups(g.Children, fields[1:])
 		}
 	}
 	return gs
@@ -380,21 +380,21 @@ func (c *Store) DescribeFields(ctx context.Context, s store.Scope) ([]store.Fiel
 		return nil, err
 	}
 	// Fields are a property of the dataset, not of a time range, so both stores
-	// describe it whenever the legacy serves the dataset at all.
+	// describe it whenever the secondary serves the dataset at all.
 	p := plan{}
 	ps := s
 	p.primary = &ps
-	if c.eligibleForLegacy(s) {
-		ls := s
-		ls.Tenant = store.AllTenants
-		p.legacy = &ls
+	if c.eligibleForSecondary(s) {
+		ss := s
+		ss.Tenant = store.AllTenants
+		p.secondary = &ss
 	}
 
-	prim, leg, err := fanOut(c, p, "DescribeFields", func(st store.Store, sc store.Scope, legacy bool) ([]store.Field, error) {
+	prim, sec, err := fanOut(c, p, "DescribeFields", func(st store.Store, sc store.Scope, secondary bool) ([]store.Field, error) {
 		fs, err := st.DescribeFields(ctx, sc)
-		if legacy && c.cfg.LegacyFieldBack != nil {
+		if secondary && c.cfg.SecondaryFieldBack != nil {
 			for i := range fs {
-				fs[i].Name = c.cfg.LegacyFieldBack(fs[i].Name)
+				fs[i].Name = c.cfg.SecondaryFieldBack(fs[i].Name)
 			}
 		}
 		return fs, err
@@ -402,5 +402,5 @@ func (c *Store) DescribeFields(ctx context.Context, s store.Scope) ([]store.Fiel
 	if err != nil {
 		return nil, err
 	}
-	return mergeFields(prim, leg), nil
+	return mergeFields(prim, sec), nil
 }
