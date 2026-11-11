@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,6 +19,39 @@ const maxMessageSize = 10 * 1024 * 1024 // 10MB limit
 // UTMStack lines store them under different names ("event" on v11, "log" on
 // v12), and a document is serialized with exactly one.
 var eventKey atomic.Pointer[string]
+
+// EventKeyEnv is the environment variable a process reads at startup to choose
+// the event key, so that a deployment decides it once for every process that
+// runs in it: "event" for a v11 installation, "log" for a v12 one.
+const EventKeyEnv = "UTM_EVENT_KEY"
+
+func init() {
+	if err := setEventKeyFromEnv(os.Getenv); err != nil {
+		// A key that is wrong must not fall back to the default: the process
+		// would start and write every event's parsed fields where nothing reads
+		// them.
+		panic(err)
+	}
+}
+
+func setEventKeyFromEnv(getenv func(string) string) error {
+	v := getenv(EventKeyEnv)
+	if v == "" {
+		return nil
+	}
+	if err := SetEventKey(v); err != nil {
+		return fmt.Errorf("%s: %w", EventKeyEnv, err)
+	}
+	return nil
+}
+
+// EventKey is the key Event messages are serialized with.
+func EventKey() string {
+	if k := eventKey.Load(); k != nil {
+		return *k
+	}
+	return "event"
+}
 
 // SetEventKey chooses the JSON key Event messages are serialized with: "event"
 // (the default) or "log". Reading accepts both whatever is chosen. Call it once
