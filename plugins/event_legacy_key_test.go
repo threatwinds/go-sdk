@@ -67,3 +67,70 @@ func TestEventKeyIsChosenByTheProcessAndReadBothWays(t *testing.T) {
 		t.Error("an unknown key must be rejected")
 	}
 }
+
+func alertWithEvents(t *testing.T) *Alert {
+	t.Helper()
+	ev := func(id, user string) *Event {
+		return &Event{Id: id, Event: map[string]*structpb.Value{"user": structpb.NewStringValue(user)}}
+	}
+	return &Alert{Id: "a1", Name: "n", LastEvent: ev("e2", "root"), Events: []*Event{ev("e1", "alice"), ev("e2", "root")}}
+}
+
+func TestEventKeyAppliesToEventsNestedInAnAlert(t *testing.T) {
+	t.Cleanup(func() { _ = utils.SetEventKey("event") })
+
+	for _, key := range []string{"event", "log"} {
+		if err := utils.SetEventKey(key); err != nil {
+			t.Fatal(err)
+		}
+		out, err := utils.ProtoMessageToString(alertWithEvents(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		other := map[string]string{"event": "log", "log": "event"}[key]
+
+		for _, path := range []string{"lastEvent", "events.0", "events.1"} {
+			if gjson.Get(*out, path+"."+key+".user").String() == "" {
+				t.Errorf("key %q: %s is not serialized under it: %s", key, path, *out)
+			}
+			if gjson.Get(*out, path+"."+other).Exists() {
+				t.Errorf("key %q: %s must not also carry %q: %s", key, path, other, *out)
+			}
+		}
+
+		var back Alert
+		if err := utils.StringToProtoMessage(out, &back); err != nil {
+			t.Fatalf("key %q: %v", key, err)
+		}
+		if back.LastEvent.GetEvent()["user"].GetStringValue() != "root" || len(back.Events) != 2 ||
+			back.Events[0].GetEvent()["user"].GetStringValue() != "alice" {
+			t.Errorf("key %q: round trip lost the nested events: %+v", key, &back)
+		}
+	}
+}
+
+func TestAnAlertDocumentWithTheLegacyLogKeyStillLoads(t *testing.T) {
+	doc := `{"id":"a1","lastEvent":{"id":"e","log":{"user":"root"}},"events":[{"id":"e","log":{"user":"alice"}}]}`
+	var a Alert
+	if err := utils.StringToProtoMessage(&doc, &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.LastEvent.GetEvent()["user"].GetStringValue() != "root" || a.Events[0].GetEvent()["user"].GetStringValue() != "alice" {
+		t.Errorf("nested parsed fields were dropped: %+v", &a)
+	}
+}
+
+func TestRewritingNestedEventsKeepsLargeNumbersExact(t *testing.T) {
+	t.Cleanup(func() { _ = utils.SetEventKey("event") })
+	if err := utils.SetEventKey("log"); err != nil {
+		t.Fatal(err)
+	}
+	a := &Alert{Id: "a", LastEvent: &Event{Id: "e", Event: map[string]*structpb.Value{"n": structpb.NewNumberValue(1234567890123)}}}
+	out, err := utils.ProtoMessageToString(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := gjson.Get(*out, "lastEvent.log.n").Raw; got != "1234567890123" {
+		t.Errorf("number rewritten as %s", got)
+	}
+}
