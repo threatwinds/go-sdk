@@ -33,6 +33,9 @@ type Reader interface {
 	TimelineByField(ctx context.Context, s Scope, field string, filters []Filter, interval Interval, n int) ([]Series, error)
 	GroupBy(ctx context.Context, s Scope, fields []string, filters []Filter, opts GroupOpts) ([]Group, error)
 
+	//make sql queries over the storage
+	FetchQuery(ctx context.Context, s Scope, sql string) ([]json.RawMessage, error)
+
 	// DescribeFields lists the queryable fields of a dataset.
 	DescribeFields(ctx context.Context, s Scope) ([]Field, error)
 }

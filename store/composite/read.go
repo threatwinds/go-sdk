@@ -217,6 +217,34 @@ func (c *Store) timePage(ctx context.Context, p plan, filters []store.Filter, pa
 	return append(rows1, rows2...), t1 + t2, nil
 }
 
+// FetchQuery runs the caller's SQL against every store the scope reaches and
+// returns the primary's rows first, then the secondary's rewritten into the
+// primary's shape. Both runs start together, and a secondary failure is
+// tolerated like FetchPage's. SQL has no portable merge, so the runs
+// concatenate: a query that is meaningful only as a whole (an aggregate, a
+// join) should name its side by scoping From/To to one half of the cutover
+// rather than relying on this.
+func (c *Store) FetchQuery(ctx context.Context, s store.Scope, sql string) ([]json.RawMessage, error) {
+	if err := c.check(s); err != nil {
+		return nil, err
+	}
+	p := c.plan(s)
+	prim, sec, err := fanOut(c, p, "FetchQuery", func(st store.Store, sc store.Scope, secondary bool) ([]json.RawMessage, error) {
+		rows, err := st.FetchQuery(ctx, sc, sql)
+		if err != nil {
+			return nil, err
+		}
+		if secondary {
+			rows = c.secondaryDocs(rows)
+		}
+		return rows, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return append(prim, sec...), nil
+}
+
 func (c *Store) countOne(ctx context.Context, p plan, secondary bool, filters []store.Filter) (int64, error) {
 	if secondary {
 		return c.cfg.Secondary.Count(ctx, *p.secondary, c.secondaryFilters(filters))
