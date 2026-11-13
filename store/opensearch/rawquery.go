@@ -2,7 +2,9 @@ package opensearch
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	sdkos "github.com/threatwinds/go-sdk/os"
 	"github.com/threatwinds/go-sdk/store"
@@ -28,4 +30,28 @@ func (d *Driver) RawQuery(ctx context.Context, s store.Scope, query string) ([]m
 			store.ErrUnsupported, s.Tenant)
 	}
 	return sdkos.SearchSQL(ctx, query)
+}
+
+// FetchQuery is RawQuery under the agnostic name
+func (d *Driver) FetchQuery(ctx context.Context, s store.Scope, sql string) ([]json.RawMessage, error) {
+
+	var query string = sql
+	if s.Tenant != store.AllTenants {
+		query = strings.TrimRight(strings.TrimSpace(sql), ";")
+		query += fmt.Sprintf(" WHERE tenant_id = '%s';", s.Tenant)
+	}
+
+	rows, err := d.RawQuery(ctx, s, query)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]json.RawMessage, 0, len(rows))
+	for _, r := range rows {
+		b, err := json.Marshal(r)
+		if err != nil {
+			return nil, fmt.Errorf("opensearch: fetch query: %w", err)
+		}
+		out = append(out, b)
+	}
+	return out, nil
 }
