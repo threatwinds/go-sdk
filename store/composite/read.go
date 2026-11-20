@@ -29,7 +29,7 @@ func (c *Store) Count(ctx context.Context, s store.Scope, filters []store.Filter
 		return 0, err
 	}
 	p := c.plan(s)
-	prim, sec, err := fanOut(c, p, "Count", func(st store.Store, sc store.Scope, secondary bool) (int64, error) {
+	prim, sec, err := fanOut(c, p, "Count", true, func(st store.Store, sc store.Scope, secondary bool) (int64, error) {
 		if secondary {
 			return st.Count(ctx, sc, c.secondaryFilters(filters))
 		}
@@ -229,11 +229,12 @@ func (c *Store) FetchQuery(ctx context.Context, s store.Scope, sql string) ([]js
 		return nil, err
 	}
 	p := c.plan(s)
-	prim, sec, err := fanOut(c, p, "FetchQuery", func(st store.Store, sc store.Scope, secondary bool) ([]json.RawMessage, error) {
+	prim, sec, err := fanOut(c, p, "FetchQuery", false, func(st store.Store, sc store.Scope, secondary bool) ([]json.RawMessage, error) {
 		rows, err := st.FetchQuery(ctx, sc, sql)
 		if err != nil {
 			return nil, err
 		}
+
 		if secondary {
 			rows = c.secondaryDocs(rows)
 		}
@@ -273,7 +274,7 @@ func (c *Store) mergedPage(ctx context.Context, p plan, filters []store.Filter, 
 		total int64
 	}
 	head := store.Page{Offset: 0, Limit: window, SortBy: page.SortBy, Order: page.Order}
-	prim, sec, err := fanOut(c, p, "FetchPage", func(st store.Store, sc store.Scope, secondary bool) (result, error) {
+	prim, sec, err := fanOut(c, p, "FetchPage", true, func(st store.Store, sc store.Scope, secondary bool) (result, error) {
 		var r result
 		var err error
 		if secondary {
@@ -310,7 +311,7 @@ func (c *Store) TopValues(ctx context.Context, s store.Scope, field string, filt
 	if p.both() {
 		ask = widen(n)
 	}
-	prim, sec, err := fanOut(c, p, "TopValues", func(st store.Store, sc store.Scope, secondary bool) ([]store.Bucket, error) {
+	prim, sec, err := fanOut(c, p, "TopValues", true, func(st store.Store, sc store.Scope, secondary bool) ([]store.Bucket, error) {
 		if secondary {
 			return st.TopValues(ctx, sc, c.secondaryName(field), c.secondaryFilters(filters), ask)
 		}
@@ -329,7 +330,7 @@ func (c *Store) Timeline(ctx context.Context, s store.Scope, filters []store.Fil
 	if err := c.check(s); err != nil {
 		return nil, err
 	}
-	prim, sec, err := fanOut(c, c.plan(s), "Timeline", func(st store.Store, sc store.Scope, secondary bool) ([]store.Point, error) {
+	prim, sec, err := fanOut(c, c.plan(s), "Timeline", true, func(st store.Store, sc store.Scope, secondary bool) ([]store.Point, error) {
 		if secondary {
 			return st.Timeline(ctx, sc, c.secondaryFilters(filters), interval)
 		}
@@ -350,7 +351,7 @@ func (c *Store) TimelineByField(ctx context.Context, s store.Scope, field string
 	if p.both() {
 		ask = widen(n)
 	}
-	prim, sec, err := fanOut(c, p, "TimelineByField", func(st store.Store, sc store.Scope, secondary bool) ([]store.Series, error) {
+	prim, sec, err := fanOut(c, p, "TimelineByField", true, func(st store.Store, sc store.Scope, secondary bool) ([]store.Series, error) {
 		if secondary {
 			return st.TimelineByField(ctx, sc, c.secondaryName(field), c.secondaryFilters(filters), interval, ask)
 		}
@@ -371,7 +372,7 @@ func (c *Store) GroupBy(ctx context.Context, s store.Scope, fields []string, fil
 	if p.both() && opts.Limit > 0 {
 		ask.Limit = widen(opts.Limit)
 	}
-	prim, sec, err := fanOut(c, p, "GroupBy", func(st store.Store, sc store.Scope, secondary bool) ([]store.Group, error) {
+	prim, sec, err := fanOut(c, p, "GroupBy", true, func(st store.Store, sc store.Scope, secondary bool) ([]store.Group, error) {
 		if secondary {
 			gs, err := st.GroupBy(ctx, sc, c.secondaryNames(fields), c.secondaryFilters(filters), ask)
 			return c.fromSecondaryGroups(gs, fields), err
@@ -418,7 +419,7 @@ func (c *Store) DescribeFields(ctx context.Context, s store.Scope) ([]store.Fiel
 		p.secondary = &ss
 	}
 
-	prim, sec, err := fanOut(c, p, "DescribeFields", func(st store.Store, sc store.Scope, secondary bool) ([]store.Field, error) {
+	prim, sec, err := fanOut(c, p, "DescribeFields", true, func(st store.Store, sc store.Scope, secondary bool) ([]store.Field, error) {
 		fs, err := st.DescribeFields(ctx, sc)
 		if secondary && c.cfg.SecondaryFieldBack != nil {
 			for i := range fs {

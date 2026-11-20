@@ -37,6 +37,9 @@ func (l SpecLayout) spec(ds store.Dataset) (DatasetSpec, error) {
 	if s.Prefix == "" {
 		return DatasetSpec{}, fmt.Errorf("opensearch: dataset %q has no prefix", ds)
 	}
+	// Tolerate a trailing dash ("v11-log-") so it does not double up with the
+	// "-" the builders add before a dataType, date or wildcard.
+	s.Prefix = strings.TrimSuffix(s.Prefix, "-")
 	return s, nil
 }
 

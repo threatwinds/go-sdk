@@ -215,32 +215,29 @@ func (c *Store) secondaryFailed(op string, err error) bool {
 
 // fanOut runs the primary and secondary halves of a plan together. A secondary
 // failure is an error unless tolerated, in which case that half is empty.
-func fanOut[T any](c *Store, p plan, op string, run func(st store.Store, s store.Scope, secondary bool) (T, error)) (T, T, error) {
+func fanOut[T any](c *Store, p plan, op string, primary_priority bool, run func(st store.Store, s store.Scope, secondary bool) (T, error)) (T, T, error) {
 	var (
 		prim, sec  T
 		pErr, lErr error
 		wg         sync.WaitGroup
 	)
 	if p.primary != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			prim, pErr = run(c.cfg.Primary, *p.primary, false)
-		}()
+		})
 	}
 	if p.secondary != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sec, lErr = run(c.cfg.Secondary, *p.secondary, true)
-		}()
+		})
 	}
 	wg.Wait()
 
-	if pErr != nil {
+	if pErr != nil && primary_priority {
 		var zero T
 		return zero, zero, pErr
 	}
+
 	if lErr != nil {
 		if !c.secondaryFailed(op, lErr) {
 			var zero T

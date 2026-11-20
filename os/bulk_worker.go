@@ -13,8 +13,6 @@ import (
 
 // worker runs the background process that sends bulk requests at configured intervals.
 func (bq *BulkQueue) worker() {
-	defer bq.wg.Done()
-
 	for {
 		select {
 		case <-bq.ticker.C:
