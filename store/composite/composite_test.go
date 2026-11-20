@@ -144,6 +144,11 @@ func (f *fake) FetchN(ctx context.Context, s store.Scope, fl []store.Filter, n i
 	return rows, err
 }
 
+func (f *fake) FetchQuery(_ context.Context, s store.Scope, _ string) ([]json.RawMessage, error) {
+	f.record(s, nil)
+	return f.match(s, nil), nil
+}
+
 func (f *fake) TopValues(_ context.Context, s store.Scope, field string, fl []store.Filter, n int) ([]store.Bucket, error) {
 	f.record(s, fl)
 	if f.err != nil {
@@ -533,6 +538,19 @@ func TestFetchNTakesTheNewestAcrossBoth(t *testing.T) {
 
 	rows, _ = c.FetchN(context.Background(), scope(), nil, 7)
 	eq(t, ids(rows), []string{"p0", "p1", "p2", "p3", "p4", "l0", "l1"})
+}
+
+func TestFetchQueryConcatenatesPrimaryThenSecondary(t *testing.T) {
+	c, _, _ := build(t, nil)
+
+	rows, err := c.FetchQuery(context.Background(), scope(), "SELECT 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ids(rows)
+	if len(got) == 0 || got[0] != "p0" {
+		t.Fatalf("the primary's rows should come first, got %v", got)
+	}
 }
 
 func TestFetchByIDFallsBackToTheSecondaryOnlyWhenTheRecordIsNotInThePrimary(t *testing.T) {
