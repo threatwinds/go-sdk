@@ -78,6 +78,10 @@ func filterClause(f store.Filter) (map[string]any, bool, error) {
 	}
 	switch f.Op {
 	case store.OpEq:
+		if isEmptyValue(f.Value) {
+			// "= empty" maps to field-absent, the way a missing value reads.
+			return map[string]any{"bool": map[string]any{"must_not": map[string]any{"exists": map[string]any{"field": f.Field}}}}, false, nil
+		}
 		return map[string]any{"term": map[string]any{f.Field: f.Value}}, false, nil
 	case store.OpNotEq:
 		return map[string]any{"term": map[string]any{f.Field: f.Value}}, true, nil
@@ -157,6 +161,21 @@ var wildcardEscaper = strings.NewReplacer(`\`, `\\`, "*", `\*`, "?", `\?`)
 
 func rangeClause(field, op string, v any) map[string]any {
 	return map[string]any{"range": map[string]any{field: map[string]any{op: v}}}
+}
+
+// isEmptyValue names the values that mean "absent" for an equality filter: nil
+// and the zero strings in their typed forms. Anything else — 0, false, [] —
+// is a real value and stays a plain term.
+func isEmptyValue(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return true
+	case string:
+		return t == ""
+	case *string:
+		return t != nil && *t == ""
+	}
+	return false
 }
 
 func toSlice(v any) ([]any, error) {

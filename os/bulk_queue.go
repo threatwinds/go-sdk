@@ -28,9 +28,7 @@ func NewBulkQueue(processName string, config BulkQueueConfig) *BulkQueue {
 		processName: processName,
 	}
 
-	bq.wg.Add(1)
-	go bq.worker()
-
+	bq.wg.Go(bq.worker)
 	return bq
 }
 
