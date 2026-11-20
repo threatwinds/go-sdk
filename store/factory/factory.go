@@ -88,6 +88,7 @@ type OpenSearch struct {
 	RetentionPolicyID string                   `json:"retentionPolicyId,omitempty"`
 	Layout            map[string]DatasetLayout `json:"layout"`
 	TextFields        map[string]string        `json:"textFields,omitempty"`
+	KeywordFields     []string                 `json:"keywordFields,omitempty"`
 }
 
 // DatasetLayout is opensearch.DatasetSpec: how a dataset's indices are named.
@@ -371,6 +372,7 @@ func (b *Built) engine(e Engine, which string, opts Options) (store.Store, error
 			TimestampField:    o.TimestampField,
 			RetentionPolicyID: o.RetentionPolicyID,
 			TextFields:        datasetMap(o.TextFields),
+			KeywordFields:     boolSet(o.KeywordFields),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("store config: %s: %w", which, err)
@@ -405,6 +407,17 @@ func datasetMap(m map[string]string) map[store.Dataset]string {
 	out := make(map[store.Dataset]string, len(m))
 	for k, v := range m {
 		out[store.Dataset(k)] = v
+	}
+	return out
+}
+
+func boolSet(list []string) map[string]bool {
+	if len(list) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(list))
+	for _, k := range list {
+		out[k] = true
 	}
 	return out
 }
