@@ -52,7 +52,7 @@ func (l SpecLayout) ReadIndices(s store.Scope) ([]string, error) {
 	if spec.IncludeDataType && s.DataType != "" {
 		name += "-" + s.DataType
 	}
-	if spec.DateFormat != "" || (spec.IncludeDataType && s.DataType == "") {
+	if spec.DateFormat == "" || (spec.IncludeDataType && s.DataType == "") {
 		name += "-*"
 	}
 	return []string{name}, nil
