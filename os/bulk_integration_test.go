@@ -30,7 +30,7 @@ func getTestNodes() string {
 // refreshIndex forces OpenSearch to refresh the index so documents are searchable.
 func refreshIndex(ctx context.Context, index string) {
 	_, _ = apiClient.Indices.Refresh(ctx, &opensearchapi.IndicesRefreshReq{
-		Indices: []string{index},
+		Index: []string{index},
 	})
 }
 

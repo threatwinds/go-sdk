@@ -118,7 +118,7 @@ func mergeSeries(a, b []store.Series, n int) []store.Series {
 }
 
 // mergeGroups combines two group lists level by level. Hits are the primary's
-// first, then the legacy's: both are newest-first and the primary is newer.
+// first, then the secondary's: both are newest-first and the primary is newer.
 func mergeGroups(a, b []store.Group, opts store.GroupOpts) []store.Group {
 	idx := map[string]int{}
 	var out []store.Group
@@ -169,14 +169,14 @@ func mergeGroups(a, b []store.Group, opts store.GroupOpts) []store.Group {
 	return out
 }
 
-func mergeFields(prim, leg []store.Field) []store.Field {
-	byName := make(map[string]store.Field, len(prim)+len(leg))
-	order := make([]string, 0, len(prim)+len(leg))
+func mergeFields(prim, sec []store.Field) []store.Field {
+	byName := make(map[string]store.Field, len(prim)+len(sec))
+	order := make([]string, 0, len(prim)+len(sec))
 	for _, f := range prim {
 		byName[f.Name] = f
 		order = append(order, f.Name)
 	}
-	for _, f := range leg {
+	for _, f := range sec {
 		p, ok := byName[f.Name]
 		if !ok {
 			byName[f.Name] = f

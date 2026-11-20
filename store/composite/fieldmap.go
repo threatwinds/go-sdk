@@ -7,10 +7,10 @@ import (
 
 // PrefixMap returns the two field-name translations a Config takes, for stores
 // that differ only in what they call the object holding the parsed fields: the
-// current store says "log.user" where the legacy says "event.user". Names that
+// current store says "log.user" where the secondary says "event.user". Names that
 // do not start with the prefix pass through unchanged, and so does the prefix
 // alone.
-func PrefixMap(current, legacy string) (toLegacy, fromLegacy func(string) string) {
+func PrefixMap(primary, secondary string) (toSecondary, fromSecondary func(string) string) {
 	swap := func(from, to string) func(string) string {
 		return func(field string) string {
 			if field == from {
@@ -22,10 +22,10 @@ func PrefixMap(current, legacy string) (toLegacy, fromLegacy func(string) string
 			return field
 		}
 	}
-	return swap(current, legacy), swap(legacy, current)
+	return swap(primary, secondary), swap(secondary, primary)
 }
 
-// RenameDocKey returns a Config.LegacyDocument that renames one top-level key of
+// RenameDocKey returns a Config.SecondaryDocument that renames one top-level key of
 // a record. A record without the key, or that is not a JSON object, is returned
 // as it came, and a key already present under the new name is left alone.
 func RenameDocKey(from, to string) func(json.RawMessage) json.RawMessage {

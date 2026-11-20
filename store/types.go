@@ -34,8 +34,8 @@ const (
 	OpGte         Op = "gte"
 	OpLt          Op = "lt"
 	OpLte         Op = "lte"
-	OpBetween     Op = "between" // Value is [2]any{lo, hi}
-	OpContains    Op = "contains"
+	OpBetween     Op = "between"  // Value is [2]any{lo, hi}
+	OpContains    Op = "contains" // substring on ClickHouse, word match on OpenSearch: see the package docs
 	OpNotContains Op = "not_contains"
 	OpExists      Op = "exists" // Value ignored
 
@@ -148,6 +148,8 @@ type DatasetUsage struct {
 	Newest    time.Time
 }
 
+// Retention is how long data is kept. ColdAfter is only honoured by engines
+// that can tier; OpenSearch rejects a change to it with ErrUnsupported.
 type Retention struct {
 	Keep      time.Duration
 	ColdAfter time.Duration
