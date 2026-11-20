@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -150,10 +151,19 @@ func (d *Driver) FetchPage(ctx context.Context, s store.Scope, filters []store.F
 	return docs, res.Hits.Total.Value, nil
 }
 
+var (
+	keywordFields []string = []string{"dataType"}
+)
+
 func (d *Driver) TopValues(ctx context.Context, s store.Scope, field string, filters []store.Filter, n int) ([]store.Bucket, error) {
 	if field == "" {
 		return nil, fmt.Errorf("opensearch: TopValues needs a field")
 	}
+
+	if slices.Contains(keywordFields, field) {
+		field = fmt.Sprintf("%s.keyword", field)
+	}
+
 	if n <= 0 {
 		n = defaultBucketLimit
 	}
