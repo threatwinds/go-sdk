@@ -72,6 +72,14 @@ type Config struct {
 	SecondaryFieldBack func(string) string
 	SecondaryDocument  func(json.RawMessage) json.RawMessage
 
+	// SecondaryValue rewrites one filter before it reaches the secondary store, and
+	// returns it unchanged when the filter is not one it maps. It exists for the two
+	// stores agreeing on a field name but not its value: the v11 alerts index keeps
+	// status as a numeric code (2 = "Open") where the primary keeps the string.
+	// Applied in SecondaryField's order, after the field name is already remapped,
+	// so the hook keys on the secondary's name. Optional.
+	SecondaryValue func(store.Filter) store.Filter
+
 	// Now is the clock, replaceable in tests.
 	Now func() time.Time
 }
@@ -152,13 +160,16 @@ func (c *Store) plan(s store.Scope) plan {
 func (p plan) both() bool { return p.primary != nil && p.secondary != nil }
 
 func (c *Store) secondaryFilters(filters []store.Filter) []store.Filter {
-	if c.cfg.SecondaryField == nil || len(filters) == 0 {
+	if c.cfg.SecondaryField == nil && c.cfg.SecondaryValue == nil || len(filters) == 0 {
 		return filters
 	}
 	out := make([]store.Filter, len(filters))
 	for i, f := range filters {
-		if f.Field != "" {
+		if f.Field != "" && c.cfg.SecondaryField != nil {
 			f.Field = c.cfg.SecondaryField(f.Field)
+		}
+		if c.cfg.SecondaryValue != nil {
+			f = c.cfg.SecondaryValue(f)
 		}
 		out[i] = f
 	}
