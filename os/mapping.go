@@ -202,8 +202,9 @@ func (c *MappingCache) fetchAndMerge(ctx context.Context, pattern string) (*Merg
 	}
 
 	// Extract indices from response
-	indices := make([]string, 0, len(resp.Indices))
-	for indexName := range resp.Indices {
+	respIndices := resp.GetIndices()
+	indices := make([]string, 0, len(respIndices))
+	for indexName := range respIndices {
 		indices = append(indices, indexName)
 	}
 
@@ -225,7 +226,7 @@ func (c *MappingCache) fetchAndMerge(ctx context.Context, pattern string) (*Merg
 	}
 
 	// Process each index - resp.Indices has Mappings as json.RawMessage
-	for indexName, indexData := range resp.Indices {
+	for indexName, indexData := range respIndices {
 		// Parse the Mappings json.RawMessage into a map
 		var mappingsData map[string]interface{}
 		if err := json.Unmarshal(indexData.Mappings, &mappingsData); err != nil {
