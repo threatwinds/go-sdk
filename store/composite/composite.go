@@ -72,6 +72,14 @@ type Config struct {
 	SecondaryFieldBack func(string) string
 	SecondaryDocument  func(json.RawMessage) json.RawMessage
 
+	// SecondaryValue rewrites one filter before it reaches the secondary store, and
+	// returns it unchanged when the filter is not one it maps. It exists for the two
+	// stores agreeing on a field name but not its value: the v11 alerts index keeps
+	// status as a numeric code (2 = "Open") where the primary keeps the string.
+	// Applied in SecondaryField's order, after the field name is already remapped,
+	// so the hook keys on the secondary's name. Optional.
+	SecondaryValue func(store.Filter) store.Filter
+
 	// Now is the clock, replaceable in tests.
 	Now func() time.Time
 }
@@ -152,13 +160,16 @@ func (c *Store) plan(s store.Scope) plan {
 func (p plan) both() bool { return p.primary != nil && p.secondary != nil }
 
 func (c *Store) secondaryFilters(filters []store.Filter) []store.Filter {
-	if c.cfg.SecondaryField == nil || len(filters) == 0 {
+	if c.cfg.SecondaryField == nil && c.cfg.SecondaryValue == nil || len(filters) == 0 {
 		return filters
 	}
 	out := make([]store.Filter, len(filters))
 	for i, f := range filters {
-		if f.Field != "" {
+		if f.Field != "" && c.cfg.SecondaryField != nil {
 			f.Field = c.cfg.SecondaryField(f.Field)
+		}
+		if c.cfg.SecondaryValue != nil {
+			f = c.cfg.SecondaryValue(f)
 		}
 		out[i] = f
 	}
@@ -215,32 +226,29 @@ func (c *Store) secondaryFailed(op string, err error) bool {
 
 // fanOut runs the primary and secondary halves of a plan together. A secondary
 // failure is an error unless tolerated, in which case that half is empty.
-func fanOut[T any](c *Store, p plan, op string, run func(st store.Store, s store.Scope, secondary bool) (T, error)) (T, T, error) {
+func fanOut[T any](c *Store, p plan, op string, primary_priority bool, run func(st store.Store, s store.Scope, secondary bool) (T, error)) (T, T, error) {
 	var (
 		prim, sec  T
 		pErr, lErr error
 		wg         sync.WaitGroup
 	)
 	if p.primary != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			prim, pErr = run(c.cfg.Primary, *p.primary, false)
-		}()
+		})
 	}
 	if p.secondary != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sec, lErr = run(c.cfg.Secondary, *p.secondary, true)
-		}()
+		})
 	}
 	wg.Wait()
 
-	if pErr != nil {
+	if pErr != nil && primary_priority {
 		var zero T
 		return zero, zero, pErr
 	}
+
 	if lErr != nil {
 		if !c.secondaryFailed(op, lErr) {
 			var zero T

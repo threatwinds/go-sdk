@@ -24,6 +24,7 @@
 //	  tenant: ce66672c-e36d-4761-a8c8-90058fee1a24
 //	  datasets: [logs]
 //	  fieldPrefix: {primary: log, secondary: event}
+//	  fieldValueMaps: {status: {"Open": "2", "In review": "3", "Completed": "5", "Automatic review": "1"}}
 //	  disabled: false
 //
 // Switching the secondary off is a setting too: secondary.disabled set to true keeps
@@ -88,6 +89,7 @@ type OpenSearch struct {
 	RetentionPolicyID string                   `json:"retentionPolicyId,omitempty"`
 	Layout            map[string]DatasetLayout `json:"layout"`
 	TextFields        map[string]string        `json:"textFields,omitempty"`
+	KeywordFields     []string                 `json:"keywordFields,omitempty"`
 }
 
 // DatasetLayout is opensearch.DatasetSpec: how a dataset's indices are named.
@@ -121,6 +123,12 @@ type Secondary struct {
 	// for it and the secondary's ("log" and "event"). It applies to field names in
 	// queries and to the records that come back.
 	FieldPrefix *FieldPrefix `json:"fieldPrefix,omitempty"`
+	// FieldValueMaps swaps a filter's value per field before it reaches the secondary,
+	// for fields the two stores name the same but keep in different forms. The v11
+	// alerts index stores status as a numeric code where the primary stores the string,
+	// so {status: {"Open": "2"}} turns a status=="Open" filter into status=="2" on the
+	// way to the legacy index. Keys are the secondary's field name. Optional.
+	FieldValueMaps map[string]map[string]string `json:"fieldValueMaps,omitempty"`
 }
 
 type FieldPrefix struct {
@@ -250,6 +258,9 @@ func New(cfg Config, opts Options) (*Built, error) {
 		cc.SecondaryField, cc.SecondaryFieldBack = composite.PrefixMap(fp.Primary, fp.Secondary)
 		cc.SecondaryDocument = composite.RenameDocKey(fp.Secondary, fp.Primary)
 	}
+	if vm := cfg.Secondary.FieldValueMaps; len(vm) > 0 {
+		cc.SecondaryValue = composite.SecondaryValueRewrite(vm)
+	}
 
 	comp, err := composite.New(cc)
 	if err != nil {
@@ -371,6 +382,7 @@ func (b *Built) engine(e Engine, which string, opts Options) (store.Store, error
 			TimestampField:    o.TimestampField,
 			RetentionPolicyID: o.RetentionPolicyID,
 			TextFields:        datasetMap(o.TextFields),
+			KeywordFields:     boolSet(o.KeywordFields),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("store config: %s: %w", which, err)
@@ -405,6 +417,17 @@ func datasetMap(m map[string]string) map[store.Dataset]string {
 	out := make(map[store.Dataset]string, len(m))
 	for k, v := range m {
 		out[store.Dataset(k)] = v
+	}
+	return out
+}
+
+func boolSet(list []string) map[string]bool {
+	if len(list) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(list))
+	for _, k := range list {
+		out[k] = true
 	}
 	return out
 }

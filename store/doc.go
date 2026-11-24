@@ -26,7 +26,9 @@
 // setting retention there also needs an ISM policy id in the configuration.
 //
 // Raw queries. RawQuerier takes the engine's own query text, so what runs on
-// one does not run on the other.
+// one does not run on the other. FetchQuery is the agnostic form: one Go
+// signature, each engine's own SQL dialect, and the tenant predicate is the
+// caller's — the scope must be AllTenants.
 //
 // Neither engine's behaviour has been changed to hide these: making
 // OpenSearch answer a substring would need wildcard queries over keyword

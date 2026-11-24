@@ -31,6 +31,12 @@ type Config struct {
 	// which is what OpSearch reads. A dataset missing here has no text to
 	// search and OpSearch on it is an error, not an empty result.
 	TextFields map[store.Dataset]string
+
+	// KeywordFields names the text-mapped fields that carry a .keyword
+	// subfield; terms aggregations on them use the subfield, since fielddata
+	// is off on text fields. A field listed here that is already keyword
+	// type would 400 with a doubled suffix, so list text fields only.
+	KeywordFields map[string]bool
 }
 
 // Driver holds no connection: the os package keeps a process-wide client.
@@ -150,6 +156,16 @@ func (d *Driver) FetchPage(ctx context.Context, s store.Scope, filters []store.F
 	return docs, res.Hits.Total.Value, nil
 }
 
+// aggField picks the terms-aggregatable form of field: the .keyword
+// subfield where the config says the field is text-mapped, field itself
+// otherwise.
+func (d *Driver) aggField(field string) string {
+	if d.cfg.KeywordFields[field] {
+		return field + ".keyword"
+	}
+	return field
+}
+
 func (d *Driver) TopValues(ctx context.Context, s store.Scope, field string, filters []store.Filter, n int) ([]store.Bucket, error) {
 	if field == "" {
 		return nil, fmt.Errorf("opensearch: TopValues needs a field")
@@ -157,6 +173,7 @@ func (d *Driver) TopValues(ctx context.Context, s store.Scope, field string, fil
 	if n <= 0 {
 		n = defaultBucketLimit
 	}
+	field = d.aggField(field)
 	idx, q, err := d.prepare(s, filters)
 	if err != nil {
 		return nil, err
@@ -206,6 +223,7 @@ func (d *Driver) TimelineByField(ctx context.Context, s store.Scope, field strin
 	if n <= 0 {
 		n = defaultBucketLimit
 	}
+	field = d.aggField(field)
 	hist, err := d.dateHistogram(iv)
 	if err != nil {
 		return nil, err
@@ -241,6 +259,9 @@ func (d *Driver) GroupBy(ctx context.Context, s store.Scope, fields []string, fi
 	}
 	if opts.Limit <= 0 {
 		opts.Limit = defaultBucketLimit
+	}
+	for i, f := range fields {
+		fields[i] = d.aggField(f)
 	}
 	idx, q, err := d.prepare(s, filters)
 	if err != nil {
