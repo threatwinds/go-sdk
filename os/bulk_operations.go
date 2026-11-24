@@ -56,11 +56,30 @@ func (bq *BulkQueue) AddDelete(index, docID string) {
 	})
 }
 
+// estimateBulkItemBytes returns a fast upper-ish byte estimate for batching.
+func estimateBulkItemBytes(item BulkItem) int {
+	n := len(item.Index) + len(item.DocumentID) + len(item.Routing) + 64
+	if item.Operation == BulkOperationDelete {
+		return n
+	}
+	switch d := item.Document.(type) {
+	case []byte:
+		return n + len(d)
+	case string:
+		return n + len(d)
+	default:
+		return n + 512
+	}
+}
+
 // AddItem adds a single BulkItem to the queue.
 func (bq *BulkQueue) AddItem(item BulkItem) {
+	itemBytes := estimateBulkItemBytes(item)
 	bq.mutex.Lock()
 	bq.queue = append(bq.queue, item)
-	shouldFlush := bq.config.FlushThreshold > 0 && len(bq.queue) >= bq.config.FlushThreshold
+	bq.queuedBytes += itemBytes
+	shouldFlush := (bq.config.FlushThreshold > 0 && len(bq.queue) >= bq.config.FlushThreshold) ||
+		(bq.config.MaxBatchBytes > 0 && bq.queuedBytes >= bq.config.MaxBatchBytes)
 	bq.mutex.Unlock()
 
 	if shouldFlush {
@@ -101,9 +120,16 @@ func (bq *BulkQueue) AddItems(items []BulkItem) {
 		return
 	}
 
+	batchBytes := 0
+	for _, it := range items {
+		batchBytes += estimateBulkItemBytes(it)
+	}
+
 	bq.mutex.Lock()
 	bq.queue = append(bq.queue, items...)
-	shouldFlush := bq.config.FlushThreshold > 0 && len(bq.queue) >= bq.config.FlushThreshold
+	bq.queuedBytes += batchBytes
+	shouldFlush := (bq.config.FlushThreshold > 0 && len(bq.queue) >= bq.config.FlushThreshold) ||
+		(bq.config.MaxBatchBytes > 0 && bq.queuedBytes >= bq.config.MaxBatchBytes)
 	bq.mutex.Unlock()
 
 	if shouldFlush {
@@ -135,5 +161,6 @@ func (bq *BulkQueue) Stop() {
 func (bq *BulkQueue) Clear() {
 	bq.mutex.Lock()
 	bq.queue = bq.queue[:0]
+	bq.queuedBytes = 0
 	bq.mutex.Unlock()
 }

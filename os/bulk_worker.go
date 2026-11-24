@@ -1,10 +1,10 @@
 package os
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
@@ -27,7 +27,8 @@ func (bq *BulkQueue) worker() {
 	}
 }
 
-// processBulk processes all items in the queue and sends them to OpenSearch.
+// processBulk processes all items in the queue and sends them to OpenSearch,
+// chunking into sub-batches capped by config.MaxBatchBytes.
 func (bq *BulkQueue) processBulk() error {
 	bq.mutex.Lock()
 	if len(bq.queue) == 0 {
@@ -39,8 +40,44 @@ func (bq *BulkQueue) processBulk() error {
 	items := make([]BulkItem, len(bq.queue))
 	copy(items, bq.queue)
 	bq.queue = bq.queue[:0]
+	bq.queuedBytes = 0
 	bq.mutex.Unlock()
 
+	chunks := chunkBulkItems(items, bq.config.MaxBatchBytes)
+	var firstErr error
+	for _, chunk := range chunks {
+		if err := bq.processChunk(chunk); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// chunkBulkItems splits items into sub-batches whose estimated size does not
+// exceed maxBytes (always placing at least one item in every chunk).
+func chunkBulkItems(items []BulkItem, maxBytes int) [][]BulkItem {
+	if maxBytes <= 0 || len(items) <= 1 {
+		return [][]BulkItem{items}
+	}
+	var chunks [][]BulkItem
+	start := 0
+	curBytes := 0
+	for i, it := range items {
+		sz := estimateBulkItemBytes(it)
+		if i > start && curBytes+sz > maxBytes {
+			chunks = append(chunks, items[start:i])
+			start = i
+			curBytes = 0
+		}
+		curBytes += sz
+	}
+	if start < len(items) {
+		chunks = append(chunks, items[start:])
+	}
+	return chunks
+}
+
+func (bq *BulkQueue) processChunk(items []BulkItem) error {
 	// Try to send with retries
 	var lastErr error
 	for attempt := 0; attempt <= bq.config.MaxRetries; attempt++ {
@@ -98,7 +135,7 @@ func (bq *BulkQueue) sendBulkRequest(items []BulkItem) (*BulkResponse, error) {
 		return &BulkResponse{}, nil
 	}
 
-	var body strings.Builder
+	var body bytes.Buffer
 	indexCounts := make(map[string]int)
 
 	for i, item := range items {
@@ -122,7 +159,8 @@ func (bq *BulkQueue) sendBulkRequest(items []BulkItem) (*BulkResponse, error) {
 				"process":    bq.processName,
 			})
 		}
-		body.WriteString(string(actionBytes) + "\n")
+		body.Write(actionBytes)
+		body.WriteByte('\n')
 
 		// Delete operations don't have a document body
 		if item.Operation != BulkOperationDelete {
@@ -134,12 +172,13 @@ func (bq *BulkQueue) sendBulkRequest(items []BulkItem) (*BulkResponse, error) {
 					"process":    bq.processName,
 				})
 			}
-			body.WriteString(string(docBytes) + "\n")
+			body.Write(docBytes)
+			body.WriteByte('\n')
 		}
 	}
 
 	req := opensearchapi.BulkReq{
-		Body: strings.NewReader(body.String()),
+		Body: bytes.NewReader(body.Bytes()),
 	}
 
 	resp, err := bq.client.Bulk(context.Background(), req)
@@ -163,12 +202,7 @@ func (bq *BulkQueue) sendBulkRequest(items []BulkItem) (*BulkResponse, error) {
 		response.SuccessCount = len(items)
 	}
 
-	if response.FailedCount == 0 {
-		catcher.Info("Successfully processed bulk request", map[string]any{
-			"items_count":  len(items),
-			"index_counts": indexCounts,
-		})
-	} else {
+	if response.FailedCount > 0 {
 		catcher.Info("Bulk request completed with errors", map[string]any{
 			"items_count":   len(items),
 			"success_count": response.SuccessCount,

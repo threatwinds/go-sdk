@@ -2,8 +2,12 @@ module github.com/threatwinds/go-sdk
 
 go 1.26.0
 
-// v1.1.40 was published from the UTMStack v12 development line; use v1.1.41+ for v1 or github.com/utmstack/go-sdk/v2 for v12.
-retract v1.1.40
+// v1.1.40 and v1.2.0 were published from the UTMStack v12 development line;
+// use v1.2.1+ for shared ThreatWinds SDK packages or github.com/utmstack/go-sdk/v2 for v12.
+retract (
+	v1.1.40
+	v1.2.0
+)
 
 require (
 	github.com/gin-gonic/gin v1.12.0

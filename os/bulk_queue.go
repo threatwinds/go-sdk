@@ -18,6 +18,9 @@ func NewBulkQueue(processName string, config BulkQueueConfig) *BulkQueue {
 	if config.RetryDelay <= 0 {
 		config.RetryDelay = time.Second
 	}
+	if config.MaxBatchBytes <= 0 {
+		config.MaxBatchBytes = defaultMaxBatchBytes
+	}
 
 	bq := &BulkQueue{
 		client:      apiClient,

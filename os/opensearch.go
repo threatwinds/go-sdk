@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/opensearch-project/opensearch-go/v4"
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
@@ -39,6 +40,20 @@ var (
 
 var once = sync.Once{}
 
+func newOpenSearchTransport() *http.Transport {
+	var t *http.Transport
+	if base, ok := http.DefaultTransport.(*http.Transport); ok && base != nil {
+		t = base.Clone()
+	} else {
+		t = &http.Transport{ForceAttemptHTTP2: true}
+	}
+	t.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	t.MaxIdleConns = 128
+	t.MaxIdleConnsPerHost = 64
+	t.IdleConnTimeout = 90 * time.Second
+	return t
+}
+
 // Connect establishes a singleton connection to OpenSearch.
 // Only the first successful call takes effect; later calls return the existing connection.
 // The connection uses TLS with certificate verification disabled.
@@ -50,9 +65,7 @@ func Connect(nodes []string, user, password string) error {
 	once.Do(func() {
 		apiClient, err = opensearchapi.NewClient(opensearchapi.Config{
 			Client: opensearch.Config{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-				},
+				Transport: newOpenSearchTransport(),
 				Addresses: nodes,
 				Username:  user,
 				Password:  password,

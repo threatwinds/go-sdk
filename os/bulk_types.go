@@ -35,12 +35,16 @@ type BulkItem struct {
 	Routing string
 }
 
+const defaultMaxBatchBytes = 5 << 20 // 5 MB
+
 // BulkQueueConfig holds configuration for the BulkQueue.
 type BulkQueueConfig struct {
 	// FlushInterval is how often the queue automatically flushes (default: 10s).
 	FlushInterval time.Duration
 	// FlushThreshold is the number of items that triggers an automatic flush (default: 0 = disabled).
 	FlushThreshold int
+	// MaxBatchBytes caps the estimated byte size of a single _bulk request (default: 5 MB).
+	MaxBatchBytes int
 	// MaxRetries is the number of times to retry failed bulk requests (default: 0 = no retry).
 	MaxRetries int
 	// RetryDelay is the base delay between retries with exponential backoff (default: 1s).
@@ -56,6 +60,7 @@ func DefaultBulkQueueConfig() BulkQueueConfig {
 	return BulkQueueConfig{
 		FlushInterval:  10 * time.Second,
 		FlushThreshold: 0,
+		MaxBatchBytes:  defaultMaxBatchBytes,
 		MaxRetries:     0,
 		RetryDelay:     time.Second,
 	}
@@ -66,6 +71,7 @@ type BulkQueue struct {
 	client      *opensearchapi.Client
 	config      BulkQueueConfig
 	queue       []BulkItem
+	queuedBytes int
 	mutex       sync.RWMutex
 	ticker      *time.Ticker
 	stopCh      chan struct{}
