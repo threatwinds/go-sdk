@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"cel.dev/cel-go/cel"
 	"github.com/hashicorp/golang-lru/v2/expirable"
@@ -29,6 +30,8 @@ type CELCache struct {
 	once        sync.Once
 	locks       [1024]sync.Mutex
 	processName string
+	lean        sync.Map
+	leanSize    atomic.Int64
 }
 
 // CELActivation holds the parsed view of an event that CEL expressions evaluate against:
@@ -76,30 +79,7 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 		return c.execute(cp.prg, valuesMap)
 	}
 
-	envOptions := []cel.EnvOption{
-		cel.Variable("_data_", cel.StringType),
-		c.celExists(),
-		c.safe(),
-		c.inCIDR(),
-		c.equals(),
-		c.equalsIgnoreCase(),
-		c.contains(),
-		c.containsAll(),
-		c.oneOf(),
-		c.startsWith(),
-		c.endsWith(),
-		c.regexMatch(),
-		c.lessThan(),
-		c.greaterThan(),
-		c.lessOrEqual(),
-		c.greaterOrEqual(),
-		c.isHour(),
-		c.isMinute(),
-		c.isDayOfWeek(),
-		c.isWeekend(),
-		c.isWorkDay(),
-		c.isBetweenTime(),
-	}
+	envOptions := c.baseEnvOptions()
 
 	// Add the provided environment options first (including cel.Types)
 	envOptions = append(envOptions, envOption...)
@@ -137,6 +117,34 @@ func (c *CELCache) Get(cacheKey string, expression string, valuesMap map[string]
 	c.cache.Add(cacheKey, &cachedProgram{prg: prg, env: celEnv})
 
 	return c.execute(prg, valuesMap)
+}
+
+// baseEnvOptions declares `_data_` and the string-keyed overloads every expression can call.
+func (c *CELCache) baseEnvOptions() []cel.EnvOption {
+	return []cel.EnvOption{
+		cel.Variable("_data_", cel.DynType),
+		c.celExists(),
+		c.safe(),
+		c.inCIDR(),
+		c.equals(),
+		c.equalsIgnoreCase(),
+		c.contains(),
+		c.containsAll(),
+		c.oneOf(),
+		c.startsWith(),
+		c.endsWith(),
+		c.regexMatch(),
+		c.lessThan(),
+		c.greaterThan(),
+		c.lessOrEqual(),
+		c.greaterOrEqual(),
+		c.isHour(),
+		c.isMinute(),
+		c.isDayOfWeek(),
+		c.isWeekend(),
+		c.isWorkDay(),
+		c.isBetweenTime(),
+	}
 }
 
 var rCache = new(RegexpCache)
