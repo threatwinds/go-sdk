@@ -118,9 +118,9 @@ func flexibleMatch(v gjson.Result, target ref.Val) bool {
 func (c *CELCache) celExists() cel.EnvOption {
 	return cel.Function("exists",
 		cel.Overload("string_exists_bool",
-			[]*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+			[]*cel.Type{cel.DynType, cel.StringType}, cel.BoolType,
 			cel.BinaryBinding(func(data ref.Val, key ref.Val) ref.Val {
-				v := gjson.Get(data.Value().(string), key.Value().(string))
+				v := lookup(data, key.Value().(string))
 				return types.Bool(v.Exists())
 			}),
 		),
@@ -129,30 +129,30 @@ func (c *CELCache) celExists() cel.EnvOption {
 
 func (c *CELCache) safe() cel.EnvOption {
 	return cel.Function("safe",
-		cel.Overload("string_string_safe_string", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.StringType,
+		cel.Overload("string_string_safe_string", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.StringType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for safe(string, string, string)")
 				}
-				data := args[0].Value().(string)
+				data := args[0]
 				key := args[1].Value().(string)
 				def := args[2].Value().(string)
-				v := gjson.Get(data, key)
+				v := lookup(data, key)
 				if v.Exists() && v.Type == gjson.String {
 					return types.String(v.String())
 				}
 				return types.String(def)
 			}),
 		),
-		cel.Overload("string_num_safe_num", []*cel.Type{cel.StringType, cel.StringType, cel.DoubleType}, cel.DoubleType,
+		cel.Overload("string_num_safe_num", []*cel.Type{cel.DynType, cel.StringType, cel.DoubleType}, cel.DoubleType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for safe(string, string, double)")
 				}
-				data := args[0].Value().(string)
+				data := args[0]
 				key := args[1].Value().(string)
 				def := args[2].Value().(float64)
-				v := gjson.Get(data, key)
+				v := lookup(data, key)
 				if v.Exists() {
 					if f, ok := getNumeric(v); ok {
 						return types.Double(f)
@@ -161,15 +161,15 @@ func (c *CELCache) safe() cel.EnvOption {
 				return types.Double(def)
 			}),
 		),
-		cel.Overload("string_bool_safe_bool", []*cel.Type{cel.StringType, cel.StringType, cel.BoolType}, cel.BoolType,
+		cel.Overload("string_bool_safe_bool", []*cel.Type{cel.DynType, cel.StringType, cel.BoolType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for safe(string, string, bool)")
 				}
-				data := args[0].Value().(string)
+				data := args[0]
 				key := args[1].Value().(string)
 				def := args[2].Value().(bool)
-				v := gjson.Get(data, key)
+				v := lookup(data, key)
 				if v.Exists() && v.IsBool() {
 					return types.Bool(v.Bool())
 				}
@@ -180,15 +180,15 @@ func (c *CELCache) safe() cel.EnvOption {
 }
 
 func (c *CELCache) inCIDR() cel.EnvOption {
-	return cel.Function("inCIDR", cel.Overload("string_string_inCIDR_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+	return cel.Function("inCIDR", cel.Overload("string_string_inCIDR_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 			if len(args) != 3 {
 				return types.NewErr("invalid number of arguments for inCIDR(string, string, string)")
 			}
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
 			network := args[2].Value().(string)
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			if v.Exists() && v.Type == gjson.String {
 				_, subnet, err := net.ParseCIDR(network)
 				if err != nil {
@@ -207,39 +207,39 @@ func (c *CELCache) inCIDR() cel.EnvOption {
 
 func (c *CELCache) equals() cel.EnvOption {
 	return cel.Function("equals",
-		cel.Overload("string_string_equals_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+		cel.Overload("string_string_equals_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for equals(string, string, string)")
 				}
-				v := gjson.Get(args[0].Value().(string), args[1].Value().(string))
+				v := lookup(args[0], args[1].Value().(string))
 				return types.Bool(flexibleMatch(v, args[2]))
 			}),
 		),
-		cel.Overload("string_int_equals_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+		cel.Overload("string_int_equals_bool", []*cel.Type{cel.DynType, cel.StringType, cel.IntType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for equals(string, string, int)")
 				}
-				v := gjson.Get(args[0].Value().(string), args[1].Value().(string))
+				v := lookup(args[0], args[1].Value().(string))
 				return types.Bool(flexibleMatch(v, args[2]))
 			}),
 		),
-		cel.Overload("string_float_equals_bool", []*cel.Type{cel.StringType, cel.StringType, cel.DoubleType}, cel.BoolType,
+		cel.Overload("string_float_equals_bool", []*cel.Type{cel.DynType, cel.StringType, cel.DoubleType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for equals(string, string, double)")
 				}
-				v := gjson.Get(args[0].Value().(string), args[1].Value().(string))
+				v := lookup(args[0], args[1].Value().(string))
 				return types.Bool(flexibleMatch(v, args[2]))
 			}),
 		),
-		cel.Overload("string_bool_equals_bool", []*cel.Type{cel.StringType, cel.StringType, cel.BoolType}, cel.BoolType,
+		cel.Overload("string_bool_equals_bool", []*cel.Type{cel.DynType, cel.StringType, cel.BoolType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for equals(string, string, bool)")
 				}
-				v := gjson.Get(args[0].Value().(string), args[1].Value().(string))
+				v := lookup(args[0], args[1].Value().(string))
 				return types.Bool(flexibleMatch(v, args[2]))
 			}),
 		),
@@ -247,15 +247,15 @@ func (c *CELCache) equals() cel.EnvOption {
 }
 
 func (c *CELCache) equalsIgnoreCase() cel.EnvOption {
-	return cel.Function("equalsIgnoreCase", cel.Overload("string_string_equalsIgnoreCase_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+	return cel.Function("equalsIgnoreCase", cel.Overload("string_string_equalsIgnoreCase_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 			if len(args) != 3 {
 				return types.NewErr("invalid number of arguments for equalsIgnoreCase(string, string, string)")
 			}
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
 			val := args[2].Value().(string)
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			if v.Exists() && v.Type == gjson.String {
 				return types.Bool(strings.EqualFold(v.String(), val))
 			}
@@ -266,30 +266,30 @@ func (c *CELCache) equalsIgnoreCase() cel.EnvOption {
 
 func (c *CELCache) contains() cel.EnvOption {
 	return cel.Function("contains",
-		cel.Overload("string_string_contains_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+		cel.Overload("string_string_contains_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for contains(string, string, string)")
 				}
-				data := args[0].Value().(string)
+				data := args[0]
 				key := args[1].Value().(string)
 				val := args[2].Value().(string)
-				v := gjson.Get(data, key)
+				v := lookup(data, key)
 				if s, ok := textContent(v); ok {
 					return types.Bool(strings.Contains(s, val))
 				}
 				return types.False
 			}),
 		),
-		cel.Overload("string_list_contains_bool", []*cel.Type{cel.StringType, cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
+		cel.Overload("string_list_contains_bool", []*cel.Type{cel.DynType, cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for contains(string, string, list)")
 				}
-				data := args[0].Value().(string)
+				data := args[0]
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
-				v := gjson.Get(data, key)
+				v := lookup(data, key)
 				if s, ok := textContent(v); ok {
 					for _, item := range listVal {
 						if strings.Contains(s, strings.TrimSpace(item.Value().(string))) {
@@ -304,15 +304,15 @@ func (c *CELCache) contains() cel.EnvOption {
 }
 
 func (c *CELCache) containsAll() cel.EnvOption {
-	return cel.Function("containsAll", cel.Overload("string_list_containsAll_bool", []*cel.Type{cel.StringType, cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
+	return cel.Function("containsAll", cel.Overload("string_list_containsAll_bool", []*cel.Type{cel.DynType, cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 			if len(args) != 3 {
 				return types.NewErr("invalid number of arguments for containsAll(string, string, list)")
 			}
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
 			listVal := args[2].Value().([]ref.Val)
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			if s, ok := textContent(v); ok {
 				for _, item := range listVal {
 					if !strings.Contains(s, strings.TrimSpace(item.Value().(string))) {
@@ -327,15 +327,15 @@ func (c *CELCache) containsAll() cel.EnvOption {
 }
 
 func (c *CELCache) oneOf() cel.EnvOption {
-	return cel.Function("oneOf", cel.Overload("string_dyn_list_oneOf_bool", []*cel.Type{cel.StringType, cel.StringType, cel.ListType(cel.DynType)}, cel.BoolType,
+	return cel.Function("oneOf", cel.Overload("string_dyn_list_oneOf_bool", []*cel.Type{cel.DynType, cel.StringType, cel.ListType(cel.DynType)}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 			if len(args) != 3 {
 				return types.NewErr("invalid number of arguments for oneOf(string, string, list)")
 			}
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
 			listVal := args[2].Value().([]ref.Val)
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			if !v.Exists() {
 				return types.False
 			}
@@ -352,30 +352,30 @@ func (c *CELCache) oneOf() cel.EnvOption {
 
 func (c *CELCache) startsWith() cel.EnvOption {
 	return cel.Function("startsWith",
-		cel.Overload("string_string_startsWith_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+		cel.Overload("string_string_startsWith_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for startsWith(string, string, string)")
 				}
-				data := args[0].Value().(string)
+				data := args[0]
 				key := args[1].Value().(string)
 				prefix := args[2].Value().(string)
-				v := gjson.Get(data, key)
+				v := lookup(data, key)
 				if s, ok := textContent(v); ok {
 					return types.Bool(strings.HasPrefix(s, prefix))
 				}
 				return types.False
 			}),
 		),
-		cel.Overload("string_list_startsWith_bool", []*cel.Type{cel.StringType, cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
+		cel.Overload("string_list_startsWith_bool", []*cel.Type{cel.DynType, cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for startsWith(string, string, list)")
 				}
-				data := args[0].Value().(string)
+				data := args[0]
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
-				v := gjson.Get(data, key)
+				v := lookup(data, key)
 				if s, ok := textContent(v); ok {
 					for _, item := range listVal {
 						if strings.HasPrefix(s, strings.TrimSpace(item.Value().(string))) {
@@ -391,30 +391,30 @@ func (c *CELCache) startsWith() cel.EnvOption {
 
 func (c *CELCache) endsWith() cel.EnvOption {
 	return cel.Function("endsWith",
-		cel.Overload("string_string_endsWith_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+		cel.Overload("string_string_endsWith_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for endsWith(string, string, string)")
 				}
-				data := args[0].Value().(string)
+				data := args[0]
 				key := args[1].Value().(string)
 				suffix := args[2].Value().(string)
-				v := gjson.Get(data, key)
+				v := lookup(data, key)
 				if s, ok := textContent(v); ok {
 					return types.Bool(strings.HasSuffix(s, suffix))
 				}
 				return types.False
 			}),
 		),
-		cel.Overload("string_list_endsWith_bool", []*cel.Type{cel.StringType, cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
+		cel.Overload("string_list_endsWith_bool", []*cel.Type{cel.DynType, cel.StringType, cel.ListType(cel.StringType)}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 				if len(args) != 3 {
 					return types.NewErr("invalid number of arguments for endsWith(string, string, list)")
 				}
-				data := args[0].Value().(string)
+				data := args[0]
 				key := args[1].Value().(string)
 				listVal := args[2].Value().([]ref.Val)
-				v := gjson.Get(data, key)
+				v := lookup(data, key)
 				if s, ok := textContent(v); ok {
 					for _, item := range listVal {
 						if strings.HasSuffix(s, strings.TrimSpace(item.Value().(string))) {
@@ -429,15 +429,15 @@ func (c *CELCache) endsWith() cel.EnvOption {
 }
 
 func (c *CELCache) regexMatch() cel.EnvOption {
-	return cel.Function("regexMatch", cel.Overload("string_string_regexMatch_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+	return cel.Function("regexMatch", cel.Overload("string_string_regexMatch_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
 			if len(args) != 3 {
 				return types.NewErr("invalid number of arguments for regexMatch(string, string, string)")
 			}
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
 			pattern := args[2].Value().(string)
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			// regexMatch is deliberately scalar-only, unlike contains/startsWith/
 			// endsWith/containsAll (which use textContent to search object/array
 			// text). Filters use regexMatch("log.X", ".+") as a string-type guard:
@@ -459,9 +459,9 @@ func (c *CELCache) regexMatch() cel.EnvOption {
 
 func (c *CELCache) lessThan() cel.EnvOption {
 	return cel.Function("lessThan",
-		cel.Overload("string_string_lessThan_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+		cel.Overload("string_string_lessThan_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 < f2)
 					}
@@ -469,9 +469,9 @@ func (c *CELCache) lessThan() cel.EnvOption {
 				return types.False
 			}),
 		),
-		cel.Overload("string_int_lessThan_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+		cel.Overload("string_int_lessThan_bool", []*cel.Type{cel.DynType, cel.StringType, cel.IntType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 < f2)
 					}
@@ -479,9 +479,9 @@ func (c *CELCache) lessThan() cel.EnvOption {
 				return types.False
 			}),
 		),
-		cel.Overload("string_double_lessThan_bool", []*cel.Type{cel.StringType, cel.StringType, cel.DoubleType}, cel.BoolType,
+		cel.Overload("string_double_lessThan_bool", []*cel.Type{cel.DynType, cel.StringType, cel.DoubleType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 < f2)
 					}
@@ -494,9 +494,9 @@ func (c *CELCache) lessThan() cel.EnvOption {
 
 func (c *CELCache) greaterThan() cel.EnvOption {
 	return cel.Function("greaterThan",
-		cel.Overload("string_string_greaterThan_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+		cel.Overload("string_string_greaterThan_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 > f2)
 					}
@@ -504,9 +504,9 @@ func (c *CELCache) greaterThan() cel.EnvOption {
 				return types.False
 			}),
 		),
-		cel.Overload("string_int_greaterThan_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+		cel.Overload("string_int_greaterThan_bool", []*cel.Type{cel.DynType, cel.StringType, cel.IntType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 > f2)
 					}
@@ -514,9 +514,9 @@ func (c *CELCache) greaterThan() cel.EnvOption {
 				return types.False
 			}),
 		),
-		cel.Overload("string_double_greaterThan_bool", []*cel.Type{cel.StringType, cel.StringType, cel.DoubleType}, cel.BoolType,
+		cel.Overload("string_double_greaterThan_bool", []*cel.Type{cel.DynType, cel.StringType, cel.DoubleType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 > f2)
 					}
@@ -529,9 +529,9 @@ func (c *CELCache) greaterThan() cel.EnvOption {
 
 func (c *CELCache) lessOrEqual() cel.EnvOption {
 	return cel.Function("lessOrEqual",
-		cel.Overload("string_string_lessOrEqual_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+		cel.Overload("string_string_lessOrEqual_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 <= f2)
 					}
@@ -539,9 +539,9 @@ func (c *CELCache) lessOrEqual() cel.EnvOption {
 				return types.False
 			}),
 		),
-		cel.Overload("string_int_lessOrEqual_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+		cel.Overload("string_int_lessOrEqual_bool", []*cel.Type{cel.DynType, cel.StringType, cel.IntType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 <= f2)
 					}
@@ -549,9 +549,9 @@ func (c *CELCache) lessOrEqual() cel.EnvOption {
 				return types.False
 			}),
 		),
-		cel.Overload("string_double_lessOrEqual_bool", []*cel.Type{cel.StringType, cel.StringType, cel.DoubleType}, cel.BoolType,
+		cel.Overload("string_double_lessOrEqual_bool", []*cel.Type{cel.DynType, cel.StringType, cel.DoubleType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 <= f2)
 					}
@@ -564,9 +564,9 @@ func (c *CELCache) lessOrEqual() cel.EnvOption {
 
 func (c *CELCache) greaterOrEqual() cel.EnvOption {
 	return cel.Function("greaterOrEqual",
-		cel.Overload("string_string_greaterOrEqual_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+		cel.Overload("string_string_greaterOrEqual_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 >= f2)
 					}
@@ -574,9 +574,9 @@ func (c *CELCache) greaterOrEqual() cel.EnvOption {
 				return types.False
 			}),
 		),
-		cel.Overload("string_int_greaterOrEqual_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+		cel.Overload("string_int_greaterOrEqual_bool", []*cel.Type{cel.DynType, cel.StringType, cel.IntType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 >= f2)
 					}
@@ -584,9 +584,9 @@ func (c *CELCache) greaterOrEqual() cel.EnvOption {
 				return types.False
 			}),
 		),
-		cel.Overload("string_double_greaterOrEqual_bool", []*cel.Type{cel.StringType, cel.StringType, cel.DoubleType}, cel.BoolType,
+		cel.Overload("string_double_greaterOrEqual_bool", []*cel.Type{cel.DynType, cel.StringType, cel.DoubleType}, cel.BoolType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				if f1, ok1 := getNumeric(gjson.Get(args[0].Value().(string), args[1].Value().(string))); ok1 {
+				if f1, ok1 := getNumeric(lookup(args[0], args[1].Value().(string))); ok1 {
 					if f2, ok2 := valToFloat(args[2]); ok2 {
 						return types.Bool(f1 >= f2)
 					}
@@ -598,12 +598,12 @@ func (c *CELCache) greaterOrEqual() cel.EnvOption {
 }
 
 func (c *CELCache) isHour() cel.EnvOption {
-	return cel.Function("isHour", cel.Overload("string_string_int_isHour_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+	return cel.Function("isHour", cel.Overload("string_string_int_isHour_bool", []*cel.Type{cel.DynType, cel.StringType, cel.IntType}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
 			target := args[2].Value().(int64)
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			if v.Exists() {
 				t, err := time.Parse(time.RFC3339, v.String())
 				if err != nil {
@@ -617,12 +617,12 @@ func (c *CELCache) isHour() cel.EnvOption {
 }
 
 func (c *CELCache) isMinute() cel.EnvOption {
-	return cel.Function("isMinute", cel.Overload("string_string_int_isMinute_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+	return cel.Function("isMinute", cel.Overload("string_string_int_isMinute_bool", []*cel.Type{cel.DynType, cel.StringType, cel.IntType}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
 			target := args[2].Value().(int64)
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			if v.Exists() {
 				t, err := time.Parse(time.RFC3339, v.String())
 				if err != nil {
@@ -636,12 +636,12 @@ func (c *CELCache) isMinute() cel.EnvOption {
 }
 
 func (c *CELCache) isDayOfWeek() cel.EnvOption {
-	return cel.Function("isDayOfWeek", cel.Overload("string_string_int_isDayOfWeek_bool", []*cel.Type{cel.StringType, cel.StringType, cel.IntType}, cel.BoolType,
+	return cel.Function("isDayOfWeek", cel.Overload("string_string_int_isDayOfWeek_bool", []*cel.Type{cel.DynType, cel.StringType, cel.IntType}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
 			target := args[2].Value().(int64)
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			if v.Exists() {
 				t, err := time.Parse(time.RFC3339, v.String())
 				if err != nil {
@@ -655,11 +655,11 @@ func (c *CELCache) isDayOfWeek() cel.EnvOption {
 }
 
 func (c *CELCache) isWeekend() cel.EnvOption {
-	return cel.Function("isWeekend", cel.Overload("string_string_isWeekend_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+	return cel.Function("isWeekend", cel.Overload("string_string_isWeekend_bool", []*cel.Type{cel.DynType, cel.StringType}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			if v.Exists() {
 				t, err := time.Parse(time.RFC3339, v.String())
 				if err != nil {
@@ -674,11 +674,11 @@ func (c *CELCache) isWeekend() cel.EnvOption {
 }
 
 func (c *CELCache) isWorkDay() cel.EnvOption {
-	return cel.Function("isWorkDay", cel.Overload("string_string_isWorkDay_bool", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
+	return cel.Function("isWorkDay", cel.Overload("string_string_isWorkDay_bool", []*cel.Type{cel.DynType, cel.StringType}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			if v.Exists() {
 				t, err := time.Parse(time.RFC3339, v.String())
 				if err != nil {
@@ -693,14 +693,14 @@ func (c *CELCache) isWorkDay() cel.EnvOption {
 }
 
 func (c *CELCache) isBetweenTime() cel.EnvOption {
-	return cel.Function("isBetweenTime", cel.Overload("string_string_string_string_isBetweenTime_bool", []*cel.Type{cel.StringType, cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
+	return cel.Function("isBetweenTime", cel.Overload("string_string_string_string_isBetweenTime_bool", []*cel.Type{cel.DynType, cel.StringType, cel.StringType, cel.StringType}, cel.BoolType,
 		cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-			data := args[0].Value().(string)
+			data := args[0]
 			key := args[1].Value().(string)
 			startStr := args[2].Value().(string)
 			endStr := args[3].Value().(string)
 
-			v := gjson.Get(data, key)
+			v := lookup(data, key)
 			if !v.Exists() {
 				return types.False
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -318,24 +319,6 @@ func withField(raw []byte, field, value string) ([]byte, error) {
 	return json.Marshal(m)
 }
 
-func joinLines(rows []string) string {
-	out := ""
-	for i, r := range rows {
-		if i > 0 {
-			out += "\n"
-		}
-		out += r
-	}
-	return out
-}
+func joinLines(rows []string) string { return strings.Join(rows, "\n") }
 
-func joinComma(parts []string) string {
-	out := ""
-	for i, p := range parts {
-		if i > 0 {
-			out += ", "
-		}
-		out += p
-	}
-	return out
-}
+func joinComma(parts []string) string { return strings.Join(parts, ", ") }
