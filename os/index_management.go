@@ -72,11 +72,7 @@ func GetIndex(ctx context.Context, name string) (*IndexInfo, error) {
 	}
 
 	// Parse the response
-	var indices opensearchapi.IndicesGetRespData
-	if resp.IndicesGetRespData != nil {
-		indices = *resp.IndicesGetRespData
-	}
-	for indexName, data := range indices {
+	for indexName, data := range resp.Indices {
 		info := &IndexInfo{
 			Name: indexName,
 		}
@@ -148,7 +144,7 @@ func GetIndexStats(ctx context.Context, name string) (*IndexStats, error) {
 // RefreshIndex refreshes one or more indices
 func RefreshIndex(ctx context.Context, names ...string) error {
 	req := &opensearchapi.IndicesRefreshReq{
-		Index: names,
+		Indices: names,
 	}
 
 	_, err := apiClient.Indices.Refresh(ctx, req)

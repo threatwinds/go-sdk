@@ -2,28 +2,13 @@ package plugins
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"time"
 
-	"github.com/threatwinds/go-sdk/store"
+	sdkos "github.com/threatwinds/go-sdk/os"
 	"github.com/tidwall/gjson"
 )
-
-// sampleSize is how many matching records come back as evidence when a
-// correlation fires. It is what the query builder defaulted to.
-const sampleSize = 10
-
-// operators maps the rule vocabulary, which is a contract with rule authors,
-// onto store operators.
-var operators = map[string]store.Op{
-	"filter_term":    store.OpEq,
-	"must_not_term":  store.OpNotEq,
-	"filter_match":   store.OpContains,
-	"must_not_match": store.OpNotContains,
-}
 
 // Normalize ensures that the newest fields are populated even if old aliases were used
 // This is now a method on the generated Rule struct from plugins.pb.go
@@ -36,119 +21,75 @@ func (r *Rule) Normalize() {
 	}
 }
 
-// IndexPatternResolver turns the index pattern a v11 rule names into the
-// dataType a store reads it by. dataType is empty for a pattern that covers
-// every dataType; ok is false for one the store does not recognise.
-type IndexPatternResolver func(dataset store.Dataset, pattern string) (dataType string, ok bool)
+// Execute performs the correlation search using the provided context and previous event data
+func (e *SearchRequest) Execute(previous *string) (bool, []sdkos.Hit, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-var indexPatternResolver atomic.Pointer[IndexPatternResolver]
+	builder := sdkos.NewQueryBuilder(ctx, []string{e.IndexPattern}, "plugin_analysis")
 
-// SetIndexPatternResolver installs the translation ExecuteStore uses for rules
-// that name an indexPattern instead of a dataType. Without one such a rule is
-// refused, since guessing a store's naming would read the wrong data.
-func SetIndexPatternResolver(r IndexPatternResolver) {
-	if r == nil {
-		indexPatternResolver.Store(nil)
-		return
-	}
-	indexPatternResolver.Store(&r)
-}
-
-// ExecuteStore reports whether at least Count records match within Within, and if so
-// returns up to sampleSize of them as evidence. Counting and sampling are two
-// calls so that records are read only when the threshold is actually met.
-func (e *SearchRequest) ExecuteStore(ctx context.Context, st store.Store, scope store.Scope, previous *string) (bool, []json.RawMessage, error) {
-	filters, err := e.filters(previous)
-	if err != nil {
-		return false, nil, err
-	}
-
-	var window time.Duration
+	// Add time range filter
 	if e.Within != "" {
-		// An unparseable window used to be ignored, which silently widened the
-		// search to all of history.
-		if window, err = time.ParseDuration(e.Within); err != nil || window <= 0 {
-			return false, nil, fmt.Errorf("correlation: invalid 'within' %q", e.Within)
+		duration, err := time.ParseDuration(e.Within)
+		if err == nil {
+			builder.Range("@timestamp", "gte", time.Now().Add(-duration).Format(time.RFC3339))
 		}
 	}
 
-	// Correlating against another source is opt-in; by default a rule looks at
-	// the same dataType that triggered it.
-	switch {
-	case e.DataType != "":
-		scope.DataType = e.DataType
-	case e.IndexPattern != "":
-		r := indexPatternResolver.Load()
-		if r == nil {
-			return false, nil, fmt.Errorf("correlation: the rule reads index pattern %q but no resolver is installed", e.IndexPattern)
-		}
-		dt, ok := (*r)(scope.Dataset, e.IndexPattern)
-		if !ok {
-			return false, nil, fmt.Errorf("correlation: index pattern %q is not one this store reads", e.IndexPattern)
-		}
-		// A pattern over every dataType reads all of them, which is not the same
-		// as leaving the triggering rule's dataType in place.
-		scope.DataType = dt
-	}
-
-	// Pin the end of the range so the count and the sample cannot disagree.
-	if scope.To.IsZero() {
-		scope.To = time.Now()
-	}
-
-	var n int64
-	if window > 0 {
-		scope.From = scope.To.Add(-window)
-		n, err = st.CountInWindow(ctx, scope, filters, window)
-	} else {
-		n, err = st.Count(ctx, scope, filters)
-	}
-	if err != nil {
-		return false, nil, err
-	}
-
-	if uint64(n) >= e.Count {
-		docs, err := st.FetchN(ctx, scope, filters, sampleSize)
-		if err != nil {
-			return false, nil, err
-		}
-		return true, docs, nil
-	}
-
-	var docs []json.RawMessage
-	for _, or := range e.Or {
-		matched, more, err := or.ExecuteStore(ctx, st, scope, previous)
-		if err != nil {
-			return false, nil, err
-		}
-		if matched {
-			docs = append(docs, more...)
-		}
-	}
-	return len(docs) > 0, docs, nil
-}
-
-func (e *SearchRequest) filters(previous *string) ([]store.Filter, error) {
-	out := make([]store.Filter, 0, len(e.With))
+	// Add expressions
 	for _, expr := range e.With {
 		if expr.Value == nil {
-			return nil, fmt.Errorf("correlation: nil value for %q", expr.Field)
+			return false, nil, fmt.Errorf("expression value cannot be nil")
 		}
-
 		val := expr.Value.AsInterface()
-		if s, ok := val.(string); ok && previous != nil &&
-			strings.HasPrefix(s, "{{.") && strings.HasSuffix(s, "}}") {
-			val = gjson.Get(*previous, strings.TrimSuffix(strings.TrimPrefix(s, "{{."), "}}")).Value()
-		}
-		if val == nil {
-			return nil, fmt.Errorf("correlation: unresolved placeholder for %q", expr.Field)
+		// Handle dynamic values
+		if previous != nil {
+			if s, ok := val.(string); ok && strings.HasPrefix(s, "{{.") && strings.HasSuffix(s, "}}") {
+				field := strings.ReplaceAll(s, "{{.", "")
+				field = strings.ReplaceAll(field, "}}", "")
+				val = gjson.Get(*previous, field).Value()
+			}
 		}
 
-		op, ok := operators[expr.Operator]
-		if !ok {
-			return nil, fmt.Errorf("correlation: unknown operator %q", expr.Operator)
+		if val == nil {
+			return false, nil, fmt.Errorf("expression value cannot be nil after placeholder resolution")
 		}
-		out = append(out, store.Filter{Field: expr.Field, Op: op, Value: val})
+
+		switch expr.Operator {
+		case "filter_term":
+			builder.Term(expr.Field, val)
+		case "must_not_term":
+			builder.MustNot(*sdkos.NewQueryBuilder(ctx, []string{e.IndexPattern}, "plugin_analysis").Term(expr.Field, val).Build().Query)
+		case "filter_match":
+			if s, ok := val.(string); ok {
+				builder.Match(expr.Field, s)
+			}
+		case "must_not_match":
+			if s, ok := val.(string); ok {
+				builder.MustNot(*sdkos.NewQueryBuilder(ctx, []string{e.IndexPattern}, "plugin_analysis").Match(expr.Field, s).Build().Query)
+			}
+		}
 	}
-	return out, nil
+
+	sr := builder.Build()
+
+	result, err := sr.WideSearchIn(ctx, []string{e.IndexPattern})
+	if err != nil {
+		return false, nil, err
+	}
+
+	if uint64(result.Hits.Total.Value) >= e.Count {
+		return true, result.Hits.Hits, nil
+	}
+
+	var hits []sdkos.Hit
+	for _, or := range e.Or {
+		if alert, newHits, err := or.Execute(previous); alert {
+			hits = append(hits, newHits...)
+		} else if err != nil {
+			return false, nil, err
+		}
+	}
+
+	return len(e.Or) != 0 && len(hits) > 0, hits, nil
 }

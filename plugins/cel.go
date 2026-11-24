@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"cel.dev/cel-go/cel"
+	"github.com/google/cel-go/cel"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/threatwinds/go-sdk/catcher"
 	"github.com/threatwinds/go-sdk/utils"
