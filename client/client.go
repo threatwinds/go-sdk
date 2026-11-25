@@ -17,7 +17,7 @@ import (
 	"github.com/threatwinds/go-sdk/client/compute"
 )
 
-const userAgent = "threatwinds-go-sdk"
+const userAgent = "ThreatWinds-go-sdk/1.0 (+https://threatwinds.com)"
 
 // Client is the root entry point for the ThreatWinds API SDK.
 type Client struct {

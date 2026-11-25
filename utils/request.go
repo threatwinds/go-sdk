@@ -363,6 +363,9 @@ func DoReq[response any](url string, data []byte, method string, headers map[str
 	for k, v := range headers {
 		req.Header.Add(k, v)
 	}
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "ThreatWinds-go-sdk/1.0 (+https://threatwinds.com)")
+	}
 
 	// Configure HTTP client with security settings
 	tr := &http.Transport{
@@ -533,6 +536,9 @@ func DownloadStream(url string, opts ...DownloadOption) (io.ReadCloser, error) {
 
 	for k, v := range config.headers {
 		req.Header.Add(k, v)
+	}
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "ThreatWinds-go-sdk/1.0 (+https://threatwinds.com)")
 	}
 
 	tr := &http.Transport{
