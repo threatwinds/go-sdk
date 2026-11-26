@@ -82,6 +82,7 @@ falls only on services that already serve HTTP.
 - `*Input` — Plugin input message: `EventType`, `Payload`, `Source`, `ID`
 - `GetPluginName(fullPath, sep)` — Extracts plugin name from file path
 - CEL (Common Expression Language) integration for dynamic rule evaluation
+- `ActionResultSuccess`, `ActionResultFailed`, `ActionResultDenied` — the only values a filter writes to `Event.ActionResult` (or none). They match the event processor's threat-intelligence gate, which skips `failed`, `denied` and the older `blocked` (`ActionResultBlocked`). `IsActionResult(v)` / `IsUnsuccessfulActionResult(v)` check a value.
 
 ### `go-sdk/client` — Unified API Client
 - `New(opts ...Option) *Client` — Client factory. `WithURL()`, `WithAPIKey()`, `WithBearer()`, `WithTimeout()`, `WithTransport()`, `WithMaxRetries()`

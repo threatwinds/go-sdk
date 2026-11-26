@@ -80,6 +80,17 @@ Highly efficient CEL expression evaluation with:
 ### Communication
 Most plugins communicate via UNIX sockets located in the `sockets` directory within the plugin's working directory.
 
+### Action result values (`ActionResult*`)
+`Event.ActionResult` is the final outcome of the action the event describes. Filters write exactly one of these lowercase words, or leave it empty when the record states no final outcome:
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `ActionResultSuccess` | `success` | The action completed. |
+| `ActionResultFailed` | `failed` | The action was attempted and did not complete (wrong password, error, timeout). |
+| `ActionResultDenied` | `denied` | A control refused the action (firewall deny, access denial, security block). |
+
+The event processor's threat-intelligence analysis skips indicator lookups for `failed`, `denied` and the older `blocked` (`ActionResultBlocked`, read as `denied`; filters do not write it). Any other value, including an empty one, is looked up. `IsActionResult` checks a value a filter writes; `IsUnsuccessfulActionResult` checks whether the analysis skips it.
+
 ## 🤝 Contribution
 
 Contributions are welcome! Please feel free to submit a Pull Request.
